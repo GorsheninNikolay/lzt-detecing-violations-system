@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Forge report — мониторинг строительной площадки</title>
+  <style>
+    :root { color-scheme: light; --ink:#172033; --muted:#667085; --paper:#f7f4ed; --card:#fff; --accent:#7a2433; --line:#ddd6c8; }
+    * { box-sizing:border-box; }
+    body { margin:0; background:var(--paper); color:var(--ink); font:16px/1.55 system-ui,-apple-system,"Segoe UI",sans-serif; }
+    main { width:min(920px,calc(100% - 32px)); margin:40px auto 72px; }
+    header { display:grid; grid-template-columns:1fr 190px; gap:28px; align-items:center; margin-bottom:28px; }
+    h1 { margin:0 0 8px; font-size:clamp(28px,5vw,48px); line-height:1.05; }
+    h2 { margin:0 0 12px; font-size:20px; }
+    p { margin:0 0 12px; }
+    .subtitle { color:var(--muted); max-width:680px; }
+    .seal { width:174px; height:174px; transform:rotate(-7deg); }
+    .grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:18px; }
+    section { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:22px; }
+    .wide { grid-column:1/-1; }
+    ul { margin:0; padding-left:21px; }
+    li + li { margin-top:7px; }
+    .flow { display:flex; gap:9px; align-items:center; flex-wrap:wrap; }
+    .node { padding:8px 11px; border:1px solid var(--line); border-radius:9px; background:#fbfaf7; }
+    .arrow { color:var(--muted); }
+    .people { color:var(--muted); font-size:14px; }
+    @media (max-width:700px) { header { grid-template-columns:1fr; } .seal { width:140px; height:140px; } .grid { grid-template-columns:1fr; } .wide { grid-column:auto; } }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <div>
+      <h1>Объяснимое предупреждение, а не автоматический приговор</h1>
+      <p class="subtitle">Концепция прототипа мониторинга строительной площадки после проверки четырёх ключевых рисков.</p>
+    </div>
+    <svg class="seal" viewBox="0 0 200 200" role="img" aria-label="HARDENED">
+      <circle cx="100" cy="100" r="91" fill="#8f2f3f" opacity=".14"/>
+      <circle cx="100" cy="100" r="80" fill="none" stroke="#7a2433" stroke-width="5" stroke-dasharray="5 4"/>
+      <circle cx="100" cy="100" r="61" fill="#7a2433"/>
+      <text x="100" y="94" text-anchor="middle" fill="white" font-family="system-ui" font-size="20" font-weight="800">HARDENED</text>
+      <text x="100" y="119" text-anchor="middle" fill="white" font-family="system-ui" font-size="12">21.09.2026</text>
+    </svg>
+  </header>
+
+  <div class="grid">
+    <section class="wide">
+      <h2>Смысл решения</h2>
+      <p>Система наблюдает технику, сопоставляет наблюдение с прозрачным правилом и просит руководителя проверить потенциальное отклонение. Она не квалифицирует нарушение и не действует вместо человека.</p>
+      <div class="flow">
+        <span class="node">Наблюдаемый факт</span><span class="arrow">→</span>
+        <span class="node">Правило с источником</span><span class="arrow">→</span>
+        <span class="node">Предупреждение для проверки</span>
+      </div>
+    </section>
+
+    <section>
+      <h2>Зафиксированные решения</h2>
+      <ul>
+        <li>Один кадр подтверждает только видимое в кадре.</li>
+        <li>Серия кадров усиливает основание предупреждения.</li>
+        <li>Непроверяемые камерой работы не анализируются.</li>
+        <li>Эвристики явно отделены от документов проекта и нормативных источников.</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>Главная демонстрация</h2>
+      <p><strong>Процесс:</strong> разработка котлована с вывозом грунта.</p>
+      <p><strong>Ожидание:</strong> экскаватор постоянно, самосвал периодически.</p>
+      <p><strong>Сигнал:</strong> самосвал не обнаружен на серии снимков зоны погрузки; руководителю предлагается проверить логистику.</p>
+    </section>
+
+    <section>
+      <h2>Отвергнуто</h2>
+      <ul>
+        <li>Юридический вывод по изображению.</li>
+        <li>Доказательство отсутствия на всей площадке одним кадром.</li>
+        <li>Ложная полнота сопоставления всех 380 строк.</li>
+        <li>Преждевременный выбор облака, локальной модели или гибрида.</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>Что ещё надо проверить</h2>
+      <ul>
+        <li>Готовый детектор против ручной разметки на 10–15 снимках.</li>
+        <li>Облачная мультимодальная модель как дешёвый baseline.</li>
+        <li>Пропуски, ложные срабатывания и стабильность на серии кадров.</li>
+        <li>Понятность предупреждения для руководителя.</li>
+      </ul>
+    </section>
+
+    <section class="wide">
+      <h2>Голоса проверки</h2>
+      <p class="people">📊 Mary — ценность и проверяемые основания · 📋 John — управленческое действие · 🔬 Dr. Quinn — ложная точность сопоставления · 📏 Level — доказательность утверждений · 🎬 Caravaggio — ясность демонстрации · 👷 инженеры ПТО и руководители стройки — применимость сигнала.</p>
+    </section>
+  </div>
+</main>
+</body>
+</html>

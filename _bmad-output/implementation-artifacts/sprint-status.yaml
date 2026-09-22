@@ -1,0 +1,50 @@
+# STATUS DEFINITIONS:
+# Epic: backlog, in-progress, done
+# Story: backlog, ready-for-dev, in-progress, review, done
+# Retrospective: optional, done
+# Action item: open, in-progress, done
+generated: 09-22-2026 21:57
+last_updated: 09-22-2026 22:04
+project: lzt-detecing-violations-system
+project_key: NOKEY
+tracking_system: file-system
+story_location: _bmad-output/implementation-artifacts
+
+development_status:
+  epic-1: backlog
+  1-1-start-the-evidence-service-safely: backlog
+  1-2-admit-the-initial-local-observer-through-the-evidence-pipeli: backlog
+  1-3-complete-a-single-image-observation-run: backlog
+  1-4-complete-an-ordered-series-observation-run: backlog
+  1-5-submit-an-observation-in-the-responsive-web-app: backlog
+  1-6-follow-authoritative-pipeline-progress: backlog
+  1-7-inspect-the-source-bound-observation-result: backlog
+  1-8-recover-interrupted-runs-and-artifact-publication: backlog
+  epic-1-retrospective: optional
+
+  epic-2: backlog
+  2-1-choose-an-applicable-analysis-intent: backlog
+  2-2-apply-immutable-evidence-and-rule-revisions: backlog
+  2-3-produce-the-positive-no-check-result: backlog
+  2-4-request-a-check-only-for-persistent-non-detection: backlog
+  2-5-inspect-evidence-and-rule-provenance: backlog
+  2-6-run-included-demonstration-cases: backlog
+  2-7-cover-insufficient-and-out-of-scope-journeys: backlog
+  epic-2-retrospective: optional
+
+  epic-3: backlog
+  3-1-reopen-analyses-and-their-evidence: backlog
+  3-2-retry-a-failed-run-as-a-linked-successor: backlog
+  3-3-navigate-evidence-backed-stage-status: backlog
+  3-4-explain-the-prototype-and-its-limits: backlog
+  epic-3-retrospective: optional
+
+  epic-4: backlog
+  4-1-freeze-the-held-out-evaluation-set: backlog
+  4-2-admit-the-required-cloud-candidate: backlog
+  4-3-freeze-a-complete-comparison-campaign: backlog
+  4-4-execute-and-recover-every-planned-cell: backlog
+  4-5-calculate-criterion-level-readiness: backlog
+  4-6-inspect-prototype-readiness: backlog
+  4-7-inspect-provider-comparison-separately: backlog
+  epic-4-retrospective: optional

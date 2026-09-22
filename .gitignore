@@ -216,3 +216,18 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Local inputs and generated files
+.DS_Store
+/artifacts/
+/output/
+/tmp/
+/_bmad-output/**/.working/
+/_bmad-output/party-mode/memories/
+/_bmad-output/implementation-artifacts/bmad-build-auto-result-*.md
+/_bmad-output/implementation-artifacts/epic-*-context.md
+
+# Locally installed BMad and editor integrations
+/.agents/
+/.opencode/
+/_bmad/

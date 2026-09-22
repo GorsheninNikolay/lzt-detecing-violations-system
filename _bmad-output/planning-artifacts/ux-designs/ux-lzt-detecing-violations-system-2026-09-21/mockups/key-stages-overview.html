@@ -1,0 +1,385 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Ключевой экран: карта этапов</title>
+  <style>
+    /*
+      Governing spines:
+      DESIGN.md: Brand & Style; Colors; Typography; Layout & Spacing; Shapes;
+      Components / Application Shell, Team Brand Block, Stage Tile, Stage Inspector, Status Label.
+      EXPERIENCE.md: Information Architecture / Stages Overview; Component Patterns / Stage Tile +
+      Stage Inspector; State Patterns / Stages Overview; Responsive & Platform; Accessibility Floor;
+      Key Flow 1 steps 1-2. Spines win if this illustrative mock conflicts with them.
+    */
+    :root {
+      --canvas: #211331;
+      --surface: #2b1a3d;
+      --surface-raised: #38264a;
+      --surface-selected: #432b59;
+      --text-primary: #f7f4f9;
+      --text-secondary: #c9bdd1;
+      --text-disabled: #897a91;
+      --border: #5b456e;
+      --border-essential: #8f78a0;
+      --brand: #b984e0;
+      --brand-hover: #c997eb;
+      --on-brand: #211331;
+      --focus: #d7a8f6;
+      --attention-surface: #4c3512;
+      --attention-text: #ffd98a;
+      --success-surface: #173c32;
+      --success-text: #8fe0bc;
+      --neutral-surface: #34293f;
+      --neutral-text: #d6cdd9;
+    }
+    * { box-sizing: border-box; }
+    html { background: var(--canvas); }
+    body {
+      margin: 0;
+      color: var(--text-primary);
+      background: var(--canvas);
+      font-family: Onest, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.45;
+    }
+    button, a { font: inherit; }
+    button { color: inherit; }
+    .artifact {
+      max-width: 1600px;
+      margin: 0 auto;
+      padding: 36px clamp(8px, 3vw, 24px) 64px;
+    }
+    .artifact-intro { margin: 0 0 24px; }
+    .artifact-intro h1 { margin: 0 0 6px; font-size: 28px; line-height: 1.2; }
+    .artifact-intro p { max-width: 760px; margin: 0; color: var(--text-secondary); }
+    .composition {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 360px;
+      gap: 28px;
+      align-items: start;
+    }
+    .composition > * { min-width: 0; }
+    .device {
+      overflow: hidden;
+      border: 1px solid var(--border-essential);
+      background: var(--canvas);
+      box-shadow: 0 24px 64px rgba(9, 4, 15, .44);
+    }
+    .browser { min-width: 0; border-radius: 16px; }
+    .phone { width: min(100%, 360px); border-width: 6px; border-radius: 34px; }
+    .browser-chrome {
+      height: 38px;
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      padding: 0 15px;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface);
+    }
+    .browser-chrome span { width: 8px; height: 8px; border-radius: 50%; background: var(--border-essential); }
+    .browser-address {
+      width: 40%;
+      height: 18px;
+      margin-left: 10px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: var(--surface);
+    }
+    .phone-top {
+      height: 28px;
+      display: grid;
+      place-items: center;
+      background: var(--surface);
+    }
+    .phone-top::before { content: ""; width: 72px; height: 5px; border-radius: 4px; background: var(--border-essential); }
+    .appbar {
+      min-height: 66px;
+      display: flex;
+      align-items: center;
+      gap: 24px;
+      padding: 10px 24px;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface);
+    }
+    .product { font-size: 17px; font-weight: 700; letter-spacing: -.01em; white-space: nowrap; }
+    .nav { display: flex; align-items: center; gap: 5px; }
+    .nav a {
+      min-height: 44px;
+      display: inline-flex;
+      align-items: center;
+      padding: 0 12px;
+      border-radius: 8px;
+      color: var(--text-secondary);
+      text-decoration: none;
+    }
+    .nav a.active { color: var(--text-primary); background: var(--surface-selected); box-shadow: inset 0 -2px var(--brand); }
+    .team-mini { margin-left: auto; color: var(--text-secondary); font-size: 14px; white-space: nowrap; }
+    .button {
+      min-height: 44px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0 16px;
+      border: 1px solid var(--brand);
+      border-radius: 8px;
+      background: var(--brand);
+      color: var(--on-brand);
+      font-weight: 700;
+      text-decoration: none;
+      white-space: nowrap;
+    }
+    .button.secondary { border-color: var(--border-essential); color: var(--text-primary); background: var(--surface-raised); }
+    .browser-main { padding: 28px; }
+    .page-head { display: flex; align-items: end; justify-content: space-between; gap: 24px; margin-bottom: 24px; }
+    .page-head h2 { margin: 0 0 5px; font-size: 34px; line-height: 1.15; letter-spacing: -.02em; }
+    .page-head p { max-width: 690px; margin: 0; color: var(--text-secondary); }
+    .overview-grid { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(300px, .8fr); gap: 20px; }
+    .stage-map, .inspector, .team-card {
+      border: 1px solid var(--border-essential);
+      border-radius: 12px;
+      background: var(--surface);
+    }
+    .stage-map { padding: 20px; }
+    .section-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 16px; }
+    .section-head h3, .inspector h3 { margin: 0; font-size: 20px; line-height: 1.3; }
+    .section-head small { color: var(--text-secondary); font-size: 13px; }
+    .stage-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+    .stage {
+      min-height: 136px;
+      display: flex;
+      flex-direction: column;
+      align-items: stretch;
+      padding: 16px;
+      border: 1px solid var(--border-essential);
+      border-radius: 12px;
+      background: var(--surface-raised);
+      text-align: left;
+    }
+    .stage.selected { border-color: var(--brand); background: var(--surface-selected); box-shadow: inset 1px 0 var(--brand); }
+    .stage-title { display: block; margin-bottom: 12px; font-size: 16px; font-weight: 650; line-height: 1.3; }
+    .stage-note { display: block; margin-top: auto; color: var(--text-secondary); font-size: 13px; }
+    .status {
+      width: fit-content;
+      display: inline-flex;
+      align-items: center;
+      min-height: 28px;
+      padding: 4px 9px;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 650;
+      line-height: 1.2;
+    }
+    .status.attention { color: var(--attention-text); background: var(--attention-surface); }
+    .status.success { color: var(--success-text); background: var(--success-surface); }
+    .status.neutral { color: var(--neutral-text); background: var(--neutral-surface); }
+    .scope-note {
+      margin: 16px 0 0;
+      padding-top: 14px;
+      border-top: 1px solid var(--border);
+      color: var(--text-secondary);
+      font-size: 13px;
+    }
+    .right-stack { display: grid; gap: 16px; }
+    .inspector { padding: 20px; }
+    .eyebrow { margin: 0 0 6px; color: var(--text-secondary); font-size: 13px; font-weight: 600; }
+    .inspector .status { margin: 14px 0; }
+    .outcome-title { margin: 0 0 8px; font-size: 18px; line-height: 1.3; }
+    .inspector-copy { margin: 0 0 16px; color: var(--text-secondary); font-size: 14px; }
+    .facts { margin: 0 0 18px; padding: 14px 0; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+    .fact { display: grid; grid-template-columns: 104px 1fr; gap: 10px; margin: 6px 0; font-size: 13px; }
+    .fact dt { color: var(--text-secondary); }
+    .fact dd { margin: 0; font-weight: 600; }
+    .newer-run {
+      margin: 0 0 18px;
+      padding: 14px;
+      border: 1px solid var(--border-essential);
+      border-radius: 8px;
+      background: var(--surface-raised);
+    }
+    .newer-run strong { display: block; margin-bottom: 5px; font-size: 14px; }
+    .newer-run p { margin: 0; color: var(--text-secondary); font-size: 13px; }
+    .run-state { color: var(--brand); font-weight: 700; }
+    .actions { display: grid; gap: 8px; }
+    .team-card { min-height: 124px; display: grid; grid-template-columns: 100px 1fr; gap: 18px; align-items: center; padding: 16px; }
+    .team-card img { width: 100px; height: 100px; object-fit: contain; }
+    .team-card p { margin: 3px 0 0; color: var(--text-secondary); font-size: 13px; }
+    .team-card strong { font-size: 17px; }
+    .phone { min-height: 790px; }
+    .phone .appbar { min-height: 58px; padding: 8px 14px; gap: 10px; }
+    .phone .product { font-size: 15px; }
+    .phone .team-mini { margin-left: auto; max-width: 132px; overflow: hidden; text-overflow: ellipsis; font-size: 13px; }
+    .phone-main { padding: 18px 14px calc(84px + env(safe-area-inset-bottom)); }
+    .phone-head { display: flex; align-items: end; justify-content: space-between; gap: 10px; margin-bottom: 15px; }
+    .phone h2 { margin: 0; font-size: 25px; line-height: 1.15; }
+    .phone .new-analysis { min-height: 44px; padding: 0 11px; font-size: 13px; }
+    .phone-stage-list { display: grid; gap: 10px; }
+    .phone .stage { min-height: 0; padding: 14px; }
+    .phone .stage-title { margin-bottom: 8px; font-size: 15px; }
+    .phone .stage-note { margin-top: 9px; }
+    .phone .inspector { margin: -2px 0 2px 10px; padding: 15px; border-left: 1px solid var(--brand); border-radius: 8px; }
+    .phone .inspector h3 { font-size: 18px; }
+    .phone .inspector-copy { margin-bottom: 12px; }
+    .phone .newer-run { margin-bottom: 12px; padding: 11px; }
+    .phone .actions { grid-template-columns: 1fr; }
+    .phone .button { min-height: 44px; font-size: 14px; }
+    .phone .team-card { min-height: 0; grid-template-columns: 72px 1fr; padding: 13px; }
+    .phone .team-card img { width: 72px; height: 72px; }
+    .phone .team-card strong { font-size: 15px; }
+    .phone .team-card p { font-size: 13px; }
+    .bottom-nav {
+      min-height: calc(68px + env(safe-area-inset-bottom));
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      position: absolute;
+      left: 6px;
+      right: 6px;
+      bottom: 6px;
+      border-top: 1px solid var(--border-essential);
+      padding-bottom: env(safe-area-inset-bottom);
+      background: var(--surface);
+    }
+    .phone { position: relative; }
+    .bottom-nav a {
+      display: grid;
+      place-items: center;
+      padding: 8px 4px;
+      color: var(--text-secondary);
+      text-decoration: none;
+      font-size: 13px;
+      font-weight: 650;
+    }
+    .bottom-nav a.active { color: var(--brand); background: var(--surface-selected); box-shadow: inset 0 3px var(--brand); }
+    :focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+    @media (max-width: 1180px) {
+      .composition { grid-template-columns: 1fr; }
+      .phone { width: min(100%, 360px); }
+    }
+    @media (max-width: 520px) {
+      .artifact { padding-top: 20px; }
+      .artifact-intro h1 { font-size: 24px; }
+      .phone .appbar { flex-wrap: wrap; }
+    }
+  </style>
+</head>
+<body>
+  <main class="artifact">
+    <header class="artifact-intro">
+      <h1>Ключевой экран: этапы строительства</h1>
+      <p>Карта этапов. Последний подтверждённый результат выбранного этапа отделён от состояния более нового запуска.</p>
+    </header>
+
+    <div class="composition">
+      <section class="device browser" aria-label="Макет экрана этапов на ноутбуке">
+        <div class="browser-chrome" aria-hidden="true"><span></span><span></span><span></span><div class="browser-address"></div></div>
+        <header class="appbar">
+          <div class="product">Контроль строительства</div>
+          <nav class="nav" aria-label="Основная навигация">
+            <a class="active" href="#" aria-current="page">Этапы</a>
+            <a href="#">Анализы</a>
+            <a href="#">Готовность</a>
+            <a href="#">О проекте</a>
+          </nav>
+          <div class="team-mini">17 мгновений ИИ</div>
+          <a class="button" href="#">Новый анализ</a>
+        </header>
+
+        <div class="browser-main">
+          <header class="page-head">
+            <div>
+              <h2>Этапы строительства</h2>
+              <p>Последние результаты анализа по этапам. Статусы не оценивают выполнение плана и не меняют календарный график.</p>
+            </div>
+          </header>
+
+          <div class="overview-grid">
+            <section class="stage-map" aria-labelledby="stage-map-title">
+              <div class="section-head">
+                <h3 id="stage-map-title">Карта этапов</h3>
+                <small>Выберите этап, чтобы открыть детали</small>
+              </div>
+              <div class="stage-list">
+                <button class="stage" type="button">
+                  <span class="stage-title">Подготовительные работы</span>
+                  <span class="status neutral">Не настроено в прототипе</span>
+                  <span class="stage-note">Правило этапа недоступно</span>
+                </button>
+                <button class="stage selected" type="button" aria-pressed="true">
+                  <span class="stage-title">Земляные работы котлована</span>
+                  <span class="status attention">Требуется проверка</span>
+                  <span class="stage-note">Последний завершённый анализ: 3 пригодных кадра</span>
+                </button>
+                <button class="stage" type="button">
+                  <span class="stage-title">Устройство фундамента</span>
+                  <span class="status neutral">Анализов нет</span>
+                  <span class="stage-note">Нет завершённых запусков</span>
+                </button>
+                <button class="stage" type="button">
+                  <span class="stage-title">Монолитные работы</span>
+                  <span class="status neutral">Не настроено в прототипе</span>
+                  <span class="stage-note">Правило этапа недоступно</span>
+                </button>
+              </div>
+              <p class="scope-note">В прототипе полностью настроен один сценарий: вывоз грунта из контролируемой зоны погрузки котлована.</p>
+            </section>
+
+            <div class="right-stack">
+              <aside class="inspector" aria-labelledby="selected-stage-title">
+                <p class="eyebrow">Выбранный этап</p>
+                <h3 id="selected-stage-title">Земляные работы котлована</h3>
+                <span class="status attention">Требуется проверка</span>
+                <h4 class="outcome-title">Возможна задержка вывоза грунта</h4>
+                <p class="inspector-copy">Проверьте подачу самосвалов в контролируемую зону погрузки. Это рекомендация для проверки, а не подтверждение нарушения.</p>
+                <dl class="facts">
+                  <div class="fact"><dt>Основание</dt><dd>Последний завершённый анализ</dd></div>
+                  <div class="fact"><dt>Зона</dt><dd>Контролируемая зона погрузки</dd></div>
+                  <div class="fact"><dt>Доказательства</dt><dd>3 пригодных кадра одной зоны</dd></div>
+                </dl>
+                <div class="newer-run">
+                  <strong>Более новый запуск</strong>
+                  <p><span class="run-state">Выполняется:</span> распознавание техники. Он не заменяет завершённый результат.</p>
+                </div>
+                <div class="actions">
+                  <a class="button secondary" href="#">Открыть доказательства</a>
+                  <a class="button" href="#">Новый анализ этапа</a>
+                </div>
+              </aside>
+
+              <aside class="team-card" aria-label="Команда проекта">
+                <img src="../imports/team-17-mgnoveniy-ii-logo.png" alt="">
+                <div><strong>17 мгновений ИИ</strong><p>Команда прототипа. Методика и ограничения доступны в разделе «О проекте».</p></div>
+              </aside>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="device phone" aria-label="Макет экрана этапов на телефоне">
+        <div class="phone-top" aria-hidden="true"></div>
+        <header class="appbar"><div class="product">Контроль строительства</div><div class="team-mini">17 мгновений ИИ</div></header>
+        <div class="phone-main">
+          <header class="phone-head"><h2>Этапы</h2><a class="button new-analysis" href="#">Новый анализ</a></header>
+          <div class="phone-stage-list">
+            <button class="stage selected" type="button" aria-pressed="true">
+              <span class="stage-title">Земляные работы котлована</span>
+              <span class="status attention">Требуется проверка</span>
+              <span class="stage-note">Последний завершённый анализ: 3 пригодных кадра</span>
+            </button>
+            <aside class="inspector" aria-label="Детали выбранного этапа">
+              <h3>Возможна задержка вывоза грунта</h3>
+              <p class="inspector-copy">Проверьте подачу самосвалов. Это рекомендация, а не подтверждение нарушения.</p>
+              <div class="newer-run"><strong>Более новый запуск</strong><p><span class="run-state">Выполняется:</span> распознавание техники</p></div>
+              <div class="actions"><a class="button secondary" href="#">Доказательства</a><a class="button" href="#">Новый анализ этапа</a></div>
+            </aside>
+            <button class="stage" type="button"><span class="stage-title">Подготовительные работы</span><span class="status neutral">Не настроено в прототипе</span></button>
+            <button class="stage" type="button"><span class="stage-title">Устройство фундамента</span><span class="status neutral">Анализов нет</span></button>
+            <button class="stage" type="button"><span class="stage-title">Монолитные работы</span><span class="status neutral">Не настроено в прототипе</span></button>
+            <aside class="team-card" aria-label="Команда проекта"><img src="../imports/team-17-mgnoveniy-ii-logo.png" alt=""><div><strong>17 мгновений ИИ</strong><p>Команда прототипа</p></div></aside>
+          </div>
+        </div>
+        <nav class="bottom-nav" aria-label="Основная навигация"><a class="active" href="#" aria-current="page">Этапы</a><a href="#">Анализы</a><a href="#">Готовность</a></nav>
+      </section>
+    </div>
+  </main>
+</body>
+</html>
