@@ -1,0 +1,107 @@
+{
+  "schema_revision": "admission-fixtures-v1",
+  "source_url": "https://www.kaggle.com/datasets/xyzyxzzxy/construction-equipment/data",
+  "organizer_link": "artifacts/dataset/Ссылки на открыте датасеты.txt",
+  "declared_license": "CC0",
+  "commercial_rights": "Kaggle card declares CC0; owner approved local prototype smoke on 2026-09-23",
+  "provenance_caveat": "Original camera, site, and capture provenance are unverified; source-group prefix is reserved as the exclusion unit.",
+  "reserved_source_groups": [
+    "1235",
+    "1233",
+    "1422",
+    "1325"
+  ],
+  "fixtures": [
+    {
+      "id": "1235_08_47_31_983151-2023-11-10",
+      "source_group": "1235",
+      "source_site_camera_time_sequence_group": "1235",
+      "image": {
+        "path": "fixtures/1235_08_47_31_983151-2023-11-10.jpg",
+        "sha256": "e5431c3829786e9bd83d75c2e41e0f10ce4e657639158cc344fdccc43468ba37",
+        "size": 865554
+      },
+      "label": {
+        "path": "fixtures/1235_08_47_31_983151-2023-11-10.txt",
+        "sha256": "c4b8962e347e64d4cfc2b7d9057f930946896ff63038a1dbc00ef33b55ba5bf7",
+        "size": 76
+      },
+      "context": {
+        "scenario": "controlled construction equipment frame",
+        "area": "Kaggle source group 1235",
+        "period": "single frame; original capture period unverified"
+      },
+      "expected_classes": [
+        "excavator",
+        "dump_truck"
+      ]
+    },
+    {
+      "id": "1233_09_26_32_077311-2023-11-10",
+      "source_group": "1233",
+      "source_site_camera_time_sequence_group": "1233",
+      "image": {
+        "path": "fixtures/1233_09_26_32_077311-2023-11-10.jpg",
+        "sha256": "8259713671699f237046cd7cbd19e7df41c84899eab12e6c560de4f90e0dc72d",
+        "size": 2263857
+      },
+      "label": {
+        "path": "fixtures/1233_09_26_32_077311-2023-11-10.txt",
+        "sha256": "b65fdea06b557089bd90a8e21503989f156157a747f0e95bc8e08ab1bfcfb6a6",
+        "size": 114
+      },
+      "context": {
+        "scenario": "controlled construction equipment frame",
+        "area": "Kaggle source group 1233",
+        "period": "single frame; original capture period unverified"
+      },
+      "expected_classes": [
+        "dump_truck"
+      ]
+    },
+    {
+      "id": "1422_12_49_39_102843-2023-09-22",
+      "source_group": "1422",
+      "source_site_camera_time_sequence_group": "1422",
+      "image": {
+        "path": "fixtures/1422_12_49_39_102843-2023-09-22.jpg",
+        "sha256": "5cf814de290e529a618d805beb6d372f50194e918e50349598095f5124c53ba9",
+        "size": 1487998
+      },
+      "label": {
+        "path": "fixtures/1422_12_49_39_102843-2023-09-22.txt",
+        "sha256": "0e4ec639d73a616a5b6132c1b57d11012aa43a5c9bd7190b477171c97cffacae",
+        "size": 77
+      },
+      "context": {
+        "scenario": "controlled construction equipment frame",
+        "area": "Kaggle source group 1422",
+        "period": "single frame; original capture period unverified"
+      },
+      "expected_classes": [
+        "excavator"
+      ]
+    },
+    {
+      "id": "1325_11_08_44_816463-2023-09-22",
+      "source_group": "1325",
+      "source_site_camera_time_sequence_group": "1325",
+      "image": {
+        "path": "fixtures/1325_11_08_44_816463-2023-09-22.jpg",
+        "sha256": "9994eb784599878bb6586fec4bb6229d2d3b4d0333120980567080d5bb3beace",
+        "size": 1213036
+      },
+      "label": {
+        "path": "fixtures/1325_11_08_44_816463-2023-09-22.txt",
+        "sha256": "d506240ee028f28d1884e90fdc0310b4822eafd00683557d9bfe030e077b619a",
+        "size": 77
+      },
+      "context": {
+        "scenario": "controlled construction equipment frame",
+        "area": "Kaggle source group 1325",
+        "period": "single frame; original capture period unverified"
+      },
+      "expected_classes": []
+    }
+  ]
+}

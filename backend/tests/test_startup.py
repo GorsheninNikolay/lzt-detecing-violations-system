@@ -110,7 +110,7 @@ def test_database_migration_mismatch_and_smoke_failure(database):
             store.check_head_and_smoke(MIGRATIONS)
     finally:
         with store.engine.begin() as connection:
-            connection.execute(text("UPDATE alembic_version SET version_num = '0001_seed'"))
+            connection.execute(text("UPDATE alembic_version SET version_num = :head"), {"head": ScriptDirectory(MIGRATIONS).get_current_head()})
     with store.engine.begin() as connection:
         connection.execute(text("ALTER TABLE startup_smoke RENAME TO startup_smoke_hidden"))
     try:
@@ -136,8 +136,10 @@ def test_reconciliation_lock_fences_pass(database):
 def test_reconciliation_rejects_unhandled_intents(database):
     store = database
     intent_id = uuid.uuid4()
+    run_id = uuid.uuid4()
     with store.engine.begin() as connection:
-        connection.execute(text("INSERT INTO publication_intents (id, state) VALUES (:id, 'pending_upload')"), {"id": intent_id})
+        connection.execute(text("INSERT INTO analysis_runs (id, state) VALUES (:id, 'running')"), {"id": run_id})
+        connection.execute(text("INSERT INTO publication_intents (id, run_id, idempotency_key, media_type, state) VALUES (:id, :run, :key, 'application/json', 'pending_upload')"), {"id": intent_id, "run": run_id, "key": str(intent_id)})
     try:
         with pytest.raises(ReconciliationGateError, match="reconciliation_pending_intents"):
             store.reconcile()
@@ -147,6 +149,7 @@ def test_reconciliation_rejects_unhandled_intents(database):
     finally:
         with store.engine.begin() as connection:
             connection.execute(text("DELETE FROM publication_intents WHERE id = :id"), {"id": intent_id})
+            connection.execute(text("DELETE FROM analysis_runs WHERE id = :id"), {"id": run_id})
 
 
 def test_guarded_recovery(database):
@@ -332,7 +335,7 @@ def test_database_mismatch_blocks_http_readiness(integration, monkeypatch):
         assert_service_gate("database_migration_mismatch")
     finally:
         with store.engine.begin() as connection:
-            connection.execute(text("UPDATE alembic_version SET version_num = '0001_seed'"))
+            connection.execute(text("UPDATE alembic_version SET version_num = :head"), {"head": ScriptDirectory(MIGRATIONS).get_current_head()})
 
 
 def test_artifact_failure_blocks_http_readiness(integration, monkeypatch):

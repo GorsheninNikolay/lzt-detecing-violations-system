@@ -1,0 +1,7 @@
+{
+  "schema_revision": "exclusion-inventory-v1",
+  "tier": "development_acceptance",
+  "reserved_source_groups": [],
+  "fixtures": [],
+  "note": "No fixtures assigned in this tier at Story 1.2 admission; update before assigning any source group."
+}

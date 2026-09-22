@@ -1,4 +1,6 @@
 import secrets
+import hashlib
+import uuid
 
 import boto3
 from botocore.config import Config as BotoConfig
@@ -18,6 +20,63 @@ class ArtifactStore:
             aws_secret_access_key=config.s3_secret_key, region_name=config.s3_region,
             config=BotoConfig(s3={"addressing_style": "path"}, retries={"max_attempts": 1}),
         )
+
+    def _verify(self, key: str, expected_digest: str, expected_size: int) -> None:
+        try:
+            head = self.client.head_object(Bucket=self.bucket, Key=key)
+            body = self.client.get_object(Bucket=self.bucket, Key=key)["Body"].read()
+            if head["ContentLength"] != expected_size or len(body) != expected_size or hashlib.sha256(body).hexdigest() != expected_digest:
+                raise ArtifactGateError("artifact_integrity_failed")
+        except ArtifactGateError:
+            raise
+        except Exception:
+            raise ArtifactGateError("artifact_integrity_failed") from None
+
+    def upload_temporary(self, intent_id: uuid.UUID, payload: bytes, media_type: str) -> tuple[str, str, int]:
+        digest = hashlib.sha256(payload).hexdigest()
+        size = len(payload)
+        temporary_key = f"tmp/{intent_id}"
+        try:
+            self.client.put_object(Bucket=self.bucket, Key=temporary_key, Body=payload,
+                ContentType=media_type, Metadata={"publication_intent_id": str(intent_id)})
+            self._verify(temporary_key, digest, size)
+            return temporary_key, digest, size
+        except ArtifactGateError:
+            raise
+        except Exception:
+            raise ArtifactGateError("artifact_publication_failed") from None
+
+    def publish_final(self, intent_id: uuid.UUID, payload: bytes, media_type: str, digest: str, size: int) -> str:
+        final_key = f"sha256/{digest}"
+        try:
+            self._verify(f"tmp/{intent_id}", digest, size)
+            try:
+                self.client.put_object(Bucket=self.bucket, Key=final_key, Body=payload,
+                    ContentType=media_type, Metadata={"publication_intent_id": str(intent_id)}, IfNoneMatch="*")
+            except Exception as exc:
+                status = getattr(exc, "response", {}).get("ResponseMetadata", {}).get("HTTPStatusCode")
+                if status not in (409, 412):
+                    raise
+            self._verify(final_key, digest, size)
+            return final_key
+        except ArtifactGateError:
+            raise
+        except Exception:
+            raise ArtifactGateError("artifact_publication_failed") from None
+
+    def read_verified(self, key: str, digest: str, size: int) -> bytes:
+        if key != f"sha256/{digest}":
+            raise ArtifactGateError("artifact_integrity_failed")
+        try:
+            head = self.client.head_object(Bucket=self.bucket, Key=key)
+            body = self.client.get_object(Bucket=self.bucket, Key=key)["Body"].read()
+            if head["ContentLength"] != size or len(body) != size or hashlib.sha256(body).hexdigest() != digest:
+                raise ArtifactGateError("artifact_integrity_failed")
+            return body
+        except ArtifactGateError:
+            raise
+        except Exception:
+            raise ArtifactGateError("artifact_integrity_failed") from None
 
     def probe(self) -> None:
         key = f"health/{secrets.token_hex(24)}"

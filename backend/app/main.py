@@ -1,4 +1,6 @@
 import asyncio
+import os
+import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -7,7 +9,7 @@ from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 
 from app.adapters.artifacts import ArtifactStore
-from app.adapters.postgres import DatabaseGateError, PostgresStore, ReconciliationGateError, RecoveryGateError
+from app.adapters.postgres import AdmissionStoreError, DatabaseGateError, PostgresStore, ReconciliationGateError, RecoveryGateError
 from app.application.executor import ClaimLoop
 from app.config import Config
 
@@ -36,8 +38,8 @@ async def lifespan(app: FastAPI):
         for code, gate in (
             ("database_gate_failed", lambda: store.check_head_and_smoke(migrations)),
             ("artifact_gate_failed", artifacts.probe),
-            ("reconciliation_gate_failed", store.reconcile),
             ("recovery_gate_failed", store.recover),
+            ("reconciliation_gate_failed", store.reconcile),
         ):
             try:
                 await asyncio.to_thread(gate)
@@ -49,6 +51,13 @@ async def lifespan(app: FastAPI):
                 return
             except Exception:
                 state.code = code
+                return
+        runtime_profile = os.getenv("OBSERVER_PROFILE_ID")
+        if runtime_profile:
+            try:
+                claim_loop.bind_runtime(store, uuid.UUID(runtime_profile))
+            except (ValueError, AdmissionStoreError):
+                state.code = "profile_unauthorized"
                 return
         state.code = "ready"
         state.ready.set()
