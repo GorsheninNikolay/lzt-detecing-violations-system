@@ -188,6 +188,39 @@ def test_artifact_probe_success_and_missing_bucket(integration):
         ArtifactStore(missing).probe()
 
 
+def test_versioned_artifact_probe_removes_versions(integration):
+    config, _, artifacts = integration
+    bucket = f"health-versioned-{uuid.uuid4().hex[:16]}"
+    client = artifacts.client
+    client.create_bucket(Bucket=bucket)
+    client.put_bucket_versioning(Bucket=bucket, VersioningConfiguration={"Status": "Enabled"})
+    try:
+        versioned = Config(config.database_url, config.s3_endpoint, bucket, config.s3_access_key, config.s3_secret_key)
+        ArtifactStore(versioned).probe()
+        assert not health_versions(client, bucket)
+
+        with failing_s3_proxy(config.s3_endpoint, "PUT_AFTER_COMMIT") as endpoint:
+            faulty = Config(config.database_url, endpoint, bucket, config.s3_access_key, config.s3_secret_key)
+            with pytest.raises(ArtifactGateError, match="artifact_gate_failed"):
+                ArtifactStore(faulty).probe()
+        assert not health_versions(client, bucket)
+
+        with failing_s3_proxy(config.s3_endpoint, "DELETE") as endpoint:
+            faulty = Config(config.database_url, endpoint, bucket, config.s3_access_key, config.s3_secret_key)
+            with pytest.raises(ArtifactGateError, match="artifact_gate_failed"):
+                ArtifactStore(faulty).probe()
+        assert health_versions(client, bucket)
+    finally:
+        for item in health_versions(client, bucket):
+            client.delete_object(Bucket=bucket, Key=item["Key"], VersionId=item["VersionId"])
+        client.delete_bucket(Bucket=bucket)
+
+
+def health_versions(client, bucket):
+    page = client.list_object_versions(Bucket=bucket, Prefix="health/")
+    return page.get("Versions", []) + page.get("DeleteMarkers", [])
+
+
 @pytest.mark.parametrize("fault", ["PUT", "PUT_AFTER_COMMIT", "HEAD", "GET", "DELETE", "DELETE_404", "CORRUPT_GET"])
 def test_artifact_verification_and_cleanup_failures(integration, fault):
     config, _, artifacts = integration

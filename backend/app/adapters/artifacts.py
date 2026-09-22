@@ -24,9 +24,12 @@ class ArtifactStore:
         payload = secrets.token_bytes(32)
         attempted = False
         failed = False
+        version_id = None
+        put_completed = False
         try:
             attempted = True
-            self.client.put_object(Bucket=self.bucket, Key=key, Body=payload)
+            version_id = self.client.put_object(Bucket=self.bucket, Key=key, Body=payload).get("VersionId")
+            put_completed = True
             head = self.client.head_object(Bucket=self.bucket, Key=key)
             body = self.client.get_object(Bucket=self.bucket, Key=key)["Body"].read()
             if head["ContentLength"] != len(payload) or body != payload:
@@ -36,16 +39,34 @@ class ArtifactStore:
         finally:
             if attempted:
                 try:
-                    self.client.delete_object(Bucket=self.bucket, Key=key)
+                    self._clean_health_key(key, version_id, put_completed)
                 except Exception:
                     failed = True
-                else:
-                    try:
-                        self.client.head_object(Bucket=self.bucket, Key=key)
-                        failed = True
-                    except Exception as exc:
-                        # S3 reports a deleted object as a 404 ClientError.
-                        if getattr(exc, "response", {}).get("ResponseMetadata", {}).get("HTTPStatusCode") != 404:
-                            failed = True
         if failed:
             raise ArtifactGateError("artifact_gate_failed")
+
+    def _health_versions(self, key: str) -> list[dict]:
+        return [
+            item
+            for page in self.client.get_paginator("list_object_versions").paginate(Bucket=self.bucket, Prefix=key)
+            for kind in ("Versions", "DeleteMarkers")
+            for item in page.get(kind, [])
+            if item["Key"] == key
+        ]
+
+    def _clean_health_key(self, key: str, version_id: str | None, put_completed: bool) -> None:
+        if not version_id or version_id == "null":
+            self.client.delete_object(Bucket=self.bucket, Key=key)
+        if version_id or not put_completed:
+            for item in self._health_versions(key):
+                if item["VersionId"] != "null":
+                    self.client.delete_object(Bucket=self.bucket, Key=key, VersionId=item["VersionId"])
+            if self._health_versions(key):
+                raise ArtifactGateError("artifact_cleanup_failed")
+        try:
+            self.client.head_object(Bucket=self.bucket, Key=key)
+        except Exception as exc:
+            if getattr(exc, "response", {}).get("ResponseMetadata", {}).get("HTTPStatusCode") == 404:
+                return
+            raise
+        raise ArtifactGateError("artifact_cleanup_failed")

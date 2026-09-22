@@ -123,3 +123,7 @@ Review: 10 grouped patches applied (high 2, medium 6, low 2); one medium unverif
 Verification: `uv lock --check` passed; frozen sync passed on Python 3.13.15; Alembic upgraded isolated PostgreSQL; 19 integration tests passed against PostgreSQL and MinIO; the MinIO `mc ready local` healthcheck passed; a live `uv run evidence-service` returned successful liveness and readiness. `git diff --check` passed before finalization.
 
 Follow-up review recommended: true. High-severity test isolation and fail-on-missing-config repairs were verified against temporary services, but a second independent review of the final verification path remains useful. Residual risk: S3 bucket versioning cleanup was not tested.
+
+## Follow-up Resolution
+
+The historical deferred versioning concern was confirmed on a versioned MinIO bucket and resolved in [spec-1-1-versioned-health-cleanup.md](spec-1-1-versioned-health-cleanup.md). The follow-up integration run passed 20 tests, including an empty version listing after normal and ambiguous health writes. The original review result above remains the record of its first pass.

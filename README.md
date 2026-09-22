@@ -24,6 +24,8 @@ uv run evidence-service
 
 The API listens on `127.0.0.1:8000`. `GET /health/live` returns process liveness. `GET /health/ready` returns HTTP 503 with a stable JSON code until migration-head verification, a rolled-back PostgreSQL write/read, a unique S3 `health/` write/HEAD/read/delete, a locked publication-intent scan, and lease-aware recovery all succeed; then it returns HTTP 200 with `{"ready": true, "code": "ready"}`. Failure codes contain no endpoint or credentials.
 
+For a versioned S3 bucket, the startup identity also needs `s3:ListBucketVersions` on the bucket and `s3:DeleteObjectVersion` for `health/*`. The probe removes its exact object versions and checks that none remain; missing permissions keep readiness false.
+
 ## Isolated integration verification
 
 Keep the local services running. Create a separate database once, then run the remaining commands from `backend/`:
