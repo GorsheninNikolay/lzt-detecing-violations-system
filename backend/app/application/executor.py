@@ -130,32 +130,36 @@ class ClaimLoop:
         run_id, owner = work["id"], work["owner"]
         renewal = asyncio.create_task(self._renew(run_id, owner, revision))
         try:
-            image = await asyncio.to_thread(self.artifacts.read_verified, work["key"], work["sha256"], work["size"])
-            assessable = not await asyncio.to_thread(_unassessable, image)
-            supported = bool(set(work["requested_classes"]) & set(CLASSES))
-            invocation = await asyncio.to_thread(self.store.reserve_ordinary, run_id, owner, revision, work["sha256"], assessable and supported)
-            if invocation is None:
-                states = {name: "insufficient_data" for name in CLASSES}
-                result, native_intent = None, None
-            else:
-                timeout = float(work["profile_snapshot"]["runtime"]["per_image_timeout_seconds"])
-                result = await asyncio.to_thread(_observe_bounded, self.snapshot_dir,
-                    work["profile_snapshot"]["model_files"], image, timeout)
-                _validate_result(result)
-                result["preprocessing_revision"] = PREPROCESSING_REVISION
-                native = canonical_bytes({"detections": result["native"],
-                    "returned_model_identity": result["returned_model_identity"],
-                    "actual_device": result["actual_device"], "latency_ms": result["latency_ms"],
-                    "peak_memory_bytes": result["peak_memory_bytes"]})
-                native_intent = await asyncio.to_thread(self.store.create_publication_intent, run_id, "application/json", f"{run_id}:native")
-                _, hash_, size = await asyncio.to_thread(self.artifacts.upload_temporary, native_intent, native, "application/json")
-                await asyncio.to_thread(self.store.publication_content_verified, native_intent, hash_, size, f"sha256/{hash_}")
-                await asyncio.to_thread(self.artifacts.publish_final, native_intent, native, "application/json", hash_, size)
-                await asyncio.to_thread(self.store.publication_object_published, native_intent)
-                await asyncio.to_thread(self.artifacts.read_verified, f"sha256/{hash_}", hash_, size)
-                states = result["states"]
-            observations = closed_observations(states, work["requested_classes"], str(work["artifact_id"]))
-            await asyncio.to_thread(self.store.finish_ordinary, run_id, owner, revision, invocation, result, native_intent, observations)
+            for frame in work["frames"]:
+                image = await asyncio.to_thread(self.artifacts.read_verified, frame["key"], frame["sha256"], frame["size"])
+                assessable = not await asyncio.to_thread(_unassessable, image)
+                supported = bool(set(work["requested_classes"]) & set(CLASSES))
+                invocation = await asyncio.to_thread(self.store.reserve_ordinary, run_id, owner, revision,
+                    frame["sha256"], assessable and supported, frame["input_id"])
+                if invocation is None:
+                    states = {name: "insufficient_data" for name in CLASSES}
+                    result, native_intent = None, None
+                else:
+                    timeout = float(work["profile_snapshot"]["runtime"]["per_image_timeout_seconds"])
+                    result = await asyncio.to_thread(_observe_bounded, self.snapshot_dir,
+                        work["profile_snapshot"]["model_files"], image, timeout)
+                    _validate_result(result)
+                    result["preprocessing_revision"] = PREPROCESSING_REVISION
+                    native = canonical_bytes({"detections": result["native"],
+                        "returned_model_identity": result["returned_model_identity"],
+                        "actual_device": result["actual_device"], "latency_ms": result["latency_ms"],
+                        "peak_memory_bytes": result["peak_memory_bytes"]})
+                    native_intent = await asyncio.to_thread(self.store.create_publication_intent,
+                        run_id, "application/json", f"{run_id}:native:{frame['input_id']}")
+                    _, hash_, size = await asyncio.to_thread(self.artifacts.upload_temporary, native_intent, native, "application/json")
+                    await asyncio.to_thread(self.store.publication_content_verified, native_intent, hash_, size, f"sha256/{hash_}")
+                    await asyncio.to_thread(self.artifacts.publish_final, native_intent, native, "application/json", hash_, size)
+                    await asyncio.to_thread(self.store.publication_object_published, native_intent)
+                    await asyncio.to_thread(self.artifacts.read_verified, f"sha256/{hash_}", hash_, size)
+                    states = result["states"]
+                observations = closed_observations(states, work["requested_classes"], str(frame["artifact_id"]))
+                await asyncio.to_thread(self.store.finish_ordinary, run_id, owner, revision,
+                    invocation, result, native_intent, observations, frame["input_id"])
         except Exception as exc:
             code = str(exc)
             if code not in {"observer_timeout", "artifact_integrity_failed", "observer_identity_or_device_invalid",

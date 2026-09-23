@@ -19,7 +19,22 @@ class SubmissionError(ValueError):
     pass
 
 
+def wait_for_submission(store: PostgresStore, key: str, request_hash: str) -> tuple[str, uuid.UUID | None, str | None]:
+    deadline = time.monotonic() + 2
+    while time.monotonic() < deadline:
+        time.sleep(0.1)
+        state, run_id, _, error = store.begin_submission(key, request_hash, "image/jpeg")
+        if state != "publishing":
+            return state, run_id, error
+    raise SubmissionError("submission_in_progress")
+
+
 def validate_request(body: dict) -> tuple[bytes, dict, list[str], str]:
+    images, context, requested, request_hash = validate_images(body, False)
+    return images[0], context, requested, request_hash
+
+
+def validate_images(body: dict, series: bool) -> tuple[list[bytes], dict, list[str], str]:
     if not isinstance(body, dict) or body.get("intent") != "observation_only":
         raise SubmissionError("invalid_observation_intent")
     context = {key: body.get(key) for key in ("scenario", "observation_area", "period")}
@@ -36,22 +51,29 @@ def validate_request(body: dict) -> tuple[bytes, dict, list[str], str]:
             or any(not isinstance(name, str) or not name.isidentifier() or len(name) > 64 for name in requested)
             or len(set(requested)) != len(requested)):
         raise SubmissionError("invalid_requested_classes")
-    raw = body.get("image_base64")
-    if not isinstance(raw, str) or len(raw) > 25_000_000:
+    raw_images = body.get("images_base64") if series else [body.get("image_base64")]
+    if not isinstance(raw_images, list) or (series and not 2 <= len(raw_images) <= 8):
         raise SubmissionError("invalid_image_file")
-    try:
-        image = base64.b64decode(raw, validate=True)
-        if len(image) > 16_000_000 or not image or image[:3] != b"\xff\xd8\xff":
+    images = []
+    for raw in raw_images:
+        if not isinstance(raw, str) or len(raw) > 25_000_000:
             raise SubmissionError("invalid_image_file")
-        with Image.open(io.BytesIO(image)) as decoded:
-            if decoded.format != "JPEG" or decoded.width * decoded.height > 40_000_000:
+        try:
+            image = base64.b64decode(raw, validate=True)
+            if len(image) > 16_000_000 or not image or image[:3] != b"\xff\xd8\xff":
                 raise SubmissionError("invalid_image_file")
-            decoded.load()
-    except (binascii.Error, ValueError, UnidentifiedImageError, OSError):
-        raise SubmissionError("invalid_image_file") from None
+            with Image.open(io.BytesIO(image)) as decoded:
+                if decoded.format != "JPEG" or decoded.width * decoded.height > 40_000_000:
+                    raise SubmissionError("invalid_image_file")
+                decoded.load()
+        except (binascii.Error, ValueError, UnidentifiedImageError, OSError):
+            raise SubmissionError("invalid_image_file") from None
+        images.append(image)
+    image_hashes = [hashlib.sha256(image).hexdigest() for image in images]
     canonical = json.dumps({"context": context, "requested_classes": sorted(requested),
-                            "image_sha256": hashlib.sha256(image).hexdigest()}, sort_keys=True, separators=(",", ":"))
-    return image, context, requested, hashlib.sha256(canonical.encode()).hexdigest()
+                            "image_sha256": image_hashes if series else image_hashes[0]},
+                           sort_keys=True, separators=(",", ":"))
+    return images, context, requested, hashlib.sha256(canonical.encode()).hexdigest()
 
 
 def submit(store: PostgresStore, artifacts: ArtifactStore, key: str, body: dict,
@@ -70,13 +92,10 @@ def submit(store: PostgresStore, artifacts: ArtifactStore, key: str, body: dict,
     if state == "failed":
         raise SubmissionError(error)
     if state == "publishing":
-        while True:
-            time.sleep(0.1)
-            state, existing_run, _, error = store.begin_submission(key, request_hash, "image/jpeg")
-            if state == "accepted":
-                return "queued", existing_run
-            if state == "failed":
-                raise SubmissionError(error)
+        state, existing_run, error = wait_for_submission(store, key, request_hash)
+        if state == "accepted":
+            return "queued", existing_run
+        raise SubmissionError(error)
     try:
         _, image_hash, size = artifacts.upload_temporary(intent_id, image, "image/jpeg")
         store.publication_content_verified(intent_id, image_hash, size, f"sha256/{image_hash}")
@@ -85,6 +104,41 @@ def submit(store: PostgresStore, artifacts: ArtifactStore, key: str, body: dict,
         artifacts.read_verified(f"sha256/{image_hash}", image_hash, size)
         run_id = store.commit_submission(key, profile_id, revision, snapshot, context, requested, image_hash, size)
         return "queued", run_id
+    except Exception as exc:
+        code = "profile_unauthorized" if str(exc) == "profile_unauthorized" else "submission_publication_failed"
+        store.fail_submission(key, code)
+        raise SubmissionError(code) from None
+
+
+def submit_series(store: PostgresStore, artifacts: ArtifactStore, key: str, body: dict,
+                  profile_id: uuid.UUID, revision: int, snapshot: dict) -> tuple[str, uuid.UUID | None]:
+    if not isinstance(key, str) or not 0 < len(key) <= 128 or any(ord(char) < 33 or ord(char) > 126 for char in key):
+        raise SubmissionError("invalid_idempotency_key")
+    images, context, requested, request_hash = validate_images(body, True)
+    try:
+        state, existing_run, first_intent, error = store.begin_submission(key, request_hash, "image/jpeg")
+    except AdmissionStoreError as exc:
+        if str(exc) == "idempotency_key_conflict":
+            raise SubmissionError("idempotency_key_conflict") from None
+        raise
+    if state == "publishing":
+        state, existing_run, error = wait_for_submission(store, key, request_hash)
+    if state == "accepted":
+        return "queued", existing_run
+    if state == "failed":
+        raise SubmissionError(error)
+    try:
+        manifest = []
+        for ordinal, image in enumerate(images):
+            intent_id = first_intent if ordinal == 0 else store.create_submission_intent(key)
+            _, image_hash, size = artifacts.upload_temporary(intent_id, image, "image/jpeg")
+            store.publication_content_verified(intent_id, image_hash, size, f"sha256/{image_hash}")
+            artifacts.publish_final(intent_id, image, "image/jpeg", image_hash, size)
+            store.publication_object_published(intent_id)
+            artifacts.read_verified(f"sha256/{image_hash}", image_hash, size)
+            manifest.append((intent_id, image_hash, size))
+        return "queued", store.commit_series_submission(
+            key, profile_id, revision, snapshot, context, requested, manifest)
     except Exception as exc:
         code = "profile_unauthorized" if str(exc) == "profile_unauthorized" else "submission_publication_failed"
         store.fail_submission(key, code)

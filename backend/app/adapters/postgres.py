@@ -70,7 +70,7 @@ class PostgresStore:
                     WHERE state = 'publishing'"""))
                 rows = connection.execute(text("""SELECT i.id, i.state, r.state AS run_state, s.state AS submission_state
                     FROM publication_intents i LEFT JOIN analysis_runs r ON r.id = i.run_id
-                    LEFT JOIN submission_requests s ON s.intent_id = i.id
+                    LEFT JOIN submission_requests s ON s.intent_id = i.id OR s.idempotency_key = i.submission_key
                     WHERE i.state NOT IN ('referenced', 'quarantined', 'failed_integrity') FOR UPDATE OF i""")).all()
                 observed_count = len(rows)
                 for row in rows:
@@ -148,7 +148,7 @@ class PostgresStore:
         invocation_id = uuid.uuid4()
         input_hash = digest(input_bytes)
         with self.engine.begin() as connection:
-            row = connection.execute(text("""SELECT r.profile_id, r.bootstrap_watchdog_seconds, i.sha256, i.size, p.status
+            row = connection.execute(text("""SELECT r.profile_id, r.bootstrap_watchdog_seconds, i.sha256, i.size, i.input_id, p.status
                 FROM analysis_runs r JOIN run_inputs i ON i.run_id = r.id JOIN observer_profiles p ON p.id = r.profile_id
                 WHERE r.id = :id AND r.purpose = 'profile_admission' AND r.state = 'queued' FOR UPDATE OF r"""), {"id": run_id}).one_or_none()
             if not row or row.status != "draft" or row.sha256 != input_hash or row.size != len(input_bytes) or row.bootstrap_watchdog_seconds <= 0:
@@ -159,9 +159,10 @@ class PostgresStore:
             connection.execute(text("UPDATE analysis_stages SET state = 'succeeded' WHERE run_id = :id AND ordinal IN (0, 1)"), {"id": run_id})
             connection.execute(text("UPDATE analysis_stages SET state = 'running' WHERE run_id = :id AND ordinal = 2"), {"id": run_id})
             connection.execute(text("""INSERT INTO observer_invocations
-                (id, run_id, fence, profile_id, stage_ordinal, input_sha256, intended_request_identity, state)
-                VALUES (:id, :run, 1, :profile, 2, :hash, 'local-grounding-dino-cpu', 'reserved')"""),
-                {"id": invocation_id, "run": run_id, "profile": row.profile_id, "hash": input_hash})
+                (id, run_id, input_id, fence, profile_id, stage_ordinal, input_sha256, intended_request_identity, state)
+                VALUES (:id, :run, :input_id, 1, :profile, 2, :hash, 'local-grounding-dino-cpu', 'reserved')"""),
+                {"id": invocation_id, "run": run_id, "input_id": row.input_id,
+                 "profile": row.profile_id, "hash": input_hash})
         return invocation_id
 
     def complete_invocation(self, run_id: uuid.UUID, invocation_id: uuid.UUID, result: dict) -> None:
@@ -198,11 +199,12 @@ class PostgresStore:
             connection.execute(text("UPDATE analysis_stages SET state = 'succeeded' WHERE run_id = :run AND ordinal = 2 AND state = 'running'"), {"run": run_id})
             connection.execute(text("UPDATE analysis_stages SET state = 'skipped', reason = 'not_applicable' WHERE run_id = :run AND ordinal IN (3, 4) AND state = 'pending'"), {"run": run_id})
             connection.execute(text("UPDATE analysis_stages SET state = 'running' WHERE run_id = :run AND ordinal = 5 AND state = 'pending'"), {"run": run_id})
-            input_hash = connection.execute(text("SELECT sha256 FROM run_inputs WHERE run_id = :run AND ordinal = 0"), {"run": run_id}).scalar_one()
+            input_id, input_hash = connection.execute(text("SELECT input_id, sha256 FROM run_inputs WHERE run_id = :run AND ordinal = 0"), {"run": run_id}).one()
             for name in CLASSES:
-                connection.execute(text("""INSERT INTO observations (run_id, class_name, state, input_sha256, invocation_id)
-                    VALUES (:run, :name, :state, :hash, :invocation)"""),
-                    {"run": run_id, "name": name, "state": states[name], "hash": input_hash, "invocation": invocation_id})
+                connection.execute(text("""INSERT INTO observations (run_id, input_id, class_name, state, input_sha256, invocation_id)
+                    VALUES (:run, :input_id, :name, :state, :hash, :invocation)"""),
+                    {"run": run_id, "input_id": input_id, "name": name,
+                     "state": states[name], "hash": input_hash, "invocation": invocation_id})
 
     def create_publication_intent(self, run_id: uuid.UUID, media_type: str, idempotency_key: str) -> uuid.UUID:
         intent_id = uuid.uuid4()
@@ -210,6 +212,15 @@ class PostgresStore:
             connection.execute(text("""INSERT INTO publication_intents (id, run_id, idempotency_key, media_type, state)
                 VALUES (:id, :run, :key, :media, 'pending_upload')"""),
                 {"id": intent_id, "run": run_id, "key": idempotency_key, "media": media_type})
+        return intent_id
+
+    def create_submission_intent(self, key: str) -> uuid.UUID:
+        intent_id = uuid.uuid4()
+        with self.engine.begin() as connection:
+            connection.execute(text("""INSERT INTO publication_intents
+                (id, idempotency_key, submission_key, media_type, state)
+                VALUES (:id, :intent_key, :key, 'image/jpeg', 'pending_upload')"""),
+                {"id": intent_id, "intent_key": f"submission-intent:{intent_id}", "key": key})
         return intent_id
 
     def publication_content_verified(self, intent_id: uuid.UUID, sha256: str, size: int, final_key: str) -> None:
@@ -395,9 +406,10 @@ class PostgresStore:
                 raise AdmissionStoreError("idempotency_key_conflict")
             if not created:
                 return row.state, row.run_id, row.intent_id, row.error_code
-            connection.execute(text("""INSERT INTO publication_intents (id, idempotency_key, media_type, state)
-                VALUES (:id, :key, :media, 'pending_upload')"""),
-                {"id": intent_id, "key": f"submission:{key}", "media": media_type})
+            connection.execute(text("""INSERT INTO publication_intents
+                (id, idempotency_key, submission_key, media_type, state)
+                VALUES (:id, :intent_key, :key, :media, 'pending_upload')"""),
+                {"id": intent_id, "intent_key": f"submission-intent:{intent_id}", "key": key, "media": media_type})
             connection.execute(text("UPDATE submission_requests SET intent_id = :intent WHERE idempotency_key = :key"),
                 {"intent": intent_id, "key": key})
             return "created", None, intent_id, None
@@ -409,7 +421,15 @@ class PostgresStore:
 
     def commit_submission(self, key: str, profile_id: uuid.UUID, revision: int, snapshot: dict,
                           context: dict, requested_classes: list[str], image_hash: str, image_size: int) -> uuid.UUID:
-        run_id, artifact_id = uuid.uuid4(), uuid.uuid4()
+        with self.engine.connect() as connection:
+            intent_id = connection.execute(text("SELECT intent_id FROM submission_requests WHERE idempotency_key = :key"), {"key": key}).scalar_one()
+        return self.commit_series_submission(key, profile_id, revision, snapshot, context, requested_classes,
+                                             [(intent_id, image_hash, image_size)])
+
+    def commit_series_submission(self, key: str, profile_id: uuid.UUID, revision: int, snapshot: dict,
+                                 context: dict, requested_classes: list[str],
+                                 manifest: list[tuple[uuid.UUID, str, int]]) -> uuid.UUID:
+        run_id = uuid.uuid4()
         with self.engine.begin() as connection:
             request = connection.execute(text("""SELECT * FROM submission_requests
                 WHERE idempotency_key = :key FOR UPDATE"""), {"key": key}).one()
@@ -420,11 +440,17 @@ class PostgresStore:
                 {"id": profile_id}).one_or_none()
             if not authorization or authorization.status != "admitted" or authorization.state != "enabled" or authorization.revision != revision:
                 raise AdmissionStoreError("profile_unauthorized")
-            intent = connection.execute(text("""SELECT sha256, size, final_key FROM publication_intents
-                WHERE id = :id AND run_id IS NULL AND state = 'object_published' FOR UPDATE"""),
-                {"id": request.intent_id}).one_or_none()
-            if not intent or intent.sha256 != image_hash or intent.size != image_size or intent.final_key != f"sha256/{image_hash}":
+            if not manifest or manifest[0][0] != request.intent_id or len({item[0] for item in manifest}) != len(manifest):
                 raise AdmissionStoreError("publication_incomplete")
+            intents = []
+            for intent_id, image_hash, image_size in manifest:
+                intent = connection.execute(text("""SELECT sha256, size, final_key FROM publication_intents
+                    WHERE id = :id AND submission_key = :key AND run_id IS NULL
+                      AND state = 'object_published' FOR UPDATE"""),
+                    {"id": intent_id, "key": key}).one_or_none()
+                if not intent or intent.sha256 != image_hash or intent.size != image_size or intent.final_key != f"sha256/{image_hash}":
+                    raise AdmissionStoreError("publication_incomplete")
+                intents.append(intent)
             connection.execute(text("""INSERT INTO analysis_runs
                 (id, state, purpose, profile_id, authorization_revision, binding_kind, profile_snapshot,
                  request_context, policy_snapshot, taxonomy_snapshot, requested_classes)
@@ -436,20 +462,22 @@ class PostgresStore:
                  "policy": json.dumps({"intent": "observation_only", "revision": "observations-only-v1"}),
                  "taxonomy": json.dumps({"portable_classes": list(CLASSES), "revision": "presence-only-v1"}),
                  "classes": json.dumps(requested_classes)})
-            connection.execute(text("""INSERT INTO artifact_metadata (id, run_id, intent_id, key, sha256, size, media_type)
-                VALUES (:id, :run, :intent, :key, :hash, :size, 'image/jpeg')"""),
-                {"id": artifact_id, "run": run_id, "intent": request.intent_id, "key": intent.final_key,
-                 "hash": intent.sha256, "size": intent.size})
-            connection.execute(text("""INSERT INTO run_inputs (run_id, ordinal, sha256, size, context, artifact_id)
-                VALUES (:run, 0, :hash, :size, CAST(:context AS jsonb), :artifact)"""),
-                {"run": run_id, "hash": image_hash, "size": image_size,
-                 "context": json.dumps(context), "artifact": artifact_id})
+            for ordinal, ((intent_id, image_hash, image_size), intent) in enumerate(zip(manifest, intents)):
+                artifact_id = uuid.uuid4()
+                connection.execute(text("""INSERT INTO artifact_metadata (id, run_id, intent_id, key, sha256, size, media_type)
+                    VALUES (:id, :run, :intent, :key, :hash, :size, 'image/jpeg')"""),
+                    {"id": artifact_id, "run": run_id, "intent": intent_id, "key": intent.final_key,
+                     "hash": image_hash, "size": image_size})
+                connection.execute(text("""INSERT INTO run_inputs (run_id, ordinal, sha256, size, context, artifact_id)
+                    VALUES (:run, :ordinal, :hash, :size, CAST(:context AS jsonb), :artifact)"""),
+                    {"run": run_id, "ordinal": ordinal, "hash": image_hash, "size": image_size,
+                     "context": json.dumps(context), "artifact": artifact_id})
+                connection.execute(text("UPDATE publication_intents SET run_id = :run, state = 'referenced' WHERE id = :id"),
+                    {"run": run_id, "id": intent_id})
             for ordinal, name in enumerate(STAGES):
                 connection.execute(text("""INSERT INTO analysis_stages (run_id, ordinal, name, state)
                     VALUES (:run, :ordinal, :name, 'pending')"""),
                     {"run": run_id, "ordinal": ordinal, "name": name})
-            connection.execute(text("UPDATE publication_intents SET run_id = :run, state = 'referenced' WHERE id = :id"),
-                {"run": run_id, "id": request.intent_id})
             connection.execute(text("UPDATE submission_requests SET run_id = :run, state = 'accepted' WHERE idempotency_key = :key"),
                 {"run": run_id, "key": key})
         return run_id
@@ -458,7 +486,7 @@ class PostgresStore:
         owner = str(uuid.uuid4())
         with self.engine.begin() as connection:
             row = connection.execute(text("""SELECT r.id, r.profile_snapshot, r.requested_classes, r.authorization_revision,
-                i.sha256, i.size, a.key, a.id AS artifact_id
+                i.sha256, i.size, a.key, a.id AS artifact_id, i.input_id, i.ordinal
                 FROM analysis_runs r JOIN run_inputs i ON i.run_id = r.id AND i.ordinal = 0
                 JOIN artifact_metadata a ON a.id = i.artifact_id
                 JOIN profile_authorizations auth ON auth.profile_id = r.profile_id
@@ -473,7 +501,10 @@ class PostgresStore:
                 {"run": row.id, "owner": owner, "seconds": lease_seconds})
             connection.execute(text("UPDATE analysis_stages SET state = 'succeeded' WHERE run_id = :run AND ordinal = 0"), {"run": row.id})
             connection.execute(text("UPDATE analysis_stages SET state = 'running' WHERE run_id = :run AND ordinal = 1"), {"run": row.id})
-            return {**row._mapping, "owner": owner}
+            frames = connection.execute(text("""SELECT i.input_id, i.ordinal, i.sha256, i.size,
+                a.key, a.id AS artifact_id FROM run_inputs i JOIN artifact_metadata a ON a.id = i.artifact_id
+                WHERE i.run_id = :run ORDER BY i.ordinal"""), {"run": row.id}).mappings().all()
+            return {**row._mapping, "owner": owner, "frames": [dict(frame) for frame in frames]}
 
     def renew_ordinary(self, run_id: uuid.UUID, owner: str, revision: int, lease_seconds: int) -> None:
         with self.engine.begin() as connection:
@@ -485,31 +516,38 @@ class PostgresStore:
             if changed.rowcount != 1:
                 raise AdmissionStoreError("ordinary_lease_rejected")
 
-    def reserve_ordinary(self, run_id: uuid.UUID, owner: str, revision: int, image_hash: str, call_provider: bool = True) -> uuid.UUID | None:
+    def reserve_ordinary(self, run_id: uuid.UUID, owner: str, revision: int, image_hash: str,
+                         call_provider: bool = True, input_id: uuid.UUID | None = None) -> uuid.UUID | None:
         invocation = uuid.uuid4()
         with self.engine.begin() as connection:
             row = connection.execute(text("""SELECT r.state, r.lease_owner, r.lease_expires_at > clock_timestamp() AS live,
-                r.authorization_revision, a.state AS auth_state, a.revision AS auth_revision, i.sha256
+                r.authorization_revision, a.state AS auth_state, a.revision AS auth_revision, i.sha256, i.input_id
                 FROM analysis_runs r JOIN profile_authorizations a ON a.profile_id = r.profile_id
-                JOIN run_inputs i ON i.run_id = r.id AND i.ordinal = 0
-                WHERE r.id = :run FOR UPDATE OF r, a"""), {"run": run_id}).one_or_none()
+                JOIN run_inputs i ON i.run_id = r.id AND i.input_id = COALESCE(:input_id, (SELECT input_id FROM run_inputs WHERE run_id = :run AND ordinal = 0))
+                WHERE r.id = :run FOR UPDATE OF r, a"""), {"run": run_id, "input_id": input_id}).one_or_none()
             if (not row or row.state != "running" or row.lease_owner != owner or not row.live
                     or row.authorization_revision != revision or row.auth_state != "enabled"
                     or row.auth_revision != revision or row.sha256 != image_hash):
+                raise AdmissionStoreError("ordinary_reservation_rejected")
+            existing = connection.execute(text("SELECT 1 FROM observations WHERE run_id = :run AND input_id = :input_id LIMIT 1"),
+                                          {"run": run_id, "input_id": row.input_id}).first()
+            if existing:
                 raise AdmissionStoreError("ordinary_reservation_rejected")
             connection.execute(text("UPDATE analysis_stages SET state = 'succeeded' WHERE run_id = :run AND ordinal = 1 AND state = 'running'"), {"run": run_id})
             connection.execute(text("UPDATE analysis_stages SET state = 'running' WHERE run_id = :run AND ordinal = 2 AND state = 'pending'"), {"run": run_id})
             if call_provider:
                 connection.execute(text("""INSERT INTO observer_invocations
-                (id, run_id, fence, profile_id, authorization_revision, stage_ordinal, input_sha256,
+                (id, run_id, input_id, fence, profile_id, authorization_revision, stage_ordinal, input_sha256,
                  intended_request_identity, state)
-                SELECT :id, :run, 1, profile_id, :revision, 2, :hash, 'local-grounding-dino-cpu', 'reserved'
+                SELECT :id, :run, :input_id, 1, profile_id, :revision, 2, :hash, 'local-grounding-dino-cpu', 'reserved'
                 FROM analysis_runs WHERE id = :run"""),
-                {"id": invocation, "run": run_id, "revision": revision, "hash": image_hash})
+                {"id": invocation, "run": run_id, "input_id": row.input_id,
+                 "revision": revision, "hash": image_hash})
         return invocation if call_provider else None
 
     def finish_ordinary(self, run_id: uuid.UUID, owner: str, revision: int, invocation: uuid.UUID | None,
-                        result: dict | None, native_intent: uuid.UUID | None, observations: list[dict]) -> None:
+                        result: dict | None, native_intent: uuid.UUID | None, observations: list[dict],
+                        input_id: uuid.UUID | None = None) -> None:
         with self.engine.begin() as connection:
             row = connection.execute(text("""SELECT r.profile_snapshot, r.state, r.lease_owner,
                 r.lease_expires_at > clock_timestamp() AS live, r.authorization_revision,
@@ -521,10 +559,20 @@ class PostgresStore:
                     or row.authorization_revision != revision or row.auth_state != "enabled" or row.auth_revision != revision):
                 raise AdmissionStoreError("ordinary_completion_rejected")
             expected_classes = connection.execute(text("SELECT requested_classes FROM analysis_runs WHERE id = :run"), {"run": run_id}).scalar_one()
-            source_artifact_id = connection.execute(text("SELECT artifact_id FROM run_inputs WHERE run_id = :run AND ordinal = 0"), {"run": run_id}).scalar_one()
+            source = connection.execute(text("""SELECT input_id, ordinal, artifact_id, sha256 FROM run_inputs
+                WHERE run_id = :run AND input_id = COALESCE(:input_id,
+                    (SELECT input_id FROM run_inputs WHERE run_id = :run AND ordinal = 0))"""),
+                {"run": run_id, "input_id": input_id}).one_or_none()
+            if source is None:
+                raise AdmissionStoreError("ordinary_completion_rejected")
+            source_artifact_id = source.artifact_id
             if (len(observations) != len(expected_classes)
                     or {item["class_name"] for item in observations} != set(expected_classes)
                     or any(item["source_artifact_id"] != str(source_artifact_id) for item in observations)
+                    or connection.execute(text("SELECT 1 FROM observations WHERE run_id = :run AND input_id = :input_id LIMIT 1"),
+                                          {"run": run_id, "input_id": source.input_id}).first() is not None
+                    or (invocation is not None and connection.execute(text("SELECT input_id FROM observer_invocations WHERE id = :id"),
+                        {"id": invocation}).scalar_one_or_none() != source.input_id)
                     or (result is None) != (invocation is None)
                     or (result is None and any(item["state"] not in ("insufficient_data", "not_analyzed") for item in observations))):
                 raise AdmissionStoreError("observation_normalization_failed")
@@ -548,21 +596,48 @@ class PostgresStore:
                     native_artifact_id = :artifact WHERE id = :id AND state = 'reserved'"""),
                     {"identity": result["returned_model_identity"], "pre": result["preprocessing_revision"],
                      "artifact": native_artifact_id, "id": invocation})
-                connection.execute(text("""UPDATE analysis_runs SET latency_ms = :latency, peak_memory_bytes = :memory WHERE id = :run"""),
+                connection.execute(text("""UPDATE analysis_runs SET latency_ms = COALESCE(latency_ms, 0) + :latency,
+                    peak_memory_bytes = GREATEST(COALESCE(peak_memory_bytes, 0), :memory) WHERE id = :run"""),
                     {"latency": result["latency_ms"], "memory": result["peak_memory_bytes"], "run": run_id})
-                connection.execute(text("UPDATE analysis_stages SET state = 'succeeded' WHERE run_id = :run AND ordinal = 2 AND state = 'running'"), {"run": run_id})
                 connection.execute(text("UPDATE publication_intents SET state = 'referenced' WHERE id = :id"), {"id": native_intent})
-            else:
-                connection.execute(text("UPDATE analysis_stages SET state = 'skipped', reason = 'unsupported_classes' WHERE run_id = :run AND ordinal = 2 AND state = 'running'"), {"run": run_id})
-            source_hash = connection.execute(text("SELECT sha256 FROM run_inputs WHERE run_id = :run AND ordinal = 0"), {"run": run_id}).scalar_one()
             for observation in observations:
                 connection.execute(text("""INSERT INTO observations
-                    (run_id, class_name, state, reason, input_sha256, invocation_id, source_artifact_id)
-                    VALUES (:run, :class_name, :state, :reason, :hash, :invocation, :source_artifact_id)"""),
-                    {"run": run_id, "hash": source_hash, "invocation": invocation, **observation})
-            connection.execute(text("UPDATE analysis_stages SET state = 'skipped', reason = 'not_applicable' WHERE run_id = :run AND ordinal IN (3,4)"), {"run": run_id})
+                    (run_id, input_id, class_name, state, reason, input_sha256, invocation_id, source_artifact_id)
+                    VALUES (:run, :input_id, :class_name, :state, :reason, :hash, :invocation, :source_artifact_id)"""),
+                    {"run": run_id, "input_id": source.input_id, "hash": source.sha256,
+                     "invocation": invocation, **observation})
+            inputs = connection.execute(text("SELECT count(*) FROM run_inputs WHERE run_id = :run"), {"run": run_id}).scalar_one()
+            completed = connection.execute(text("""SELECT count(DISTINCT input_id) FROM observations
+                WHERE run_id = :run"""), {"run": run_id}).scalar_one()
+            if completed != inputs:
+                return
+            if connection.execute(text("SELECT count(*) FROM observations WHERE run_id = :run"),
+                                  {"run": run_id}).scalar_one() != inputs * len(expected_classes):
+                raise AdmissionStoreError("observation_incomplete")
+            if connection.execute(text("SELECT count(*) FROM observer_invocations WHERE run_id = :run AND state != 'completed'"),
+                                  {"run": run_id}).scalar_one():
+                raise AdmissionStoreError("observation_incomplete")
+            calls = connection.execute(text("SELECT count(*) FROM observer_invocations WHERE run_id = :run"),
+                                       {"run": run_id}).scalar_one()
+            connection.execute(text("""UPDATE analysis_stages SET state = :state, reason = :reason
+                WHERE run_id = :run AND ordinal = 2 AND state = 'running'"""),
+                {"run": run_id, "state": "succeeded" if calls else "skipped",
+                 "reason": None if calls else "no_assessable_frame_or_supported_class"})
+            connection.execute(text("""UPDATE analysis_stages SET state = :state, reason = :reason
+                WHERE run_id = :run AND ordinal = 3"""),
+                {"run": run_id, "state": "succeeded" if inputs > 1 else "skipped",
+                 "reason": None if inputs > 1 else "not_applicable"})
+            connection.execute(text("UPDATE analysis_stages SET state = 'skipped', reason = 'not_applicable' WHERE run_id = :run AND ordinal = 4"), {"run": run_id})
             connection.execute(text("UPDATE analysis_stages SET state = 'running' WHERE run_id = :run AND ordinal = 5"), {"run": run_id})
-            projection = {"outcome": "observations_only", "classes": observations}
+            evidence = connection.execute(text("""SELECT i.input_id, i.ordinal, o.class_name, o.state, o.reason,
+                o.source_artifact_id, o.invocation_id FROM run_inputs i JOIN observations o
+                ON o.run_id = i.run_id AND o.input_id = i.input_id
+                WHERE i.run_id = :run ORDER BY i.ordinal, o.class_name"""), {"run": run_id}).mappings().all()
+            projection = {"outcome": "observations_only", "frames": [
+                {**dict(item), "input_id": str(item["input_id"]),
+                 "source_artifact_id": str(item["source_artifact_id"]),
+                 "invocation_id": str(item["invocation_id"]) if item["invocation_id"] else None}
+                for item in evidence]}
             connection.execute(text("""INSERT INTO result_projections (run_id, outcome, snapshot)
                 VALUES (:run, 'observations_only', CAST(:snapshot AS jsonb))"""),
                 {"run": run_id, "snapshot": json.dumps(projection)})
@@ -603,14 +678,30 @@ class PostgresStore:
             if not row:
                 return None
             stages = connection.execute(text("SELECT name, state, reason FROM analysis_stages WHERE run_id = :id ORDER BY ordinal"), {"id": run_id}).mappings().all()
-            observations = connection.execute(text("""SELECT class_name, state, reason, input_sha256, source_artifact_id
-                FROM observations WHERE run_id = :id ORDER BY class_name"""), {"id": run_id}).mappings().all()
+            inputs = connection.execute(text("""SELECT input_id, ordinal, sha256, size, artifact_id
+                FROM run_inputs WHERE run_id = :id ORDER BY ordinal"""), {"id": run_id}).mappings().all()
+            observations = connection.execute(text("""SELECT o.class_name, o.state, o.reason, o.input_sha256,
+                o.source_artifact_id, o.input_id, i.ordinal, o.invocation_id
+                FROM observations o JOIN run_inputs i ON i.input_id = o.input_id
+                WHERE o.run_id = :id ORDER BY i.ordinal, o.class_name"""), {"id": run_id}).mappings().all()
             projection = connection.execute(text("SELECT outcome FROM result_projections WHERE run_id = :id"), {"id": run_id}).scalar_one_or_none()
-            native = connection.execute(text("""SELECT a.id, a.sha256, a.size FROM observer_invocations i
-                JOIN artifact_metadata a ON a.id = i.native_artifact_id WHERE i.run_id = :id"""), {"id": run_id}).one_or_none()
+            native = connection.execute(text("""SELECT a.id, a.sha256, a.size, i.input_id, r.ordinal
+                FROM observer_invocations i JOIN artifact_metadata a ON a.id = i.native_artifact_id
+                JOIN run_inputs r ON r.input_id = i.input_id
+                WHERE i.run_id = :id ORDER BY r.ordinal"""), {"id": run_id}).mappings().all()
             return {"run_id": str(row.id), "state": row.state, "error_code": row.error_code,
                     "context": row.request_context, "requested_classes": row.requested_classes,
                     "stages": [dict(item) for item in stages],
-                    "observations": [{**item, "source_artifact_id": str(item["source_artifact_id"])} for item in observations],
-                    "native_evidence": {"artifact_id": str(native.id), "sha256": native.sha256, "size": native.size} if native else None,
+                    "inputs": [{**item, "input_id": str(item["input_id"]),
+                                "artifact_id": str(item["artifact_id"]) if item["artifact_id"] else None}
+                               for item in inputs],
+                    "observations": [{**item, "input_id": str(item["input_id"]),
+                                      "source_artifact_id": str(item["source_artifact_id"]) if item["source_artifact_id"] else None,
+                                      "invocation_id": str(item["invocation_id"]) if item["invocation_id"] else None}
+                                     for item in observations],
+                    "native_evidence": ({"artifact_id": str(native[0]["id"]), "sha256": native[0]["sha256"],
+                                         "size": native[0]["size"]} if len(inputs) == 1 and native else None),
+                    "native_evidence_by_frame": [{"artifact_id": str(item["id"]), "sha256": item["sha256"],
+                                                  "size": item["size"], "ordinal": item["ordinal"],
+                                                  "input_id": str(item["input_id"])} for item in native],
                     "outcome": projection}

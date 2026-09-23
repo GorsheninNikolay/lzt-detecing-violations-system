@@ -1,6 +1,6 @@
 # Construction Evidence Service
 
-The API accepts single JPEG observation runs. PostgreSQL owns structured state; private S3-compatible storage owns bytes.
+The API accepts single JPEG and ordered JPEG-series observation runs. PostgreSQL owns structured state; private S3-compatible storage owns bytes.
 
 ## Local start
 
@@ -90,3 +90,9 @@ curl -sS http://127.0.0.1:8000/runs/RUN_ID
 ```
 
 The submit response contains the authoritative `run_id` and current state. Reusing the key with the same logical request returns that run; changing image bytes, context, or classes returns `idempotency_key_conflict`. The read response contains six persisted stages, requested class states with source artifact IDs, a native evidence digest when inference ran, and `observations_only` only after success. It does not return S3 keys, signed URLs, or portable counts/confidence/geometry. Invalid or undecodable files return `invalid_image_file` before any run or evidence reference is created.
+
+## Ordered-series observations
+
+Submit 2–8 JPEGs to `POST /runs/series` with the same context and `Idempotency-Key` as the single-image request, replacing `image_base64` with an `images_base64` JSON array. Array position defines frame order; each item is limited to 16 MB of decoded bytes and 40 million pixels. The HTTP body limit is 200 MB. Reversing distinct images under the same idempotency key returns `idempotency_key_conflict`.
+
+`GET /runs/{run_id}` returns `inputs` in zero-based order, each with a stable `input_id`, checksum, size, and source artifact ID. `observations` include that input ID and ordinal, class state, reason where needed, source artifact ID, and completed invocation ID for provider-derived states. `native_evidence_by_frame` attributes retained native evidence to its frame. Equal image bytes may share an S3 object, but retain separate input and observation references. The series projection appears only after every frame has a closed class set. A later technical failure leaves the run failed with earlier evidence visible and no projection. Results describe individual frames only; no area-wide absence is inferred.

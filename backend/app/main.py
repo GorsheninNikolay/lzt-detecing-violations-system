@@ -12,12 +12,13 @@ from fastapi.responses import JSONResponse
 from app.adapters.artifacts import ArtifactStore
 from app.adapters.postgres import AdmissionStoreError, DatabaseGateError, PostgresStore, ReconciliationGateError, RecoveryGateError
 from app.application.executor import ClaimLoop
-from app.application.submission import SubmissionError, submit
+from app.application.submission import SubmissionError, submit, submit_series
 from app.config import Config
 from app.profiles.grounding_dino import verify_snapshot
 
 
 MAX_HTTP_BODY_BYTES = 25_100_000
+MAX_SERIES_HTTP_BODY_BYTES = 200_000_000
 
 
 class Readiness:
@@ -116,7 +117,9 @@ def create_app() -> FastAPI:
         return JSONResponse(result, status_code=200 if result["ready"] else 503)
 
     @app.post("/runs/single-image")
+    @app.post("/runs/series")
     async def submit_single_image(request: Request) -> JSONResponse:
+        series = request.url.path == "/runs/series"
         if not app.state.readiness.ready.is_set():
             return JSONResponse({"code": "service_not_ready"}, status_code=503)
         binding = app.state.claim_loop.runtime_binding
@@ -125,7 +128,7 @@ def create_app() -> FastAPI:
         try:
             payload = bytearray()
             async for chunk in request.stream():
-                if len(payload) + len(chunk) > MAX_HTTP_BODY_BYTES:
+                if len(payload) + len(chunk) > (MAX_SERIES_HTTP_BODY_BYTES if series else MAX_HTTP_BODY_BYTES):
                     return JSONResponse({"code": "invalid_image_file"}, status_code=400)
                 payload.extend(chunk)
             body = json.loads(payload)
@@ -134,7 +137,8 @@ def create_app() -> FastAPI:
         try:
             key = request.headers.get("Idempotency-Key")
             snapshot, revision = await asyncio.to_thread(app.state.store.require_authorized, binding[0], binding[1])
-            status, run_id = await asyncio.to_thread(submit, app.state.store, app.state.artifacts,
+            status, run_id = await asyncio.to_thread(submit_series if series else submit,
+                app.state.store, app.state.artifacts,
                 key, body, binding[0], revision, snapshot)
             if run_id:
                 current = await asyncio.to_thread(app.state.store.read_ordinary, run_id)
@@ -142,7 +146,8 @@ def create_app() -> FastAPI:
             return JSONResponse({"code": "submission_in_progress"}, status_code=202)
         except SubmissionError as exc:
             code = str(exc)
-            status = (409 if code == "idempotency_key_conflict" else
+            status = (202 if code == "submission_in_progress" else
+                      409 if code == "idempotency_key_conflict" else
                       503 if code in {"submission_publication_failed", "submission_interrupted"} else 400)
             return JSONResponse({"code": code}, status_code=status)
         except AdmissionStoreError:
