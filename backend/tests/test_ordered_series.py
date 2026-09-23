@@ -1,5 +1,6 @@
 import asyncio
 import base64
+import threading
 import uuid
 from types import SimpleNamespace
 from pathlib import Path
@@ -298,7 +299,54 @@ def test_ordered_series_http_postgres_s3(isolated_admission_database, integratio
                     JOIN run_inputs i ON i.artifact_id = a.id WHERE i.run_id = :run ORDER BY i.ordinal"""),
                     {"run": run}).all()
             assert [artifacts.read_verified(*ref) for ref in refs] == [first, second]
-            await loop._execute(store.claim_ordinary(profile, 1, 30), 1)
+            checking, allow_check = threading.Event(), threading.Event()
+            original_assess = executor._unassessable
+            assessed = 0
+
+            def pause_second_assessment(image):
+                nonlocal assessed
+                assessed += 1
+                if assessed == 2:
+                    checking.set()
+                    assert allow_check.wait(30)
+                return original_assess(image)
+
+            monkeypatch.setattr(executor, "_unassessable", pause_second_assessment)
+            work = store.claim_ordinary(profile, 1, 30)
+            execution = asyncio.create_task(loop._execute(work, 1))
+            try:
+                assert await asyncio.wait_for(asyncio.to_thread(checking.wait, 5), 6)
+                checking_run = (await client.get(f"/runs/{run}")).json()
+                assert checking_run["state"] == "running"
+                assert [stage["state"] for stage in checking_run["stages"][1:3]] == ["running", "pending"]
+                with store.engine.connect() as connection:
+                    assert connection.execute(text("SELECT state FROM analysis_stages WHERE run_id = :run ORDER BY ordinal"),
+                                              {"run": run}).scalars().all()[1:3] == ["running", "pending"]
+                    assert connection.execute(text("SELECT count(*) FROM observer_invocations WHERE run_id = :run"),
+                                              {"run": run}).scalar_one() == 0
+                observing, allow_observation = threading.Event(), threading.Event()
+
+                def pause_first_observation(*args):
+                    observing.set()
+                    assert allow_observation.wait(30)
+                    return observed(*args)
+
+                monkeypatch.setattr(executor, "_observe_bounded", pause_first_observation)
+            finally:
+                allow_check.set()
+            try:
+                assert await asyncio.wait_for(asyncio.to_thread(observing.wait, 5), 6)
+                observing_run = (await client.get(f"/runs/{run}")).json()
+                assert observing_run["state"] == "running"
+                assert [stage["state"] for stage in observing_run["stages"][1:3]] == ["succeeded", "running"]
+                with store.engine.connect() as connection:
+                    assert connection.execute(text("SELECT state FROM analysis_stages WHERE run_id = :run ORDER BY ordinal"),
+                                              {"run": run}).scalars().all()[1:3] == ["succeeded", "running"]
+            finally:
+                allow_observation.set()
+            await execution
+            monkeypatch.setattr(executor, "_unassessable", original_assess)
+            monkeypatch.setattr(executor, "_observe_bounded", observed)
             done = (await client.get(f"/runs/{run}")).json()
             assert done["state"] == "succeeded" and done["outcome"] == "observations_only", done["error_code"]
             assert done["result_projection"]["series"]["usable_input_ids"] == [item["input_id"] for item in done["inputs"]]
@@ -405,10 +453,14 @@ def test_ordered_series_http_postgres_s3(isolated_admission_database, integratio
             unreadable_run = uuid.UUID(unreadable.json()["run_id"])
             work = store.claim_ordinary(profile, 1, 30)
             original_read = artifacts.read_verified
+            second_reads = 0
 
             def fail_second_frame(key, digest, size):
+                nonlocal second_reads
                 if key == work["frames"][1]["key"]:
-                    raise RuntimeError("artifact_integrity_failed")
+                    second_reads += 1
+                    if second_reads == 2:
+                        raise RuntimeError("artifact_integrity_failed")
                 return original_read(key, digest, size)
 
             monkeypatch.setattr(executor, "_observe_bounded", observed)
@@ -419,9 +471,46 @@ def test_ordered_series_http_postgres_s3(isolated_admission_database, integratio
             assert unreadable_result["error_code"] == "artifact_integrity_failed"
             assert len(unreadable_result["observations"]) == 2
             assert len(unreadable_result["native_evidence_by_frame"]) == 1
+            assert second_reads == 2
+            assert [stage["state"] for stage in unreadable_result["stages"][1:]] == [
+                "succeeded", "failed", "skipped", "skipped", "skipped"]
+            assert unreadable_result["result_projection"] is None
             with store.engine.connect() as connection:
                 assert connection.execute(text("SELECT count(*) FROM result_projections WHERE run_id = :run"),
                                           {"run": unreadable_run}).scalar_one() == 0
+                assert connection.execute(text("SELECT count(*) FROM observer_invocations WHERE run_id = :run AND state = 'completed'"),
+                                          {"run": unreadable_run}).scalar_one() == 1
+                assert connection.execute(text("SELECT state FROM analysis_stages WHERE run_id = :run ORDER BY ordinal"),
+                                          {"run": unreadable_run}).scalars().all()[1:] == [
+                                              "succeeded", "failed", "skipped", "skipped", "skipped"]
+
+            monkeypatch.setattr(artifacts, "read_verified", original_read)
+            preflight = await client.post("/runs/series", headers={"Idempotency-Key": uuid.uuid4().hex},
+                                          json=body(first, second))
+            preflight_run = uuid.UUID(preflight.json()["run_id"])
+            preflight_work = store.claim_ordinary(profile, 1, 30)
+
+            def fail_preflight(key, digest, size):
+                if key == preflight_work["frames"][1]["key"]:
+                    raise RuntimeError("artifact_integrity_failed")
+                return original_read(key, digest, size)
+
+            monkeypatch.setattr(artifacts, "read_verified", fail_preflight)
+            await loop._execute(preflight_work, 1)
+            preflight_result = (await client.get(f"/runs/{preflight_run}")).json()
+            assert preflight_result["state"] == "failed"
+            assert preflight_result["error_code"] == "artifact_integrity_failed"
+            assert [stage["state"] for stage in preflight_result["stages"][1:]] == [
+                "failed", "skipped", "skipped", "skipped", "skipped"]
+            assert preflight_result["observations"] == []
+            assert preflight_result["result_projection"] is None
+            with store.engine.connect() as connection:
+                assert connection.execute(text("SELECT count(*) FROM observer_invocations WHERE run_id = :run"),
+                                          {"run": preflight_run}).scalar_one() == 0
+                assert connection.execute(text("SELECT state FROM analysis_stages WHERE run_id = :run ORDER BY ordinal"),
+                                          {"run": preflight_run}).scalars().all()[1:] == [
+                                              "failed", "skipped", "skipped", "skipped", "skipped"]
+            monkeypatch.setattr(artifacts, "read_verified", original_read)
 
             owner_key, foreign_key = "x", "x:1"
             _, _, owner_intent, _ = store.begin_submission(owner_key, uuid.uuid4().hex, "image/jpeg")

@@ -4,7 +4,7 @@
 # Retrospective: optional, done
 # Action item: open, in-progress, done
 generated: 09-22-2026 21:57
-last_updated: 09-23-2026 15:31
+last_updated: 09-23-2026 15:54
 project: lzt-detecing-violations-system
 project_key: NOKEY
 tracking_system: file-system
@@ -82,7 +82,7 @@ action_items:
     action: "F5: Make run-level frame-usability completion truthful for every series
       frame and verify intermediate persisted stages."
     owner: "Backend maintainer"
-    status: open
+    status: done
     ref: "_bmad-output/implementation-artifacts/epic-1-retro-2026-09-23.md"
   - id: "epic-1-retro-verify-rendered-ui"
     epic: 1

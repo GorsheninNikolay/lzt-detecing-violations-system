@@ -130,16 +130,24 @@ class ClaimLoop:
         run_id, owner = work["id"], work["owner"]
         renewal = asyncio.create_task(self._renew(run_id, owner, revision))
         try:
+            assessable_frames = []
+            single_image = None
             for frame in work["frames"]:
                 image = await asyncio.to_thread(self.artifacts.read_verified, frame["key"], frame["sha256"], frame["size"])
-                assessable = not await asyncio.to_thread(_unassessable, image)
-                supported = bool(set(work["requested_classes"]) & set(CLASSES))
+                assessable_frames.append(not await asyncio.to_thread(_unassessable, image))
+                if len(work["frames"]) == 1:
+                    single_image = image
+                del image
+            supported = bool(set(work["requested_classes"]) & set(CLASSES))
+            for frame, assessable in zip(work["frames"], assessable_frames):
                 invocation = await asyncio.to_thread(self.store.reserve_ordinary, run_id, owner, revision,
                     frame["sha256"], assessable and supported, frame["input_id"])
                 if invocation is None:
                     states = {name: "insufficient_data" for name in CLASSES}
                     result, native_intent = None, None
                 else:
+                    image = (single_image if single_image is not None else
+                             await asyncio.to_thread(self.artifacts.read_verified, frame["key"], frame["sha256"], frame["size"]))
                     timeout = float(work["profile_snapshot"]["runtime"]["per_image_timeout_seconds"])
                     result = await asyncio.to_thread(_observe_bounded, self.snapshot_dir,
                         work["profile_snapshot"]["model_files"], image, timeout)
