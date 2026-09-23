@@ -105,6 +105,7 @@ def _validate_result(result: dict) -> None:
 class ClaimLoop:
     def __init__(self) -> None:
         self.task: asyncio.Task | None = None
+        self.ready: asyncio.Event | None = None
         self.runtime_binding: tuple[uuid.UUID, int] | None = None
         self.store: PostgresStore | None = None
         self.artifacts: ArtifactStore | None = None
@@ -118,6 +119,7 @@ class ClaimLoop:
     def start(self, ready: asyncio.Event, artifacts: ArtifactStore | None = None, snapshot_dir: str | None = None) -> None:
         if self.task is not None:
             raise RuntimeError("claim_loop_already_started")
+        self.ready = ready
         self.artifacts = artifacts
         self.snapshot_dir = snapshot_dir
         self.task = asyncio.create_task(self._run(ready))
@@ -141,12 +143,8 @@ class ClaimLoop:
                 return remaining
 
             async def run_step(func, *args):
-                if deadline is None:
-                    return await asyncio.to_thread(func, *args)
-                try:
-                    result = await asyncio.wait_for(asyncio.to_thread(func, *args), remaining_batch())
-                except TimeoutError:
-                    raise RuntimeError("observer_timeout") from None
+                remaining_batch()
+                result = await asyncio.to_thread(func, *args)
                 remaining_batch()
                 return result
 
@@ -225,7 +223,7 @@ class ClaimLoop:
 
     async def stop(self) -> None:
         if self.task is not None:
-            self.task.cancel()
+            self.ready.clear()
             try:
                 await self.task
             except asyncio.CancelledError:

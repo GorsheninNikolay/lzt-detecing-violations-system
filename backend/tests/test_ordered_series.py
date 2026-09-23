@@ -611,6 +611,45 @@ def test_ordered_series_http_postgres_s3(isolated_admission_database, integratio
             monkeypatch.setattr(artifacts, "read_verified", original_read)
 
             clock[0] = 0
+            delayed = await client.post("/runs/series", headers={"Idempotency-Key": uuid.uuid4().hex},
+                                        json=body(first, second))
+            delayed_run = uuid.UUID(delayed.json()["run_id"])
+            monkeypatch.setattr(executor, "_observe_bounded", observed)
+            original_verified = store.publication_content_verified
+            started, release, completed = threading.Event(), threading.Event(), threading.Event()
+
+            def nearly_expired(*args):
+                result = original_verified(*args)
+                clock[0] = 2.95
+                return result
+
+            def delayed_publish(*args):
+                started.set()
+                assert release.wait(5)
+                result = native_publish(*args)
+                clock[0] = 3
+                completed.set()
+                return result
+
+            monkeypatch.setattr(store, "publication_content_verified", nearly_expired)
+            monkeypatch.setattr(artifacts, "publish_final", delayed_publish)
+            execution = asyncio.create_task(loop._execute(store.claim_ordinary(profile, 1, 30), 1))
+            try:
+                assert await asyncio.to_thread(started.wait, 5)
+                await asyncio.sleep(0.1)
+                assert not execution.done()
+                assert (await client.get(f"/runs/{delayed_run}")).json()["state"] == "running"
+            finally:
+                release.set()
+                await execution
+            delayed_result = (await client.get(f"/runs/{delayed_run}")).json()
+            assert completed.is_set()
+            assert delayed_result["state"] == "failed" and delayed_result["error_code"] == "observer_timeout"
+            assert delayed_result["result_projection"] is None
+            monkeypatch.setattr(store, "publication_content_verified", original_verified)
+            monkeypatch.setattr(artifacts, "publish_final", native_publish)
+
+            clock[0] = 0
             allowances.clear()
             final = await client.post("/runs/series", headers={"Idempotency-Key": uuid.uuid4().hex},
                                       json=body(first, second))

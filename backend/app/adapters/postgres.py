@@ -35,7 +35,8 @@ LOCK_ID = 804298270113
 
 class PostgresStore:
     def __init__(self, url: str):
-        self.engine: Engine = create_engine(url, pool_pre_ping=True)
+        self.engine: Engine = create_engine(url, pool_pre_ping=True,
+            connect_args={"connect_timeout": 5, "options": "-c statement_timeout=30000 -c lock_timeout=5000"})
 
     def close(self) -> None:
         self.engine.dispose()
