@@ -305,6 +305,97 @@ describe('New Analysis', () => {
     expect(requests[1][1].headers['Idempotency-Key']).toBe(requests[2][1].headers['Idempotency-Key'])
   })
 
+  for (const filenames of [['one.jpg'], ['one.jpg', 'two.jpg']]) {
+    it(`bounds stalled ${filenames.length === 1 ? 'single' : 'series'} sends and ignores late responses`, async () => {
+      const user = userEvent.setup()
+      const late: Array<(value: unknown) => void> = []
+      const post = vi.fn()
+        .mockImplementationOnce(() => new Promise(resolve => { late.push(resolve) }))
+        .mockImplementationOnce(() => new Promise(resolve => { late.push(resolve) }))
+        .mockResolvedValueOnce({ status: 202, json: async () => ({ run_id: '12345678-1234-1234-1234-123456789abc' }) })
+        .mockResolvedValue({ ok: true, json: async () => snapshot('queued') })
+      vi.stubGlobal('fetch', post)
+      render(<App />)
+      await fillContext(user)
+      await user.upload(screen.getByLabelText('Выбрать JPEG'), filenames.map(name => image(name)))
+      await screen.findByText(`Кадр ${filenames.length}`)
+      const deadlines: Array<() => void> = []
+      const realSetTimeout = globalThis.setTimeout
+      vi.spyOn(globalThis, 'setTimeout').mockImplementation((callback, delay) => {
+        if (delay === 10000) { deadlines.push(callback as () => void); return 0 as ReturnType<typeof setTimeout> }
+        return realSetTimeout(callback, delay)
+      })
+      fireEvent.click(screen.getByRole('button', { name: 'Запустить анализ' }))
+      await waitFor(() => expect(post).toHaveBeenCalledTimes(1))
+      const saved = sessionStorage.getItem('observation-pending')
+      expect(saved).toBeTruthy()
+      expect(screen.getByRole('button', { name: 'Создаём анализ…' })).toHaveProperty('disabled', true)
+      await act(async () => { deadlines.shift()?.(); await Promise.resolve() })
+      expect(post.mock.calls[0][1].signal.aborted).toBe(true)
+      expect(screen.getByRole('button', { name: 'Повторить отправку' })).toHaveProperty('disabled', false)
+      expect(screen.getByText(/Ответ сервера не получен/)).toBeTruthy()
+      expect(sessionStorage.getItem('observation-pending')).toBe(saved)
+
+      fireEvent.click(screen.getByRole('button', { name: 'Повторить отправку' }))
+      await waitFor(() => expect(post).toHaveBeenCalledTimes(2))
+      await act(async () => { deadlines.shift()?.(); await Promise.resolve() })
+      expect(post.mock.calls[1][1].signal.aborted).toBe(true)
+      expect(screen.getByRole('button', { name: 'Повторить отправку' })).toHaveProperty('disabled', false)
+      await act(async () => {
+        for (const resolve of late) resolve({ status: 202, json: async () => ({ run_id: '12345678-1234-1234-1234-123456789abc' }) })
+        await Promise.resolve()
+      })
+      expect(location.pathname).toBe('/')
+      expect(sessionStorage.getItem('observation-pending')).toBe(saved)
+      expect(screen.getByRole('button', { name: 'Повторить отправку' })).toBeTruthy()
+
+      fireEvent.click(screen.getByRole('button', { name: 'Повторить отправку' }))
+      await screen.findByRole('heading', { name: 'Анализ поставлен в очередь' })
+      expect(post.mock.calls.slice(0, 3).map(call => call[0])).toEqual(Array(3).fill(filenames.length === 1 ? '/api/runs/single-image' : '/api/runs/series'))
+      expect(post.mock.calls.slice(0, 3).every(([, options]) => options.body === post.mock.calls[0][1].body
+        && options.headers['Idempotency-Key'] === post.mock.calls[0][1].headers['Idempotency-Key'])).toBe(true)
+      expect(screen.getByRole('heading', { name: 'Анализ поставлен в очередь' })).toBeTruthy()
+      expect(sessionStorage.getItem('observation-pending')).toBeNull()
+    })
+  }
+
+  it('bounds a stalled response body and retries the exact saved request', async () => {
+    const request = { endpoint: '/api/runs/single-image', body: '{"image_base64":"saved"}', key: 'saved-key' }
+    sessionStorage.setItem('observation-pending', JSON.stringify(request))
+    let resolveLateBody!: (value: unknown) => void
+    const post = vi.fn()
+      .mockResolvedValueOnce({ status: 202, json: () => new Promise(resolve => { resolveLateBody = resolve }) })
+      .mockResolvedValueOnce({ status: 202, json: async () => ({ run_id: '12345678-1234-1234-1234-123456789abc' }) })
+      .mockResolvedValue({ ok: true, json: async () => snapshot('queued') })
+    vi.stubGlobal('fetch', post)
+    render(<App />)
+    await screen.findByRole('button', { name: 'Повторить отправку' })
+    const deadlines: Array<() => void> = []
+    const realSetTimeout = globalThis.setTimeout
+    vi.spyOn(globalThis, 'setTimeout').mockImplementation((callback, delay) => {
+      if (delay === 10000) { deadlines.push(callback as () => void); return 0 as ReturnType<typeof setTimeout> }
+      return realSetTimeout(callback, delay)
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Повторить отправку' }))
+    await waitFor(() => expect(resolveLateBody).toBeTypeOf('function'))
+    expect(deadlines).toHaveLength(1)
+    expect(screen.getByRole('button', { name: 'Создаём анализ…' })).toHaveProperty('disabled', true)
+    await act(async () => { deadlines.shift()?.(); await Promise.resolve() })
+    expect(post.mock.calls[0][1].signal.aborted).toBe(true)
+    expect(screen.getByText(/Ответ сервера не получен/)).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Повторить отправку' })).toHaveProperty('disabled', false)
+    expect(sessionStorage.getItem('observation-pending')).toBe(JSON.stringify(request))
+    await act(async () => { resolveLateBody({ run_id: '12345678-1234-1234-1234-123456789abc' }); await Promise.resolve() })
+    expect(location.pathname).toBe('/')
+    expect(sessionStorage.getItem('observation-pending')).toBe(JSON.stringify(request))
+    fireEvent.click(screen.getByRole('button', { name: 'Повторить отправку' }))
+    await screen.findByRole('heading', { name: 'Анализ поставлен в очередь' })
+    expect(post.mock.calls.slice(0, 2).map(call => call[0])).toEqual([request.endpoint, request.endpoint])
+    expect(post.mock.calls.slice(0, 2).every(([, options]) => options.body === request.body
+      && options.headers['Idempotency-Key'] === request.key)).toBe(true)
+    expect(sessionStorage.getItem('observation-pending')).toBeNull()
+  })
+
   it('recovers a quota-backed request after reload and removes it after a definitive response', async () => {
     const user = userEvent.setup()
     const storage = quotaBackedRequests()

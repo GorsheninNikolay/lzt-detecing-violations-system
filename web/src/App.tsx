@@ -518,22 +518,34 @@ export default function App() {
     busy.current = true
     setSending(true)
     setErrors(current => ({ ...current, submit: undefined }))
+    const controller = new AbortController()
+    let timeout: ReturnType<typeof setTimeout> | undefined
     try {
-      const response = await fetch(request.endpoint.replace(/^\/runs\//, '/api/runs/'), {
-        method: 'POST', headers: { 'Content-Type': 'application/json', 'Idempotency-Key': request.key }, body: request.body,
-      })
+      const { response, data } = await Promise.race([
+        (async () => {
+          const response = await fetch(request.endpoint.replace(/^\/runs\//, '/api/runs/'), {
+            method: 'POST', headers: { 'Content-Type': 'application/json', 'Idempotency-Key': request.key }, body: request.body,
+            signal: controller.signal,
+          })
+          if (response.status >= 400 && response.status < 500) {
+            let code = ''
+            try { code = String((await response.json()).code ?? '') } catch { /* Preserve the definitive HTTP status. */ }
+            return { response, data: { code } }
+          }
+          return { response, data: await response.json() }
+        })(),
+        new Promise<never>((_, reject) => { timeout = setTimeout(() => { controller.abort(); reject(new Error('timeout')) }, 10000) }),
+      ])
+      clearTimeout(timeout)
       if (response.status >= 400 && response.status < 500) {
-        let code = ''
-        try { code = String((await response.json()).code ?? '') } catch { /* Preserve the definitive HTTP status. */ }
         await clearPending()
         setPending(null)
-        setErrors(current => ({ ...current, submit: code === 'idempotency_key_conflict'
+        setErrors(current => ({ ...current, submit: data.code === 'idempotency_key_conflict'
           ? 'Ключ отправки уже связан с другим запросом. Проверьте данные и начните новую отправку.'
           : 'Сервер отклонил запрос. Проверьте контекст и файлы, затем повторите.' }))
         queueMicrotask(() => summary.current?.focus())
         return
       }
-      const data = await response.json()
       if (response.status === 202 && typeof data.run_id === 'string' && /^[0-9a-f-]{36}$/i.test(data.run_id)) {
         await clearPending()
         setPending(null)
@@ -551,6 +563,7 @@ export default function App() {
       setErrors(current => ({ ...current, submit: 'Ответ сервера не получен. Повторите отправку: исходный запрос и ключ сохранены.' }))
       queueMicrotask(() => summary.current?.focus())
     } finally {
+      clearTimeout(timeout)
       busy.current = false
       setSending(false)
     }
