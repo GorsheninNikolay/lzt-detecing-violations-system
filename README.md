@@ -1,6 +1,6 @@
 # Construction Evidence Service
 
-Story 1.1 starts one API process with a readiness gate. It does not yet accept analysis submissions. PostgreSQL owns all structured state; private S3-compatible storage owns bytes.
+The API accepts single JPEG observation runs. PostgreSQL owns structured state; private S3-compatible storage owns bytes.
 
 ## Local start
 
@@ -74,3 +74,19 @@ uv run evidence-admission run \
 The command prints draft, run, and admitted successor IDs. A null admitted ID means at least one fixture failed; inspect `analysis_runs.error_code` and retained `analysis_stages`, `observer_invocations`, and `publication_intents`. The draft never becomes admitted in place. Only an admitted successor with enabled authorization can be bound as `OBSERVER_PROFILE_ID` for future ordinary runtime. Use a new admission run after a failure; never edit terminal evidence.
 
 For isolated contract tests, use the `evidence_test` database, `evidence-test` bucket, and `TEST_MODEL_SNAPSHOT_DIR` described above, then run `uv run pytest`. Podman Compose can start the same `infra/compose.yaml` services when Docker Compose is unavailable; omit Docker's `--wait` option and check container health before tests.
+
+## Single-image observations
+
+Start the service with `OBSERVER_PROFILE_ID` set to the admitted successor ID and `OBSERVER_SNAPSHOT_DIR` set to the same verified offline snapshot used for admission. The service refuses submissions until readiness and the profile binding succeed. The observer runs in a bounded child process with CPU and offline model loading; no model download or fallback is attempted.
+
+Submit one JPEG as base64 in JSON. `scenario`, `observation_area`, and `period` are required; `period` is an ISO 8601 timestamp with timezone. `requested_classes` defaults to `excavator` and `dump_truck`. Other requested class names are retained as `not_analyzed` without a provider call when no supported class is requested.
+
+```sh
+IMAGE_BASE64=$(base64 < development-image.jpg | tr -d '\n')
+curl -sS -X POST http://127.0.0.1:8000/runs/single-image \
+  -H 'Content-Type: application/json' -H 'Idempotency-Key: example-001' \
+  -d "{\"intent\":\"observation_only\",\"scenario\":\"equipment_check\",\"observation_area\":\"north_gate\",\"period\":\"2026-09-23T12:00:00+03:00\",\"image_base64\":\"$IMAGE_BASE64\"}"
+curl -sS http://127.0.0.1:8000/runs/RUN_ID
+```
+
+The submit response contains the authoritative `run_id` and current state. Reusing the key with the same logical request returns that run; changing image bytes, context, or classes returns `idempotency_key_conflict`. The read response contains six persisted stages, requested class states with source artifact IDs, a native evidence digest when inference ran, and `observations_only` only after success. It does not return S3 keys, signed URLs, or portable counts/confidence/geometry. Invalid or undecodable files return `invalid_image_file` before any run or evidence reference is created.

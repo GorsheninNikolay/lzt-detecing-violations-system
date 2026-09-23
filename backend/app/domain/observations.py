@@ -80,3 +80,15 @@ def normalized_states(native_states: dict) -> dict[str, str]:
     if set(native_states) != set(CLASSES) or any(value not in ("detected", "not_detected_in_frame") for value in native_states.values()):
         raise ValueError("observation_normalization_failed")
     return {name: native_states[name] for name in CLASSES}
+
+
+def closed_observations(states: dict, requested_classes: list[str], source_artifact_id: str) -> list[dict]:
+    if not isinstance(states, dict) or set(states) != set(CLASSES):
+        raise ValueError("observation_normalization_failed")
+    if any(value not in ("detected", "not_detected_in_frame", "insufficient_data") for value in states.values()):
+        raise ValueError("observation_normalization_failed")
+    return [{"class_name": name, "state": states[name] if name in CLASSES else "not_analyzed",
+             "reason": ("unsupported_class" if name not in CLASSES else
+                        "frame_unassessable" if states[name] == "insufficient_data" else None),
+             "source_artifact_id": source_artifact_id}
+            for name in requested_classes]

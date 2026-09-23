@@ -15,6 +15,7 @@ class Config:
     s3_access_key: str
     s3_secret_key: str
     s3_region: str = "us-east-1"
+    observer_snapshot_dir: str | None = None
 
     @staticmethod
     def database_url_from_env() -> str:
@@ -29,4 +30,5 @@ class Config:
         keys = ("S3_ENDPOINT", "S3_BUCKET", "S3_ACCESS_KEY", "S3_SECRET_KEY")
         if any(not os.getenv(key) for key in keys):
             raise ConfigurationError("missing_artifact_configuration")
-        return cls(database_url, *(os.environ[key] for key in keys), os.getenv("S3_REGION", "us-east-1"))
+        return cls(database_url, *(os.environ[key] for key in keys), os.getenv("S3_REGION", "us-east-1"),
+                   os.getenv("OBSERVER_SNAPSHOT_DIR"))

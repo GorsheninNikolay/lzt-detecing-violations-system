@@ -66,13 +66,17 @@ class PostgresStore:
                 locked = connection.execute(text("SELECT pg_try_advisory_xact_lock(:id)"), {"id": LOCK_ID}).scalar_one()
                 if not locked:
                     raise ReconciliationGateError("reconciliation_lock_unavailable")
-                rows = connection.execute(text("""SELECT i.id, i.state, r.state AS run_state FROM publication_intents i
-                    JOIN analysis_runs r ON r.id = i.run_id WHERE i.state NOT IN ('referenced', 'quarantined', 'failed_integrity') FOR UPDATE OF i""")).all()
+                connection.execute(text("""UPDATE submission_requests SET state = 'failed', error_code = 'submission_interrupted'
+                    WHERE state = 'publishing'"""))
+                rows = connection.execute(text("""SELECT i.id, i.state, r.state AS run_state, s.state AS submission_state
+                    FROM publication_intents i LEFT JOIN analysis_runs r ON r.id = i.run_id
+                    LEFT JOIN submission_requests s ON s.intent_id = i.id
+                    WHERE i.state NOT IN ('referenced', 'quarantined', 'failed_integrity') FOR UPDATE OF i""")).all()
                 observed_count = len(rows)
                 for row in rows:
-                    if row.run_state == "failed":
+                    if row.run_state == "failed" or row.submission_state == "failed":
                         connection.execute(text("UPDATE publication_intents SET state = 'quarantined' WHERE id = :id"), {"id": row.id})
-                if any(row.run_state != "failed" for row in rows):
+                if any(row.run_state != "failed" and row.submission_state != "failed" for row in rows):
                     raise ReconciliationGateError("reconciliation_pending_intents")
                 connection.execute(text("INSERT INTO reconciliation_runs (started_at, completed_at, intent_count, status) VALUES (clock_timestamp(), clock_timestamp(), :count, 'succeeded')"), {"count": observed_count})
         except ReconciliationGateError as exc:
@@ -102,6 +106,7 @@ class PostgresStore:
                     updated = connection.execute(text("UPDATE analysis_runs SET state = 'failed', error_code = 'executor_interrupted', lease_owner = NULL, lease_expires_at = NULL WHERE id = :id AND state = 'running' AND lease_expires_at <= clock_timestamp()"), {"id": run_id})
                     if updated.rowcount != 1:
                         raise RecoveryGateError("recovery_lease_changed")
+                    connection.execute(text("UPDATE observer_invocations SET state = 'failed' WHERE run_id = :id AND state = 'reserved'"), {"id": run_id})
                     connection.execute(text("UPDATE analysis_stages SET state = 'failed', reason = 'executor_interrupted' WHERE run_id = :id AND state = 'running'"), {"id": run_id})
                     connection.execute(text("UPDATE analysis_stages SET state = 'skipped', reason = 'dependency_failed' WHERE run_id = :id AND state = 'pending'"), {"id": run_id})
         except RecoveryGateError:
@@ -378,3 +383,234 @@ class PostgresStore:
                 {"reason": reason, "id": profile_id, "expected": expected_revision})
             if changed.rowcount != 1:
                 raise AdmissionStoreError("authorization_revision_changed")
+
+    def begin_submission(self, key: str, request_hash: str, media_type: str) -> tuple[str, uuid.UUID | None, uuid.UUID | None, str | None]:
+        intent_id = uuid.uuid4()
+        with self.engine.begin() as connection:
+            created = connection.execute(text("""INSERT INTO submission_requests (idempotency_key, request_hash, state)
+                VALUES (:key, :hash, 'publishing') ON CONFLICT DO NOTHING RETURNING idempotency_key"""),
+                {"key": key, "hash": request_hash}).first()
+            row = connection.execute(text("SELECT * FROM submission_requests WHERE idempotency_key = :key FOR UPDATE"), {"key": key}).one()
+            if row.request_hash != request_hash:
+                raise AdmissionStoreError("idempotency_key_conflict")
+            if not created:
+                return row.state, row.run_id, row.intent_id, row.error_code
+            connection.execute(text("""INSERT INTO publication_intents (id, idempotency_key, media_type, state)
+                VALUES (:id, :key, :media, 'pending_upload')"""),
+                {"id": intent_id, "key": f"submission:{key}", "media": media_type})
+            connection.execute(text("UPDATE submission_requests SET intent_id = :intent WHERE idempotency_key = :key"),
+                {"intent": intent_id, "key": key})
+            return "created", None, intent_id, None
+
+    def fail_submission(self, key: str, code: str) -> None:
+        with self.engine.begin() as connection:
+            connection.execute(text("""UPDATE submission_requests SET state = 'failed', error_code = :code
+                WHERE idempotency_key = :key AND state = 'publishing'"""), {"key": key, "code": code})
+
+    def commit_submission(self, key: str, profile_id: uuid.UUID, revision: int, snapshot: dict,
+                          context: dict, requested_classes: list[str], image_hash: str, image_size: int) -> uuid.UUID:
+        run_id, artifact_id = uuid.uuid4(), uuid.uuid4()
+        with self.engine.begin() as connection:
+            request = connection.execute(text("""SELECT * FROM submission_requests
+                WHERE idempotency_key = :key FOR UPDATE"""), {"key": key}).one()
+            if request.state != "publishing":
+                raise AdmissionStoreError("submission_state_changed")
+            authorization = connection.execute(text("""SELECT p.status, a.state, a.revision FROM observer_profiles p
+                JOIN profile_authorizations a ON a.profile_id = p.id WHERE p.id = :id FOR UPDATE OF a"""),
+                {"id": profile_id}).one_or_none()
+            if not authorization or authorization.status != "admitted" or authorization.state != "enabled" or authorization.revision != revision:
+                raise AdmissionStoreError("profile_unauthorized")
+            intent = connection.execute(text("""SELECT sha256, size, final_key FROM publication_intents
+                WHERE id = :id AND run_id IS NULL AND state = 'object_published' FOR UPDATE"""),
+                {"id": request.intent_id}).one_or_none()
+            if not intent or intent.sha256 != image_hash or intent.size != image_size or intent.final_key != f"sha256/{image_hash}":
+                raise AdmissionStoreError("publication_incomplete")
+            connection.execute(text("""INSERT INTO analysis_runs
+                (id, state, purpose, profile_id, authorization_revision, binding_kind, profile_snapshot,
+                 request_context, policy_snapshot, taxonomy_snapshot, requested_classes)
+                VALUES (:run, 'queued', 'ordinary', :profile, :revision, 'admitted_profile',
+                    CAST(:snapshot AS jsonb), CAST(:context AS jsonb), CAST(:policy AS jsonb),
+                    CAST(:taxonomy AS jsonb), CAST(:classes AS jsonb))"""),
+                {"run": run_id, "profile": profile_id, "revision": revision,
+                 "snapshot": json.dumps(snapshot), "context": json.dumps(context),
+                 "policy": json.dumps({"intent": "observation_only", "revision": "observations-only-v1"}),
+                 "taxonomy": json.dumps({"portable_classes": list(CLASSES), "revision": "presence-only-v1"}),
+                 "classes": json.dumps(requested_classes)})
+            connection.execute(text("""INSERT INTO artifact_metadata (id, run_id, intent_id, key, sha256, size, media_type)
+                VALUES (:id, :run, :intent, :key, :hash, :size, 'image/jpeg')"""),
+                {"id": artifact_id, "run": run_id, "intent": request.intent_id, "key": intent.final_key,
+                 "hash": intent.sha256, "size": intent.size})
+            connection.execute(text("""INSERT INTO run_inputs (run_id, ordinal, sha256, size, context, artifact_id)
+                VALUES (:run, 0, :hash, :size, CAST(:context AS jsonb), :artifact)"""),
+                {"run": run_id, "hash": image_hash, "size": image_size,
+                 "context": json.dumps(context), "artifact": artifact_id})
+            for ordinal, name in enumerate(STAGES):
+                connection.execute(text("""INSERT INTO analysis_stages (run_id, ordinal, name, state)
+                    VALUES (:run, :ordinal, :name, 'pending')"""),
+                    {"run": run_id, "ordinal": ordinal, "name": name})
+            connection.execute(text("UPDATE publication_intents SET run_id = :run, state = 'referenced' WHERE id = :id"),
+                {"run": run_id, "id": request.intent_id})
+            connection.execute(text("UPDATE submission_requests SET run_id = :run, state = 'accepted' WHERE idempotency_key = :key"),
+                {"run": run_id, "key": key})
+        return run_id
+
+    def claim_ordinary(self, profile_id: uuid.UUID, revision: int, lease_seconds: int) -> dict | None:
+        owner = str(uuid.uuid4())
+        with self.engine.begin() as connection:
+            row = connection.execute(text("""SELECT r.id, r.profile_snapshot, r.requested_classes, r.authorization_revision,
+                i.sha256, i.size, a.key, a.id AS artifact_id
+                FROM analysis_runs r JOIN run_inputs i ON i.run_id = r.id AND i.ordinal = 0
+                JOIN artifact_metadata a ON a.id = i.artifact_id
+                JOIN profile_authorizations auth ON auth.profile_id = r.profile_id
+                WHERE r.state = 'queued' AND r.purpose = 'ordinary' AND r.profile_id = :profile
+                  AND r.authorization_revision = :revision AND auth.state = 'enabled' AND auth.revision = :revision
+                ORDER BY r.id FOR UPDATE OF r SKIP LOCKED LIMIT 1"""),
+                {"profile": profile_id, "revision": revision}).one_or_none()
+            if not row:
+                return None
+            connection.execute(text("""UPDATE analysis_runs SET state = 'running', lease_owner = :owner,
+                lease_expires_at = clock_timestamp() + (:seconds * interval '1 second') WHERE id = :run"""),
+                {"run": row.id, "owner": owner, "seconds": lease_seconds})
+            connection.execute(text("UPDATE analysis_stages SET state = 'succeeded' WHERE run_id = :run AND ordinal = 0"), {"run": row.id})
+            connection.execute(text("UPDATE analysis_stages SET state = 'running' WHERE run_id = :run AND ordinal = 1"), {"run": row.id})
+            return {**row._mapping, "owner": owner}
+
+    def renew_ordinary(self, run_id: uuid.UUID, owner: str, revision: int, lease_seconds: int) -> None:
+        with self.engine.begin() as connection:
+            changed = connection.execute(text("""UPDATE analysis_runs r SET lease_expires_at = clock_timestamp() + (:seconds * interval '1 second')
+                FROM profile_authorizations a WHERE r.id = :run AND r.profile_id = a.profile_id AND r.purpose = 'ordinary'
+                AND r.state = 'running' AND r.lease_owner = :owner AND r.lease_expires_at > clock_timestamp()
+                AND r.authorization_revision = :revision AND a.state = 'enabled' AND a.revision = :revision"""),
+                {"run": run_id, "owner": owner, "revision": revision, "seconds": lease_seconds})
+            if changed.rowcount != 1:
+                raise AdmissionStoreError("ordinary_lease_rejected")
+
+    def reserve_ordinary(self, run_id: uuid.UUID, owner: str, revision: int, image_hash: str, call_provider: bool = True) -> uuid.UUID | None:
+        invocation = uuid.uuid4()
+        with self.engine.begin() as connection:
+            row = connection.execute(text("""SELECT r.state, r.lease_owner, r.lease_expires_at > clock_timestamp() AS live,
+                r.authorization_revision, a.state AS auth_state, a.revision AS auth_revision, i.sha256
+                FROM analysis_runs r JOIN profile_authorizations a ON a.profile_id = r.profile_id
+                JOIN run_inputs i ON i.run_id = r.id AND i.ordinal = 0
+                WHERE r.id = :run FOR UPDATE OF r, a"""), {"run": run_id}).one_or_none()
+            if (not row or row.state != "running" or row.lease_owner != owner or not row.live
+                    or row.authorization_revision != revision or row.auth_state != "enabled"
+                    or row.auth_revision != revision or row.sha256 != image_hash):
+                raise AdmissionStoreError("ordinary_reservation_rejected")
+            connection.execute(text("UPDATE analysis_stages SET state = 'succeeded' WHERE run_id = :run AND ordinal = 1 AND state = 'running'"), {"run": run_id})
+            connection.execute(text("UPDATE analysis_stages SET state = 'running' WHERE run_id = :run AND ordinal = 2 AND state = 'pending'"), {"run": run_id})
+            if call_provider:
+                connection.execute(text("""INSERT INTO observer_invocations
+                (id, run_id, fence, profile_id, authorization_revision, stage_ordinal, input_sha256,
+                 intended_request_identity, state)
+                SELECT :id, :run, 1, profile_id, :revision, 2, :hash, 'local-grounding-dino-cpu', 'reserved'
+                FROM analysis_runs WHERE id = :run"""),
+                {"id": invocation, "run": run_id, "revision": revision, "hash": image_hash})
+        return invocation if call_provider else None
+
+    def finish_ordinary(self, run_id: uuid.UUID, owner: str, revision: int, invocation: uuid.UUID | None,
+                        result: dict | None, native_intent: uuid.UUID | None, observations: list[dict]) -> None:
+        with self.engine.begin() as connection:
+            row = connection.execute(text("""SELECT r.profile_snapshot, r.state, r.lease_owner,
+                r.lease_expires_at > clock_timestamp() AS live, r.authorization_revision,
+                a.state AS auth_state, a.revision AS auth_revision, i.state AS invocation_state
+                FROM analysis_runs r JOIN profile_authorizations a ON a.profile_id = r.profile_id
+                LEFT JOIN observer_invocations i ON i.run_id = r.id AND i.id = :invocation
+                WHERE r.id = :run FOR UPDATE OF r, a"""), {"run": run_id, "invocation": invocation}).one_or_none()
+            if (not row or row.state != "running" or row.lease_owner != owner or not row.live
+                    or row.authorization_revision != revision or row.auth_state != "enabled" or row.auth_revision != revision):
+                raise AdmissionStoreError("ordinary_completion_rejected")
+            expected_classes = connection.execute(text("SELECT requested_classes FROM analysis_runs WHERE id = :run"), {"run": run_id}).scalar_one()
+            source_artifact_id = connection.execute(text("SELECT artifact_id FROM run_inputs WHERE run_id = :run AND ordinal = 0"), {"run": run_id}).scalar_one()
+            if (len(observations) != len(expected_classes)
+                    or {item["class_name"] for item in observations} != set(expected_classes)
+                    or any(item["source_artifact_id"] != str(source_artifact_id) for item in observations)
+                    or (result is None) != (invocation is None)
+                    or (result is None and any(item["state"] not in ("insufficient_data", "not_analyzed") for item in observations))):
+                raise AdmissionStoreError("observation_normalization_failed")
+            native_artifact_id = None
+            if result is not None:
+                expected = row.profile_snapshot["model_files"]["model.safetensors"]
+                if (row.invocation_state != "reserved" or result.get("returned_model_identity") != f"checkpoint-sha256:{expected}"
+                        or result.get("actual_device") != "cpu" or result.get("preprocessing_revision") != grounding_dino.PREPROCESSING_REVISION):
+                    raise AdmissionStoreError("observer_identity_or_device_invalid")
+                intent = connection.execute(text("""SELECT * FROM publication_intents WHERE id = :id AND run_id = :run
+                    AND state = 'object_published' FOR UPDATE"""), {"id": native_intent, "run": run_id}).one_or_none()
+                if not intent:
+                    raise AdmissionStoreError("publication_incomplete")
+                native_artifact_id = uuid.uuid4()
+                connection.execute(text("""INSERT INTO artifact_metadata (id, run_id, intent_id, key, sha256, size, media_type)
+                    VALUES (:id, :run, :intent, :key, :hash, :size, :media)"""),
+                    {"id": native_artifact_id, "run": run_id, "intent": native_intent, "key": intent.final_key,
+                     "hash": intent.sha256, "size": intent.size, "media": intent.media_type})
+                connection.execute(text("""UPDATE observer_invocations SET state = 'completed',
+                    returned_model_identity = :identity, actual_device = 'cpu', preprocessing_revision = :pre,
+                    native_artifact_id = :artifact WHERE id = :id AND state = 'reserved'"""),
+                    {"identity": result["returned_model_identity"], "pre": result["preprocessing_revision"],
+                     "artifact": native_artifact_id, "id": invocation})
+                connection.execute(text("""UPDATE analysis_runs SET latency_ms = :latency, peak_memory_bytes = :memory WHERE id = :run"""),
+                    {"latency": result["latency_ms"], "memory": result["peak_memory_bytes"], "run": run_id})
+                connection.execute(text("UPDATE analysis_stages SET state = 'succeeded' WHERE run_id = :run AND ordinal = 2 AND state = 'running'"), {"run": run_id})
+                connection.execute(text("UPDATE publication_intents SET state = 'referenced' WHERE id = :id"), {"id": native_intent})
+            else:
+                connection.execute(text("UPDATE analysis_stages SET state = 'skipped', reason = 'unsupported_classes' WHERE run_id = :run AND ordinal = 2 AND state = 'running'"), {"run": run_id})
+            source_hash = connection.execute(text("SELECT sha256 FROM run_inputs WHERE run_id = :run AND ordinal = 0"), {"run": run_id}).scalar_one()
+            for observation in observations:
+                connection.execute(text("""INSERT INTO observations
+                    (run_id, class_name, state, reason, input_sha256, invocation_id, source_artifact_id)
+                    VALUES (:run, :class_name, :state, :reason, :hash, :invocation, :source_artifact_id)"""),
+                    {"run": run_id, "hash": source_hash, "invocation": invocation, **observation})
+            connection.execute(text("UPDATE analysis_stages SET state = 'skipped', reason = 'not_applicable' WHERE run_id = :run AND ordinal IN (3,4)"), {"run": run_id})
+            connection.execute(text("UPDATE analysis_stages SET state = 'running' WHERE run_id = :run AND ordinal = 5"), {"run": run_id})
+            projection = {"outcome": "observations_only", "classes": observations}
+            connection.execute(text("""INSERT INTO result_projections (run_id, outcome, snapshot)
+                VALUES (:run, 'observations_only', CAST(:snapshot AS jsonb))"""),
+                {"run": run_id, "snapshot": json.dumps(projection)})
+            connection.execute(text("UPDATE analysis_stages SET state = 'succeeded' WHERE run_id = :run AND ordinal = 5"), {"run": run_id})
+            changed = connection.execute(text("""UPDATE analysis_runs SET state = 'succeeded', lease_owner = NULL,
+                lease_expires_at = NULL WHERE id = :run AND state = 'running' AND lease_owner = :owner
+                AND lease_expires_at > clock_timestamp()"""), {"run": run_id, "owner": owner})
+            if changed.rowcount != 1:
+                raise AdmissionStoreError("ordinary_completion_rejected")
+
+    def fail_ordinary(self, run_id: uuid.UUID, owner: str, code: str) -> None:
+        with self.engine.begin() as connection:
+            changed = connection.execute(text("""UPDATE analysis_runs SET state = 'failed', error_code = :code,
+                lease_owner = NULL, lease_expires_at = NULL WHERE id = :run AND state = 'running'
+                AND lease_owner = :owner AND lease_expires_at > clock_timestamp()"""),
+                {"run": run_id, "owner": owner, "code": code})
+            if changed.rowcount:
+                connection.execute(text("UPDATE observer_invocations SET state = 'failed' WHERE run_id = :run AND state = 'reserved'"), {"run": run_id})
+                connection.execute(text("UPDATE analysis_stages SET state = 'failed', reason = :code WHERE run_id = :run AND state = 'running'"), {"run": run_id, "code": code})
+                connection.execute(text("UPDATE analysis_stages SET state = 'skipped', reason = 'dependency_failed' WHERE run_id = :run AND state = 'pending'"), {"run": run_id})
+
+    def fail_unauthorized_queued(self) -> None:
+        with self.engine.begin() as connection:
+            rows = connection.execute(text("""SELECT r.id FROM analysis_runs r
+                LEFT JOIN profile_authorizations a ON a.profile_id = r.profile_id
+                WHERE r.purpose = 'ordinary' AND r.state = 'queued'
+                  AND (a.state IS DISTINCT FROM 'enabled' OR a.revision IS DISTINCT FROM r.authorization_revision)
+                FOR UPDATE OF r SKIP LOCKED""")).scalars().all()
+            for run_id in rows:
+                connection.execute(text("UPDATE analysis_runs SET state = 'failed', error_code = 'profile_unauthorized' WHERE id = :run"), {"run": run_id})
+                connection.execute(text("UPDATE analysis_stages SET state = 'failed', reason = 'profile_unauthorized' WHERE run_id = :run AND ordinal = 0"), {"run": run_id})
+                connection.execute(text("UPDATE analysis_stages SET state = 'skipped', reason = 'dependency_failed' WHERE run_id = :run AND ordinal > 0"), {"run": run_id})
+
+    def read_ordinary(self, run_id: uuid.UUID) -> dict | None:
+        with self.engine.connect().execution_options(isolation_level="REPEATABLE READ") as connection:
+            row = connection.execute(text("""SELECT id, state, error_code, request_context, requested_classes
+                FROM analysis_runs WHERE id = :id AND purpose = 'ordinary'"""), {"id": run_id}).one_or_none()
+            if not row:
+                return None
+            stages = connection.execute(text("SELECT name, state, reason FROM analysis_stages WHERE run_id = :id ORDER BY ordinal"), {"id": run_id}).mappings().all()
+            observations = connection.execute(text("""SELECT class_name, state, reason, input_sha256, source_artifact_id
+                FROM observations WHERE run_id = :id ORDER BY class_name"""), {"id": run_id}).mappings().all()
+            projection = connection.execute(text("SELECT outcome FROM result_projections WHERE run_id = :id"), {"id": run_id}).scalar_one_or_none()
+            native = connection.execute(text("""SELECT a.id, a.sha256, a.size FROM observer_invocations i
+                JOIN artifact_metadata a ON a.id = i.native_artifact_id WHERE i.run_id = :id"""), {"id": run_id}).one_or_none()
+            return {"run_id": str(row.id), "state": row.state, "error_code": row.error_code,
+                    "context": row.request_context, "requested_classes": row.requested_classes,
+                    "stages": [dict(item) for item in stages],
+                    "observations": [{**item, "source_artifact_id": str(item["source_artifact_id"])} for item in observations],
+                    "native_evidence": {"artifact_id": str(native.id), "sha256": native.sha256, "size": native.size} if native else None,
+                    "outcome": projection}
