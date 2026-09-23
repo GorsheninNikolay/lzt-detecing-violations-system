@@ -4,17 +4,17 @@
 # Retrospective: optional, done
 # Action item: open, in-progress, done
 generated: 09-22-2026 21:57
-last_updated: 09-22-2026 22:04
+last_updated: 09-23-2026 10:28
 project: lzt-detecing-violations-system
 project_key: NOKEY
 tracking_system: file-system
 story_location: _bmad-output/implementation-artifacts
 
 development_status:
-  epic-1: backlog
-  1-1-start-the-evidence-service-safely: backlog
-  1-2-admit-the-initial-local-observer-through-the-evidence-pipeli: backlog
-  1-3-complete-a-single-image-observation-run: backlog
+  epic-1: in-progress
+  1-1-start-the-evidence-service-safely: done
+  1-2-admit-the-initial-local-observer-through-the-evidence-pipeli: done
+  1-3-complete-a-single-image-observation-run: done
   1-4-complete-an-ordered-series-observation-run: backlog
   1-5-submit-an-observation-in-the-responsive-web-app: backlog
   1-6-follow-authoritative-pipeline-progress: backlog
