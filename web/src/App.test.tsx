@@ -181,6 +181,56 @@ async function fillContext(user: ReturnType<typeof userEvent.setup>) {
   await user.type(screen.getByLabelText('Зона наблюдения'), 'Северная зона')
 }
 
+function quotaBackedRequests() {
+  const records = new Map<string, unknown>()
+  const stores = new Set<string>()
+  let opened = false
+  const setItem = Storage.prototype.setItem
+  vi.spyOn(Storage.prototype, 'setItem').mockImplementation(function (this: Storage, key, value) {
+    if (key === 'observation-pending') throw new DOMException('quota exceeded', 'QuotaExceededError')
+    setItem.call(this, key, value)
+  })
+  let finishWrite: (() => void) | undefined
+  let failWrite = false
+  const open = vi.fn(() => {
+    const database = {
+      close: vi.fn(),
+      createObjectStore: (name: string) => stores.add(name),
+      transaction: vi.fn((name: string, mode?: string) => {
+        if (!stores.has(name)) throw new DOMException('missing object store', 'NotFoundError')
+        const transaction = {
+          oncomplete: null as null | (() => void),
+          onerror: null as null | (() => void),
+          error: new Error('write failed'),
+          objectStore: () => ({
+            put: (value: unknown, key: string) => {
+              finishWrite = () => {
+                if (failWrite) transaction.onerror?.()
+                else { records.set(key, value); transaction.oncomplete?.() }
+              }
+            },
+            get: (key: string) => {
+              const request = { result: undefined as unknown, onsuccess: null as null | (() => void), onerror: null as null | (() => void) }
+              queueMicrotask(() => { request.result = records.get(key); request.onsuccess?.() })
+              return request
+            },
+            delete: (key: string) => queueMicrotask(() => { records.delete(key); transaction.oncomplete?.() }),
+          }),
+        }
+        return transaction
+      }),
+    }
+    const request = { result: database, onupgradeneeded: null as null | (() => void), onsuccess: null as null | (() => void), onerror: null as null | (() => void) }
+    queueMicrotask(() => {
+      if (!opened) { opened = true; request.onupgradeneeded?.() }
+      request.onsuccess?.()
+    })
+    return request
+  })
+  vi.stubGlobal('indexedDB', { open })
+  return { records, open, completeWrite: () => finishWrite?.(), failNextWrite: () => { failWrite = true } }
+}
+
 describe('New Analysis', () => {
   it('submits reordered distinct bytes and retains duplicate frames', async () => {
     const user = userEvent.setup()
@@ -253,6 +303,72 @@ describe('New Analysis', () => {
     expect(requests[1][1].body).toBe(requests[2][1].body)
     expect(requests[0][1].headers['Idempotency-Key']).toBe(requests[1][1].headers['Idempotency-Key'])
     expect(requests[1][1].headers['Idempotency-Key']).toBe(requests[2][1].headers['Idempotency-Key'])
+  })
+
+  it('recovers a quota-backed request after reload and removes it after a definitive response', async () => {
+    const user = userEvent.setup()
+    const storage = quotaBackedRequests()
+    let sequence = 0
+    vi.stubGlobal('crypto', { randomUUID: vi.fn(() => `id-${++sequence}`) })
+    const post = vi.fn().mockRejectedValueOnce(new Error('connection lost'))
+      .mockResolvedValueOnce({ status: 400, json: async () => ({ code: 'invalid_request' }) })
+      .mockResolvedValueOnce({ status: 202, json: async () => ({ run_id: '12345678-1234-1234-1234-123456789abc' }) })
+      .mockResolvedValue({ ok: true, json: async () => snapshot('queued') })
+    vi.stubGlobal('fetch', post)
+    render(<App />)
+    await fillContext(user)
+    await user.upload(screen.getByLabelText('Выбрать JPEG'), image('one.jpg'))
+    await user.click(screen.getByRole('button', { name: 'Запустить анализ' }))
+    await waitFor(() => expect(storage.open).toHaveBeenCalledTimes(1))
+    expect(post).not.toHaveBeenCalled()
+    expect(sessionStorage.getItem('observation-pending-id')).toBeNull()
+    storage.completeWrite()
+    expect(await screen.findByText(/Ответ сервера не получен/)).toBeTruthy()
+    const [endpoint, options] = post.mock.calls[0]
+    const key = options.headers['Idempotency-Key']
+    expect(sessionStorage.getItem('observation-pending')).toBeNull()
+    expect(sessionStorage.getItem('observation-pending-id')).toBe(key)
+    expect(storage.records.get(key)).toEqual({ endpoint, body: options.body, key })
+    cleanup()
+    render(<App />)
+    const retry = await screen.findByRole('button', { name: 'Повторить отправку' })
+    expect(screen.getByLabelText('Сценарий').closest('fieldset')).toHaveProperty('disabled', true)
+    await user.click(retry)
+    expect(await screen.findByText(/Сервер отклонил запрос/)).toBeTruthy()
+    expect(post.mock.calls[1][0]).toBe(endpoint)
+    expect(post.mock.calls[1][1].body).toBe(options.body)
+    expect(post.mock.calls[1][1].headers['Idempotency-Key']).toBe(key)
+    expect(storage.records.has(key)).toBe(false)
+    expect(sessionStorage.getItem('observation-pending-id')).toBeNull()
+    expect(screen.getByLabelText('Сценарий').closest('fieldset')).toHaveProperty('disabled', false)
+    await fillContext(user)
+    await user.upload(screen.getByLabelText('Выбрать JPEG'), image('two.jpg'))
+    await user.click(screen.getByRole('button', { name: 'Запустить анализ' }))
+    await waitFor(() => expect(storage.open).toHaveBeenCalledTimes(4))
+    storage.completeWrite()
+    await screen.findByRole('heading', { name: 'Анализ поставлен в очередь' })
+    const freshKey = post.mock.calls[2][1].headers['Idempotency-Key']
+    expect(freshKey).not.toBe(key)
+    expect(storage.records.has(freshKey)).toBe(false)
+    expect(sessionStorage.getItem('observation-pending-id')).toBeNull()
+  })
+
+  it('does not send when quota fallback cannot persist the request', async () => {
+    const user = userEvent.setup()
+    const storage = quotaBackedRequests()
+    storage.failNextWrite()
+    const post = vi.fn()
+    vi.stubGlobal('fetch', post)
+    render(<App />)
+    await fillContext(user)
+    await user.upload(screen.getByLabelText('Выбрать JPEG'), image('one.jpg'))
+    await user.click(screen.getByRole('button', { name: 'Запустить анализ' }))
+    await waitFor(() => expect(storage.open).toHaveBeenCalledTimes(1))
+    storage.completeWrite()
+    expect(await screen.findByText(/Не удалось безопасно подготовить или сохранить запрос/)).toBeTruthy()
+    expect(post).not.toHaveBeenCalled()
+    expect(sessionStorage.getItem('observation-pending-id')).toBeNull()
+    expect(storage.records.size).toBe(0)
   })
 
   for (const [code, filenames] of [
