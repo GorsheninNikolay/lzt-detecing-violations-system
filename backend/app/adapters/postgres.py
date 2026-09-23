@@ -633,11 +633,30 @@ class PostgresStore:
                 o.source_artifact_id, o.invocation_id FROM run_inputs i JOIN observations o
                 ON o.run_id = i.run_id AND o.input_id = i.input_id
                 WHERE i.run_id = :run ORDER BY i.ordinal, o.class_name"""), {"run": run_id}).mappings().all()
+            usable = connection.execute(text("""SELECT i.input_id FROM run_inputs i JOIN observer_invocations v
+                ON v.run_id = i.run_id AND v.input_id = i.input_id AND v.state = 'completed'
+                WHERE i.run_id = :run ORDER BY i.ordinal"""), {"run": run_id}).scalars().all()
+            usable_ids = [str(item) for item in usable]
+            excavator_ids = [str(item["input_id"]) for item in evidence
+                             if item["class_name"] == "excavator" and item["state"] == "detected"]
+            dump_truck_ids = [str(item["input_id"]) for item in evidence
+                              if item["class_name"] == "dump_truck" and item["state"] == "not_detected_in_frame"
+                              and str(item["input_id"]) in usable_ids]
+            area = connection.execute(text("SELECT request_context->>'observation_area' FROM analysis_runs WHERE id = :run"),
+                                      {"run": run_id}).scalar_one()
+            series = {"usable_count": len(usable_ids), "usable_input_ids": usable_ids,
+                      "declared_observation_area": area,
+                      "input_order": [str(item["input_id"]) for item in sorted(evidence, key=lambda item: item["ordinal"])
+                                      if item["class_name"] == expected_classes[0]],
+                      "excavator_supporting_input_ids": excavator_ids,
+                      "dump_truck_persistence_input_ids": dump_truck_ids if len(usable_ids) > 1 and len(dump_truck_ids) == len(usable_ids) else [],
+                      "dump_truck_persistence_text": (f"Самосвал не обнаружен ни в одном из {len(usable_ids)} пригодных кадров."
+                          if "dump_truck" in expected_classes and len(usable_ids) > 1 and len(dump_truck_ids) == len(usable_ids) else None)}
             projection = {"outcome": "observations_only", "frames": [
                 {**dict(item), "input_id": str(item["input_id"]),
                  "source_artifact_id": str(item["source_artifact_id"]),
                  "invocation_id": str(item["invocation_id"]) if item["invocation_id"] else None}
-                for item in evidence]}
+                for item in evidence], "series": series}
             connection.execute(text("""INSERT INTO result_projections (run_id, outcome, snapshot)
                 VALUES (:run, 'observations_only', CAST(:snapshot AS jsonb))"""),
                 {"run": run_id, "snapshot": json.dumps(projection)})
@@ -684,8 +703,9 @@ class PostgresStore:
                 o.source_artifact_id, o.input_id, i.ordinal, o.invocation_id
                 FROM observations o JOIN run_inputs i ON i.input_id = o.input_id
                 WHERE o.run_id = :id ORDER BY i.ordinal, o.class_name"""), {"id": run_id}).mappings().all()
-            projection = connection.execute(text("SELECT outcome FROM result_projections WHERE run_id = :id"), {"id": run_id}).scalar_one_or_none()
-            native = connection.execute(text("""SELECT a.id, a.sha256, a.size, i.input_id, r.ordinal
+            projection = connection.execute(text("SELECT snapshot FROM result_projections WHERE run_id = :id"), {"id": run_id}).scalar_one_or_none()
+            native = connection.execute(text("""SELECT a.id, a.sha256, a.size, i.input_id, i.id AS invocation_id,
+                i.preprocessing_revision, i.authorization_revision, i.profile_id, r.ordinal
                 FROM observer_invocations i JOIN artifact_metadata a ON a.id = i.native_artifact_id
                 JOIN run_inputs r ON r.input_id = i.input_id
                 WHERE i.run_id = :id ORDER BY r.ordinal"""), {"id": run_id}).mappings().all()
@@ -703,5 +723,18 @@ class PostgresStore:
                                          "size": native[0]["size"]} if len(inputs) == 1 and native else None),
                     "native_evidence_by_frame": [{"artifact_id": str(item["id"]), "sha256": item["sha256"],
                                                   "size": item["size"], "ordinal": item["ordinal"],
-                                                  "input_id": str(item["input_id"])} for item in native],
-                    "outcome": projection}
+                                                  "input_id": str(item["input_id"]), "invocation_id": str(item["invocation_id"]),
+                                                  "profile_id": str(item["profile_id"]), "profile_revision": item["authorization_revision"],
+                                                  "preprocessing_revision": item["preprocessing_revision"]} for item in native],
+                    "outcome": projection["outcome"] if projection and row.state == "succeeded" else None,
+                    "result_projection": projection if projection and row.state == "succeeded" else None}
+
+    def resolve_run_artifact(self, run_id: uuid.UUID, artifact_id: uuid.UUID) -> dict | None:
+        with self.engine.connect() as connection:
+            row = connection.execute(text("""SELECT a.key, a.sha256, a.size, a.media_type FROM artifact_metadata a
+                JOIN analysis_runs r ON r.id = a.run_id AND r.purpose = 'ordinary'
+                WHERE a.run_id = :run AND a.id = :artifact AND
+                  (EXISTS (SELECT 1 FROM run_inputs i WHERE i.run_id = :run AND i.artifact_id = a.id)
+                   OR EXISTS (SELECT 1 FROM observer_invocations v WHERE v.run_id = :run AND v.native_artifact_id = a.id))"""),
+                {"run": run_id, "artifact": artifact_id}).mappings().one_or_none()
+            return dict(row) if row else None

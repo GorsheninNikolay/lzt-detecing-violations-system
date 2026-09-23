@@ -10,6 +10,163 @@ const snapshot = (state: string, states = Array(6).fill('pending'), reasons: Rec
   state, stages: stageNames.map((name, index) => ({ name, state: states[index], ...(reasons[index] ? { reason: reasons[index] } : {}) })),
 })
 
+describe('Observation result', () => {
+  const runId = '12345678-1234-1234-1234-123456789abc'
+  const inputs = [0, 1].map(ordinal => ({ input_id: `input-${ordinal}`, ordinal, sha256: 'same', artifact_id: `image-${ordinal}` }))
+  const observations = inputs.flatMap(input => ['excavator', 'dump_truck'].map(class_name => ({
+    input_id: input.input_id, ordinal: input.ordinal, class_name,
+    state: class_name === 'excavator' && input.ordinal === 0 ? 'detected' : 'not_detected_in_frame', reason: null,
+    source_artifact_id: input.artifact_id,
+  })))
+  const completed = { ...snapshot('succeeded'), context: { period: '2026-09-23T12:00:00+03:00', observation_area: 'north_gate' },
+    inputs, observations, requested_classes: ['excavator', 'dump_truck'], outcome: 'observations_only',
+    result_projection: { outcome: 'observations_only', series: { usable_count: 2,
+      usable_input_ids: inputs.map(item => item.input_id), declared_observation_area: 'north_gate',
+      input_order: inputs.map(item => item.input_id), excavator_supporting_input_ids: [inputs[0].input_id],
+      dump_truck_persistence_input_ids: inputs.map(item => item.input_id),
+      dump_truck_persistence_text: 'Самосвал не обнаружен ни в одном из 2 пригодных кадров.' } },
+    native_evidence_by_frame: [{ artifact_id: 'native-0', input_id: 'input-0', ordinal: 0, sha256: 'native-hash',
+      invocation_id: 'invocation-0', profile_id: 'profile-0', profile_revision: 1, preprocessing_revision: 'pre-1' }],
+  }
+
+  beforeEach(() => {
+    history.replaceState({}, '', `/runs/${runId}`)
+    vi.stubGlobal('URL', { ...URL, createObjectURL: vi.fn(() => 'blob:test'), revokeObjectURL: vi.fn() })
+    HTMLDialogElement.prototype.showModal = function () { this.setAttribute('open', '') }
+    HTMLDialogElement.prototype.close = function () { this.removeAttribute('open') }
+  })
+
+  it('shows source-bound rows, series evidence, focus jump, and native provenance', async () => {
+    const user = userEvent.setup()
+    const projected = { ...completed, result_projection: { ...completed.result_projection,
+      series: { ...completed.result_projection.series, input_order: ['input-1', 'input-0'] } } }
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => url === `/runs/${runId}`
+      ? { ok: true, json: async () => projected }
+      : url.endsWith('native-0') ? { ok: true, text: async () => '{"detections":[]}' }
+        : { ok: true, blob: async () => new Blob(['jpeg']) }))
+    render(<App />)
+    expect(await screen.findByRole('heading', { name: 'Только наблюдения' })).toBeTruthy()
+    expect(screen.getByText('Правило этапа не проверялось')).toBeTruthy()
+    expect(screen.getAllByText(/Не обнаружен в кадре/)).toHaveLength(3)
+    expect(screen.getByText(/Самосвал не обнаружен ни в одном из 2 пригодных кадров/)).toBeTruthy()
+    expect(screen.getByText(/Порядок: Кадр 2 \(input-1\) → Кадр 1 \(input-0\)/)).toBeTruthy()
+    expect(screen.getByText('Кадры с экскаватором: input-0.')).toBeTruthy()
+    const cards = screen.getAllByRole('article')
+    expect(inputs[0].sha256).toBe(inputs[1].sha256)
+    expect(within(cards[0]).getByText('Экскаватор: Обнаружен')).toBeTruthy()
+    expect(within(cards[0]).getAllByText(/Кадр 1, входной ID/).every(item => item.textContent?.includes('input-0'))).toBe(true)
+    expect(within(cards[1]).getByText('Экскаватор: Не обнаружен в кадре')).toBeTruthy()
+    expect(within(cards[1]).getAllByText(/Кадр 2, входной ID/).every(item => item.textContent?.includes('input-1'))).toBe(true)
+    expect(screen.getByText(/по изображениям не подтверждена/)).toBeTruthy()
+    await user.click(screen.getByRole('button', { name: 'Перейти к результату' }))
+    expect(document.activeElement).toBe(screen.getByRole('heading', { name: 'Только наблюдения' }))
+    await user.click(screen.getByRole('button', { name: 'Открыть кадр 1' }))
+    expect(screen.getByRole('dialog', { name: 'Просмотр исходных кадров' })).toBeTruthy()
+    await user.click(screen.getByText('Технические данные наблюдателя'))
+    expect(await screen.findByText('{"detections":[]}')).toBeTruthy()
+    expect(screen.getByText(/invocation-0/)).toBeTruthy()
+    expect(screen.getByText(/native-hash/)).toBeTruthy()
+    expect(screen.getByText(/ревизия допуска: 1/)).toBeTruthy()
+    await user.click(screen.getByRole('button', { name: 'Следующий кадр' }))
+    expect(within(screen.getByRole('dialog')).getByRole('status').textContent).toContain('Кадр 2 из 2')
+  })
+
+  it('shows a single-frame result without inventing series evidence', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => url === `/runs/${runId}`
+      ? { ok: true, json: async () => ({ ...completed, inputs: inputs.slice(0, 1),
+        observations: observations.slice(0, 2), result_projection: { outcome: 'observations_only' } }) }
+      : { ok: true, blob: async () => new Blob(['jpeg']) }))
+    render(<App />)
+    expect(await screen.findByRole('heading', { name: 'Только наблюдения' })).toBeTruthy()
+    expect(screen.getByText('Самосвал: Не обнаружен в кадре')).toBeTruthy()
+    expect(await screen.findByRole('img', { name: /Исходное изображение: Кадр 1\. Экскаватор: Обнаружен/ })).toBeTruthy()
+    expect(screen.queryByRole('heading', { name: 'Данные серии' })).toBeNull()
+  })
+
+  it('keeps single-frame text and native metadata when verified bytes fail', async () => {
+    const user = userEvent.setup()
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => url === `/runs/${runId}`
+      ? { ok: true, json: async () => ({ ...completed, inputs: inputs.slice(0, 1), observations: observations.slice(0, 2), result_projection: { outcome: 'observations_only' } }) }
+      : { ok: false, json: async () => ({ code: 'artifact_integrity_failed' }) }))
+    render(<App />)
+    expect(await screen.findByRole('heading', { name: 'Только наблюдения' })).toBeTruthy()
+    expect(await screen.findByText('Целостность артефакта не подтверждена')).toBeTruthy()
+    expect(screen.getByText('Самосвал: Не обнаружен в кадре')).toBeTruthy()
+    await user.click(screen.getByRole('button', { name: 'Открыть кадр 1' }))
+    await user.click(screen.getByText('Технические данные наблюдателя'))
+    expect((await within(screen.getByRole('dialog')).findAllByText('Целостность артефакта не подтверждена')).length).toBeGreaterThan(0)
+    expect(screen.getByText(/invocation-0/)).toBeTruthy()
+  })
+
+  it('keeps legacy result and partial failed evidence readable when source retrieval fails', async () => {
+    const user = userEvent.setup()
+    const fetchMock = vi.fn(async (url: string): Promise<unknown> => url === `/runs/${runId}`
+      ? { ok: true, json: async () => ({ ...completed, result_projection: { outcome: 'observations_only' } }) }
+      : { ok: false, json: async () => ({ code: 'artifact_integrity_failed' }) })
+    vi.stubGlobal('fetch', fetchMock)
+    const view = render(<App />)
+    expect(await screen.findByText('Сводные данные серии недоступны для этого анализа.')).toBeTruthy()
+    expect((await screen.findAllByText('Целостность артефакта не подтверждена')).length).toBeGreaterThan(0)
+    expect(screen.getAllByText(/Не обнаружен в кадре/)).toHaveLength(3)
+    view.unmount()
+    fetchMock.mockImplementation(async (url: string) => url === `/runs/${runId}`
+      ? { ok: true, json: async () => ({ ...completed, state: 'failed', outcome: null, result_projection: null,
+        observations: [{ ...observations[0], state: 'insufficient_data', reason: 'frame_unassessable' },
+          { ...observations[1], state: 'not_analyzed', reason: 'unsupported_class' }] }) }
+      : { ok: false, json: async () => ({ code: 'artifact_read_unavailable' }) })
+    render(<App />)
+    expect(await screen.findByRole('heading', { name: 'Частичные наблюдения — анализ не завершён' })).toBeTruthy()
+    expect(screen.getByText('Кадр непригоден для распознавания.')).toBeTruthy()
+    expect(screen.getByText('Класс не поддерживается профилем распознавания.')).toBeTruthy()
+    expect(screen.queryByText('Правило этапа не проверялось')).toBeNull()
+    expect(await screen.findByText('Не удалось открыть исходное изображение')).toBeTruthy()
+  })
+
+  it('retries one source without disturbing the other frame', async () => {
+    const user = userEvent.setup()
+    let resolveRetry!: (value: unknown) => void
+    let firstReads = 0
+    vi.stubGlobal('fetch', vi.fn((url: string) => {
+      if (url === `/runs/${runId}`) return Promise.resolve({ ok: true, json: async () => completed })
+      if (url.endsWith('image-0') && ++firstReads === 1) return Promise.resolve({ ok: false, json: async () => ({ code: 'artifact_read_unavailable' }) })
+      if (url.endsWith('image-0')) return new Promise(resolve => { resolveRetry = resolve })
+      return Promise.resolve({ ok: true, blob: async () => new Blob(['jpeg']) })
+    }))
+    render(<App />)
+    const cards = await screen.findAllByRole('article')
+    expect(await within(cards[1]).findByRole('img', { name: /Кадр 2/ })).toBeTruthy()
+    await user.click(await within(cards[0]).findByRole('button', { name: 'Повторить' }))
+    expect(within(cards[0]).getByText('Загружаем изображение…')).toBeTruthy()
+    expect(within(cards[1]).getByRole('img', { name: /Кадр 2/ })).toBeTruthy()
+    await act(async () => { resolveRetry({ ok: true, blob: async () => new Blob(['recovered']) }) })
+    expect(await within(cards[0]).findByRole('img', { name: /Кадр 1/ })).toBeTruthy()
+  })
+
+  it('shows a later native failure instead of stale successful content', async () => {
+    const user = userEvent.setup()
+    let firstNativeReads = 0
+    const run = { ...completed, native_evidence_by_frame: [...completed.native_evidence_by_frame,
+      { ...completed.native_evidence_by_frame[0], artifact_id: 'native-1', input_id: 'input-1', ordinal: 1 }] }
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => url === `/runs/${runId}`
+      ? { ok: true, json: async () => run }
+      : url.endsWith('native-0') ? ++firstNativeReads === 1
+        ? { ok: true, text: async () => 'old native result' }
+        : { ok: false, json: async () => ({ code: 'artifact_read_unavailable' }) }
+        : url.endsWith('native-1') ? { ok: true, text: async () => 'second native result' }
+          : { ok: true, blob: async () => new Blob(['jpeg']) }))
+    render(<App />)
+    await screen.findByRole('heading', { name: 'Только наблюдения' })
+    await user.click(screen.getByRole('button', { name: 'Открыть кадр 1' }))
+    await user.click(screen.getByText('Технические данные наблюдателя'))
+    expect(await screen.findByText('old native result')).toBeTruthy()
+    await user.click(screen.getByRole('button', { name: 'Следующий кадр' }))
+    expect(await screen.findByText('second native result')).toBeTruthy()
+    await user.click(screen.getByRole('button', { name: 'Предыдущий кадр' }))
+    expect(await within(screen.getByRole('dialog')).findByText('Не удалось открыть технические данные')).toBeTruthy()
+    expect(screen.queryByText('old native result')).toBeNull()
+  })
+})
+
 beforeEach(() => {
   history.replaceState({}, '', '/')
   sessionStorage.clear()

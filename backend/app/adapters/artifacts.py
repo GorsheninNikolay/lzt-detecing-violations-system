@@ -75,8 +75,18 @@ class ArtifactStore:
             return body
         except ArtifactGateError:
             raise
-        except Exception:
-            raise ArtifactGateError("artifact_integrity_failed") from None
+        except Exception as exc:
+            response = getattr(exc, "response", {})
+            code = response.get("Error", {}).get("Code")
+            if code == "NoSuchKey":
+                raise ArtifactGateError("artifact_integrity_failed") from None
+            if response.get("ResponseMetadata", {}).get("HTTPStatusCode") == 404 and code in {"404", "NotFound"}:
+                try:
+                    self.client.get_object(Bucket=self.bucket, Key=key)["Body"].close()
+                except Exception as object_error:
+                    if getattr(object_error, "response", {}).get("Error", {}).get("Code") == "NoSuchKey":
+                        raise ArtifactGateError("artifact_integrity_failed") from None
+            raise ArtifactGateError("artifact_read_unavailable") from None
 
     def probe(self) -> None:
         key = f"health/{secrets.token_hex(24)}"

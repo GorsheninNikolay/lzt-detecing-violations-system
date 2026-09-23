@@ -1,17 +1,19 @@
 import asyncio
 import base64
 import uuid
+from types import SimpleNamespace
 from pathlib import Path
 
 import pytest
 from alembic import command
 from alembic.config import Config as AlembicConfig
+from botocore.exceptions import ClientError
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import make_url
 from sqlalchemy.exc import IntegrityError
 
-from app.adapters.artifacts import ArtifactStore
+from app.adapters.artifacts import ArtifactGateError, ArtifactStore
 from app.adapters.postgres import AdmissionStoreError, PostgresStore
 from app.application import executor, submission
 from app.config import Config
@@ -43,6 +45,73 @@ def test_stalled_duplicate_has_bounded_retry(monkeypatch):
         submission.submit_series(store, None, "stalled", body(jpeg((0, 0, 0)), jpeg((0, 0, 0))),
                                  uuid.uuid4(), 1, {})
     assert store.calls == 2
+
+
+def test_run_artifact_route_verifies_scoped_bytes():
+    run_id, artifact_id = uuid.uuid4(), uuid.uuid4()
+
+    class Store:
+        def resolve_run_artifact(self, requested_run, requested_artifact):
+            if (requested_run, requested_artifact) == (run_id, artifact_id):
+                return {"key": "sha256/abc", "sha256": "abc", "size": 4, "media_type": "image/jpeg"}
+            return None
+
+    class Artifacts:
+        error = None
+
+        def read_verified(self, key, digest, size):
+            assert (key, digest, size) == ("sha256/abc", "abc", 4)
+            if self.error:
+                raise ArtifactGateError(self.error)
+            return b"data"
+
+    app = create_app()
+    app.state.store, app.state.artifacts = Store(), Artifacts()
+
+    async def scenario():
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            url = f"/runs/{run_id}/artifacts/{artifact_id}"
+            response = await client.get(url)
+            assert response.status_code == 200 and response.content == b"data"
+            assert response.headers["content-type"].startswith("image/jpeg")
+            assert (await client.get(f"/runs/{uuid.uuid4()}/artifacts/{artifact_id}")).status_code == 404
+            for code, status in (("artifact_integrity_failed", 409), ("artifact_read_unavailable", 503)):
+                app.state.artifacts.error = code
+                response = await client.get(url)
+                assert response.status_code == status and response.json() == {"code": code}
+
+    asyncio.run(scenario())
+
+
+def test_verified_artifact_read_distinguishes_outage_from_corruption():
+    import hashlib
+
+    payload = b"data"
+    digest = hashlib.sha256(payload).hexdigest()
+    artifact = ArtifactStore.__new__(ArtifactStore)
+    artifact.bucket = "test"
+    artifact.client = SimpleNamespace(
+        head_object=lambda **_: {"ContentLength": len(payload)},
+        get_object=lambda **_: {"Body": SimpleNamespace(read=lambda: payload)},
+    )
+    assert artifact.read_verified(f"sha256/{digest}", digest, len(payload)) == payload
+    with pytest.raises(ArtifactGateError, match="artifact_integrity_failed"):
+        artifact.read_verified(f"sha256/{digest}", digest, len(payload) + 1)
+    artifact.client.get_object = lambda **_: {"Body": SimpleNamespace(read=lambda: b"deta")}
+    with pytest.raises(ArtifactGateError, match="artifact_integrity_failed"):
+        artifact.read_verified(f"sha256/{digest}", digest, len(payload))
+    artifact.client.head_object = lambda **_: (_ for _ in ()).throw(ConnectionError("S3 unavailable"))
+    with pytest.raises(ArtifactGateError, match="artifact_read_unavailable"):
+        artifact.read_verified(f"sha256/{digest}", digest, len(payload))
+    def missing(code):
+        return ClientError({"Error": {"Code": code, "Message": code}, "ResponseMetadata": {"HTTPStatusCode": 404}}, "HeadObject")
+    artifact.client.head_object = lambda **_: (_ for _ in ()).throw(missing("404"))
+    artifact.client.get_object = lambda **_: (_ for _ in ()).throw(missing("NoSuchKey"))
+    with pytest.raises(ArtifactGateError, match="artifact_integrity_failed"):
+        artifact.read_verified(f"sha256/{digest}", digest, len(payload))
+    artifact.client.get_object = lambda **_: (_ for _ in ()).throw(missing("NoSuchBucket"))
+    with pytest.raises(ArtifactGateError, match="artifact_read_unavailable"):
+        artifact.read_verified(f"sha256/{digest}", digest, len(payload))
 
 
 def test_interrupted_series_reconciliation_reaches_readiness(isolated_admission_database, integration):
@@ -147,6 +216,13 @@ def test_ordered_series_http_postgres_s3(isolated_admission_database, integratio
     config = Config(isolated_admission_database, config.s3_endpoint, config.s3_bucket,
                     config.s3_access_key, config.s3_secret_key)
     store, artifacts = PostgresStore(isolated_admission_database), ArtifactStore(config)
+    absent_digest = uuid.uuid4().hex + uuid.uuid4().hex
+    with pytest.raises(ArtifactGateError, match="artifact_integrity_failed"):
+        artifacts.read_verified(f"sha256/{absent_digest}", absent_digest, 1)
+    missing_bucket = ArtifactStore.__new__(ArtifactStore)
+    missing_bucket.bucket, missing_bucket.client = f"missing-{uuid.uuid4().hex}", artifacts.client
+    with pytest.raises(ArtifactGateError, match="artifact_read_unavailable"):
+        missing_bucket.read_verified(f"sha256/{absent_digest}", absent_digest, 1)
     parent, profile = uuid.uuid4(), uuid.uuid4()
     snapshot = {"model_files": {"model.safetensors": "a" * 64},
                 "runtime": {"per_image_timeout_seconds": 2}}
@@ -173,10 +249,12 @@ def test_ordered_series_http_postgres_s3(isolated_admission_database, integratio
     def observed(*_):
         nonlocal calls
         calls += 1
-        return {"states": {"excavator": "detected", "dump_truck": "not_detected_in_frame"},
+        return {"states": {"excavator": "detected" if calls % 2 else "not_detected_in_frame",
+                           "dump_truck": "not_detected_in_frame"},
                 "returned_model_identity": f"checkpoint-sha256:{'a' * 64}", "actual_device": "cpu",
                 "latency_ms": 1.0, "peak_memory_bytes": 1024,
-                "native": {"detections": [{"label": "an excavator", "score": 0.8, "box": [1, 2, 3, 4]}],
+                "native": {"detections": ([{"label": "an excavator", "score": 0.8, "box": [1, 2, 3, 4]}]
+                                          if calls % 2 else []),
                            "image_size": [96, 96]}}
 
     monkeypatch.setattr(executor, "_observe_bounded", observed)
@@ -222,7 +300,28 @@ def test_ordered_series_http_postgres_s3(isolated_admission_database, integratio
             assert [artifacts.read_verified(*ref) for ref in refs] == [first, second]
             await loop._execute(store.claim_ordinary(profile, 1, 30), 1)
             done = (await client.get(f"/runs/{run}")).json()
-            assert done["state"] == "succeeded" and done["outcome"] == "observations_only"
+            assert done["state"] == "succeeded" and done["outcome"] == "observations_only", done["error_code"]
+            assert done["result_projection"]["series"]["usable_input_ids"] == [item["input_id"] for item in done["inputs"]]
+            assert done["result_projection"]["series"]["usable_count"] == 2
+            assert done["result_projection"]["series"]["excavator_supporting_input_ids"] == [done["inputs"][0]["input_id"]]
+            assert done["result_projection"]["series"]["declared_observation_area"] == "north_gate"
+            assert done["result_projection"]["series"]["dump_truck_persistence_input_ids"] == [item["input_id"] for item in done["inputs"]]
+            assert done["result_projection"]["series"]["dump_truck_persistence_text"] == "Самосвал не обнаружен ни в одном из 2 пригодных кадров."
+            image_response = await client.get(f"/runs/{run}/artifacts/{done['inputs'][0]['artifact_id']}")
+            assert image_response.status_code == 200 and image_response.content == first
+            assert image_response.headers["content-type"].startswith("image/jpeg")
+            assert (await client.get(f"/runs/{uuid.uuid4()}/artifacts/{done['inputs'][0]['artifact_id']}")).status_code == 404
+            native_response = await client.get(f"/runs/{run}/artifacts/{done['native_evidence_by_frame'][0]['artifact_id']}")
+            assert native_response.status_code == 200 and b"detections" in native_response.content
+            verified_read = artifacts.read_verified
+            for code, status in (("artifact_integrity_failed", 409), ("artifact_read_unavailable", 503)):
+                monkeypatch.setattr(artifacts, "read_verified", lambda *_args, code=code: (_ for _ in ()).throw(ArtifactGateError(code)))
+                error_response = await client.get(f"/runs/{run}/artifacts/{done['inputs'][0]['artifact_id']}")
+                assert error_response.status_code == status and error_response.json() == {"code": code}
+            monkeypatch.setattr(artifacts, "read_verified", verified_read)
+            with store.engine.begin() as connection:
+                connection.execute(text("UPDATE result_projections SET snapshot = snapshot - 'series' WHERE run_id = :run"), {"run": run})
+            assert (await client.get(f"/runs/{run}")).json()["result_projection"] == {"outcome": "observations_only", "frames": done["result_projection"]["frames"]}
             assert done["stages"][3]["state"] == "succeeded"
             assert [item["ordinal"] for item in done["observations"]] == [0, 0, 1, 1]
             assert {item["input_id"] for item in done["observations"]} == {item["input_id"] for item in done["inputs"]}
@@ -251,6 +350,7 @@ def test_ordered_series_http_postgres_s3(isolated_admission_database, integratio
             assert equal["inputs"][0]["sha256"] == equal["inputs"][1]["sha256"]
             assert equal["inputs"][0]["input_id"] != equal["inputs"][1]["input_id"]
             assert len(equal["observations"]) == 4
+            assert equal["result_projection"]["series"]["input_order"] == [item["input_id"] for item in equal["inputs"]]
             assert {item["source_artifact_id"] for item in equal["observations"]} == {
                 item["artifact_id"] for item in equal["inputs"]}
 
@@ -262,6 +362,8 @@ def test_ordered_series_http_postgres_s3(isolated_admission_database, integratio
             assert all(item["state"] == "insufficient_data" and item["reason"] == "frame_unassessable"
                        for item in result["observations"] if item["ordinal"] == 1)
             assert "absence" not in str(result)
+            assert result["result_projection"]["series"]["usable_count"] == 1
+            assert result["result_projection"]["series"]["dump_truck_persistence_text"] is None
 
             all_black = await client.post("/runs/series", headers={"Idempotency-Key": uuid.uuid4().hex},
                                           json=body(black, black))
@@ -271,6 +373,7 @@ def test_ordered_series_http_postgres_s3(isolated_admission_database, integratio
             assert all_black_done["state"] == "succeeded"
             assert all_black_done["stages"][2]["reason"] == "no_assessable_frame_or_supported_class"
             assert all(item["state"] == "insufficient_data" for item in all_black_done["observations"])
+            assert all_black_done["result_projection"]["series"]["usable_count"] == 0
 
             failing = await client.post("/runs/series", headers={"Idempotency-Key": uuid.uuid4().hex}, json=body(first, second))
             failing_run = uuid.UUID(failing.json()["run_id"])
@@ -287,6 +390,8 @@ def test_ordered_series_http_postgres_s3(isolated_admission_database, integratio
             assert failed["state"] == "failed" and failed["outcome"] is None
             assert failed["error_code"] == "observer_execution_failed"
             assert len(failed["observations"]) == 2 and len(failed["native_evidence_by_frame"]) == 1
+            assert failed["result_projection"] is None
+            assert (await client.get(f"/runs/{failing_run}/artifacts/{failed['inputs'][0]['artifact_id']}")).status_code == 200
             assert failed["stages"][2]["state"] == "failed"
             assert all(stage["state"] == "skipped" for stage in failed["stages"][3:])
             with store.engine.connect() as connection:

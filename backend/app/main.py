@@ -7,9 +7,9 @@ from pathlib import Path
 
 import uvicorn
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 
-from app.adapters.artifacts import ArtifactStore
+from app.adapters.artifacts import ArtifactGateError, ArtifactStore
 from app.adapters.postgres import AdmissionStoreError, DatabaseGateError, PostgresStore, ReconciliationGateError, RecoveryGateError
 from app.application.executor import ClaimLoop
 from app.application.submission import SubmissionError, submit, submit_series
@@ -163,6 +163,23 @@ def create_app() -> FastAPI:
             return JSONResponse({"code": "run_not_found"}, status_code=404)
         run = await asyncio.to_thread(app.state.store.read_ordinary, identifier)
         return JSONResponse(run if run else {"code": "run_not_found"}, status_code=200 if run else 404)
+
+    @app.get("/runs/{run_id}/artifacts/{artifact_id}")
+    async def read_run_artifact(run_id: str, artifact_id: str) -> Response:
+        try:
+            run, artifact = uuid.UUID(run_id), uuid.UUID(artifact_id)
+        except ValueError:
+            return JSONResponse({"code": "artifact_not_found"}, status_code=404)
+        metadata = await asyncio.to_thread(app.state.store.resolve_run_artifact, run, artifact)
+        if metadata is None:
+            return JSONResponse({"code": "artifact_not_found"}, status_code=404)
+        try:
+            body = await asyncio.to_thread(app.state.artifacts.read_verified,
+                                           metadata["key"], metadata["sha256"], metadata["size"])
+        except ArtifactGateError as exc:
+            code = str(exc)
+            return JSONResponse({"code": code}, status_code=409 if code == "artifact_integrity_failed" else 503)
+        return Response(body, media_type=metadata["media_type"], headers={"Cache-Control": "no-store"})
 
     return app
 

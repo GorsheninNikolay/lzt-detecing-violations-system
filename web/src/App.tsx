@@ -4,7 +4,99 @@ type Frame = { id: string; file: File }
 type Pending = { endpoint: string; body: string; key: string }
 type Errors = Partial<Record<'scenario' | 'observation_area' | 'period' | 'images' | 'submit', string>>
 type Stage = { name: string; state: string; reason?: string | null; timestamp?: string | null }
-type RunSnapshot = { run_id?: string; state: string; stages: Stage[] }
+type Input = { input_id: string; ordinal: number; sha256: string; artifact_id: string | null }
+type Observation = { input_id: string; ordinal: number; class_name: string; state: string; reason?: string | null; source_artifact_id: string | null }
+type NativeEvidence = { artifact_id: string; input_id: string; ordinal: number; sha256: string; invocation_id: string; profile_id: string; profile_revision: number; preprocessing_revision: string }
+type Series = { usable_count: number; usable_input_ids: string[]; declared_observation_area: string | null; input_order: string[]; excavator_supporting_input_ids: string[]; dump_truck_persistence_input_ids: string[]; dump_truck_persistence_text: string | null }
+type RunSnapshot = { run_id?: string; state: string; stages: Stage[]; context?: { period?: string; observation_area?: string }; requested_classes?: string[]; inputs?: Input[]; observations?: Observation[]; native_evidence_by_frame?: NativeEvidence[]; outcome?: string | null; result_projection?: { outcome: string; series?: Series } | null }
+
+const CLASS_LABELS: Record<string, string> = { excavator: 'Экскаватор', dump_truck: 'Самосвал' }
+const OBSERVATION_STATES: Record<string, string> = { detected: 'Обнаружен', not_detected_in_frame: 'Не обнаружен в кадре', insufficient_data: 'Недостаточно данных', not_analyzed: 'Не анализировалось' }
+const OBSERVATION_REASONS: Record<string, string> = { frame_unassessable: 'Кадр непригоден для распознавания.', unsupported_class: 'Класс не поддерживается профилем распознавания.', observer_unavailable: 'Распознавание недоступно.' }
+
+function artifactUrl(runId: string, artifactId: string) { return `/runs/${runId}/artifacts/${artifactId}` }
+
+function useArtifact(runId: string, artifactId: string | null) {
+  const [attempt, retry] = useState(0)
+  const [loaded, setLoaded] = useState<{ id: string; url: string } | null>(null)
+  const [failure, setFailure] = useState<{ id: string; code: string } | null>(null)
+  useEffect(() => {
+    if (!artifactId) return
+    const controller = new AbortController()
+    let url: string | null = null
+    void fetch(artifactUrl(runId, artifactId), { signal: controller.signal }).then(async response => {
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({})) as { code?: string }
+        throw new Error(body.code === 'artifact_integrity_failed' ? 'integrity' : 'unavailable')
+      }
+      url = URL.createObjectURL(await response.blob())
+      if (!controller.signal.aborted) { setLoaded({ id: artifactId, url }); setFailure(null) }
+      else URL.revokeObjectURL(url)
+    }).catch(error => { if (!controller.signal.aborted) setFailure({ id: artifactId, code: error.message === 'integrity' ? 'integrity' : 'unavailable' }) })
+    return () => { controller.abort(); if (url) URL.revokeObjectURL(url) }
+  }, [runId, artifactId, attempt])
+  return { url: loaded?.id === artifactId && failure?.id !== artifactId ? loaded.url : null,
+    error: failure?.id === artifactId ? failure.code : null,
+    retry: () => { setLoaded(null); setFailure(null); retry(value => value + 1) } }
+}
+
+function SourceImage({ runId, artifactId, label, description }: { runId: string; artifactId: string | null; label: string; description: string }) {
+  const artifact = useArtifact(runId, artifactId)
+  return <div className="source-image">{!artifactId ? <p className="error">Исходное изображение недоступно для этого кадра.</p> : artifact.url ? <img src={artifact.url} alt={`Исходное изображение: ${label}. ${description}`} /> :
+    artifact.error ? <p className="error">{artifact.error === 'integrity' ? 'Целостность артефакта не подтверждена' : 'Не удалось открыть исходное изображение'} <button type="button" className="secondary" onClick={artifact.retry}>Повторить</button></p> :
+      <p className="muted">Загружаем изображение…</p>}</div>
+}
+
+function frameDescription(observations: Observation[], inputId: string): string {
+  return observations.filter(item => item.input_id === inputId).map(item =>
+    `${CLASS_LABELS[item.class_name] ?? item.class_name}: ${OBSERVATION_STATES[item.state] ?? item.state}${item.reason ? `; ${OBSERVATION_REASONS[item.reason] ?? item.reason}` : ''}`).join('. ')
+}
+
+function EvidenceViewer({ runId, inputs, observations, native, context, selected, onClose, onSelect }: {
+  runId: string; inputs: Input[]; observations: Observation[]; native: NativeEvidence[]; context?: RunSnapshot['context']; selected: number;
+  onClose: () => void; onSelect: (index: number) => void
+}) {
+  const dialog = useRef<HTMLDialogElement>(null)
+  const [zoom, setZoom] = useState(1)
+  const [nativeResult, setNativeResult] = useState<{ id: string; text: string } | null>(null)
+  const [nativeError, setNativeError] = useState<{ id: string; code: string } | null>(null)
+  const [nativeAttempt, retryNative] = useState(0)
+  const frame = inputs[selected]
+  const evidence = native.find(item => item.input_id === frame.input_id)
+  useEffect(() => { dialog.current?.showModal(); return () => dialog.current?.close() }, [])
+  useEffect(() => {
+    if (!evidence) return
+    const controller = new AbortController()
+    void fetch(artifactUrl(runId, evidence.artifact_id), { signal: controller.signal }).then(async response => {
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({})) as { code?: string }
+        throw new Error(body.code === 'artifact_integrity_failed' ? 'integrity' : 'unavailable')
+      }
+      const text = await response.text()
+      if (!controller.signal.aborted) { setNativeResult({ id: evidence.artifact_id, text }); setNativeError(null) }
+    }).catch(error => { if (!controller.signal.aborted) setNativeError({ id: evidence.artifact_id, code: error.message === 'integrity' ? 'integrity' : 'unavailable' }) })
+    return () => controller.abort()
+  }, [runId, evidence?.artifact_id, nativeAttempt])
+  return <dialog ref={dialog} aria-label="Просмотр исходных кадров" onClose={onClose} className="evidence-dialog">
+    <div className="viewer-toolbar"><button type="button" className="secondary" onClick={onClose}>Закрыть</button><button type="button" className="secondary" disabled={selected === 0} onClick={() => { onSelect(selected - 1); setZoom(1) }}>Предыдущий кадр</button><button type="button" className="secondary" disabled={selected === inputs.length - 1} onClick={() => { onSelect(selected + 1); setZoom(1) }}>Следующий кадр</button><button type="button" className="secondary" onClick={() => setZoom(value => Math.min(4, value + .5))}>Увеличить</button><button type="button" className="secondary" onClick={() => setZoom(value => Math.max(1, value - .5))}>Уменьшить</button><button type="button" className="secondary" onClick={() => setZoom(1)}>Сбросить масштаб</button></div>
+    <p role="status">Кадр {selected + 1} из {inputs.length}. Масштаб {Math.round(zoom * 100)}%.</p>
+    <p>Входной ID: <code>{frame.input_id}</code>. Период: {context?.period ?? 'не указан'}. SHA-256 исходного кадра: <code>{frame.sha256}</code>.</p>
+    <div className="viewer-image"><div style={{ width: `${zoom * 100}%` }}><SourceImage key={frame.input_id} runId={runId} artifactId={frame.artifact_id} label={`Кадр ${selected + 1}`} description={frameDescription(observations, frame.input_id)} /></div></div>
+    {evidence && <details><summary>Технические данные наблюдателя</summary><p>Данные конкретного наблюдателя. Не используются правилом этапа.</p><p>Кадр {selected + 1}, входной ID <code>{frame.input_id}</code>. Вызов <code>{evidence.invocation_id}</code>. Профиль <code>{evidence.profile_id}</code>, ревизия допуска: {evidence.profile_revision}. Наблюдатель/адаптер: Grounding DINO local. Предобработка <code>{evidence.preprocessing_revision}</code>. Артефакт <code>{evidence.artifact_id}</code>, SHA-256 <code>{evidence.sha256}</code>.</p>{nativeError?.id === evidence.artifact_id ? <p className="error">{nativeError.code === 'integrity' ? 'Целостность артефакта не подтверждена' : 'Не удалось открыть технические данные'} <button type="button" className="secondary" onClick={() => { setNativeResult(null); setNativeError(null); retryNative(value => value + 1) }}>Повторить</button></p> : nativeResult?.id === evidence.artifact_id ? <pre>{nativeResult.text}</pre> : <p>Загружаем технические данные…</p>}</details>}
+  </dialog>
+}
+
+function ObservationResult({ run, runId }: { run: RunSnapshot; runId: string }) {
+  const heading = useRef<HTMLHeadingElement>(null)
+  const [selected, setSelected] = useState<number | null>(null)
+  const opener = useRef<HTMLButtonElement | null>(null)
+  const inputs = run.inputs ?? []
+  const observations = run.observations ?? []
+  const complete = run.state === 'succeeded' && run.outcome === 'observations_only'
+  const series = run.result_projection?.series
+  if (!complete && !observations.length) return null
+  return <><button type="button" className="secondary" onClick={() => heading.current?.focus()}>{complete ? 'Перейти к результату' : 'Перейти к частичным наблюдениям'}</button><section className="panel result" aria-labelledby="result-heading"><h2 ref={heading} tabIndex={-1} id="result-heading">{complete ? 'Только наблюдения' : 'Частичные наблюдения — анализ не завершён'}</h2>{complete && <p>Правило этапа не проверялось</p>}<p>Период наблюдения: {run.context?.period ?? 'не указан'}</p><div className="result-frames">{inputs.filter(input => observations.some(item => item.input_id === input.input_id)).map(input => <article className="result-frame" key={input.input_id}><div><h3>Кадр {input.ordinal + 1}</h3><p>Входной ID: <code>{input.input_id}</code></p><SourceImage runId={runId} artifactId={input.artifact_id} label={`Кадр ${input.ordinal + 1}`} description={frameDescription(observations, input.input_id)} /><button type="button" className="secondary" onClick={event => { opener.current = event.currentTarget; setSelected(inputs.indexOf(input)) }}>Открыть кадр {input.ordinal + 1}</button></div><ul>{observations.filter(item => item.input_id === input.input_id).map(item => <li key={item.class_name}><strong>{CLASS_LABELS[item.class_name] ?? item.class_name}: {OBSERVATION_STATES[item.state] ?? item.state}</strong>{item.reason && <p>{OBSERVATION_REASONS[item.reason] ?? item.reason}</p>}<p>Кадр {input.ordinal + 1}, входной ID <code>{item.input_id}</code></p></li>)}</ul></article>)}</div>{complete && inputs.length > 1 && <section className="series-evidence" aria-labelledby="series-heading"><h3 id="series-heading">Данные серии</h3>{series ? <><p>Пригодных кадров: {series.usable_count}. Входные ID: {series.usable_input_ids.length ? series.usable_input_ids.join(', ') : 'нет'}.</p><p>Заявленная зона наблюдения: {series.declared_observation_area ?? 'не указана'} (со слов пользователя; по изображениям не подтверждена).</p><p>Порядок: {series.input_order.map(inputId => { const input = inputs.find(item => item.input_id === inputId); return input ? `Кадр ${input.ordinal + 1} (${inputId})` : inputId }).join(' → ')}.</p>{run.requested_classes?.includes('excavator') && <p>Кадры с экскаватором: {series.excavator_supporting_input_ids.length ? series.excavator_supporting_input_ids.join(', ') : 'нет подтверждённых'}.</p>}{series.dump_truck_persistence_text && <p>{series.dump_truck_persistence_text} Подтверждающие входные ID: {series.dump_truck_persistence_input_ids.join(', ')}.</p>}</> : <p>Сводные данные серии недоступны для этого анализа.</p>}</section>}</section>{selected !== null && <EvidenceViewer runId={runId} inputs={inputs} observations={observations} native={run.native_evidence_by_frame ?? []} context={run.context} selected={selected} onSelect={setSelected} onClose={() => { setSelected(null); opener.current?.focus() }} />}</>
+}
 
 const STAGE_LABELS: Record<string, string> = {
   input_registration: 'Регистрация входных данных', frame_usability: 'Проверка пригодности кадров',
@@ -490,7 +582,7 @@ export default function App() {
     <a className="skip-link" href="#main">К основному содержимому</a>
     <header className="topbar"><div className="topbar-inner"><a className="brand" href="/" onClick={event => { event.preventDefault(); navigate('/') }}>Контроль строительства <span>17 мгновений ИИ</span></a><nav aria-label="Основная навигация"><a href="/" aria-current={!route ? 'page' : undefined} onClick={event => { event.preventDefault(); navigate('/') }}>Новый анализ</a></nav></div></header>
     <main id="main" className="page">
-      {route ? <section className="run-workspace" aria-labelledby="run-heading" aria-busy={runReading}><div className="panel run-header"><p className="eyebrow">Анализ</p><h1 ref={pageHeading} tabIndex={-1} id="run-heading">{runMissing ? 'Анализ не найден' : runSnapshot ? RUN_HEADINGS[runSnapshot.state] ?? 'Статус анализа неизвестен' : runChecked ? 'Статус анализа неизвестен' : 'Проверяем анализ…'}</h1><p>Номер анализа: <code>{route}</code></p>{runSnapshot && <p>Состояние сервера: <strong>{RUN_STATES[runSnapshot.state] ?? 'Состояние доступно на сервере'}</strong></p>}{runError && <div className="attention"><p>{runError}</p><button type="button" className="secondary" disabled={runReading} onClick={() => { if (!runReading) { setRunReading(true); setRunReadAttempt(value => value + 1) } }}>{runReading ? 'Проверяем статус…' : 'Проверить статус'}</button></div>}<p role="status" className="sr-only">{runError || runAnnouncement}</p><button type="button" className="secondary" onClick={() => navigate('/')}>Новый анализ</button></div>{runSnapshot && <section className="panel pipeline" aria-labelledby="pipeline-heading"><h2 id="pipeline-heading">Этапы анализа</h2><ol className="pipeline-stages">{runSnapshot.stages.map(stage => <li key={stage.name} className={`pipeline-stage stage-${stage.state}`}><h3>{STAGE_LABELS[stage.name] ?? 'Этап анализа'}</h3><p>{STAGE_STATES[stage.state] ?? 'Состояние доступно на сервере'}</p>{stage.reason && <><p className="stage-reason">{STAGE_REASONS[stage.reason] ?? 'Причина не описана для пользователя.'}</p>{!STAGE_REASONS[stage.reason] && <details><summary>Техническая причина</summary><code>{stage.reason}</code></details>}</>}{stage.timestamp && <time dateTime={stage.timestamp}>{stage.timestamp}</time>}</li>)}</ol></section>}</section> : <>
+      {route ? <section className="run-workspace" aria-labelledby="run-heading" aria-busy={runReading}><div className="panel run-header"><p className="eyebrow">Анализ</p><h1 ref={pageHeading} tabIndex={-1} id="run-heading">{runMissing ? 'Анализ не найден' : runSnapshot ? RUN_HEADINGS[runSnapshot.state] ?? 'Статус анализа неизвестен' : runChecked ? 'Статус анализа неизвестен' : 'Проверяем анализ…'}</h1><p>Номер анализа: <code>{route}</code></p>{runSnapshot && <p>Состояние сервера: <strong>{RUN_STATES[runSnapshot.state] ?? 'Состояние доступно на сервере'}</strong></p>}{runError && <div className="attention"><p>{runError}</p><button type="button" className="secondary" disabled={runReading} onClick={() => { if (!runReading) { setRunReading(true); setRunReadAttempt(value => value + 1) } }}>{runReading ? 'Проверяем статус…' : 'Проверить статус'}</button></div>}<p role="status" className="sr-only">{runError || runAnnouncement}</p><button type="button" className="secondary" onClick={() => navigate('/')}>Новый анализ</button></div>{runSnapshot && <section className="panel pipeline" aria-labelledby="pipeline-heading"><h2 id="pipeline-heading">Этапы анализа</h2><ol className="pipeline-stages">{runSnapshot.stages.map(stage => <li key={stage.name} className={`pipeline-stage stage-${stage.state}`}><h3>{STAGE_LABELS[stage.name] ?? 'Этап анализа'}</h3><p>{STAGE_STATES[stage.state] ?? 'Состояние доступно на сервере'}</p>{stage.reason && <><p className="stage-reason">{STAGE_REASONS[stage.reason] ?? 'Причина не описана для пользователя.'}</p>{!STAGE_REASONS[stage.reason] && <details><summary>Техническая причина</summary><code>{stage.reason}</code></details>}</>}{stage.timestamp && <time dateTime={stage.timestamp}>{stage.timestamp}</time>}</li>)}</ol></section>}{runSnapshot && <ObservationResult run={runSnapshot} runId={route} />}</section> : <>
         <div className="page-intro"><p className="eyebrow">Новый анализ</p><h1 ref={pageHeading} tabIndex={-1}>Наблюдение за техникой</h1><p>Добавьте снимки и контекст наблюдения. Анализ распознаёт экскаватор и самосвал на отдельных кадрах; правило этапа и отсутствие техники на всей площадке здесь не проверяются.</p></div>
         <form onSubmit={submit} noValidate aria-busy={sending}>
           <div className="form-grid"><section className="panel" aria-labelledby="context-heading"><h2 id="context-heading">Контекст наблюдения</h2><p className="muted">Режим: только распознать технику</p><fieldset disabled={!!pending || sending || validating}><div className="field"><label htmlFor="scenario">Сценарий</label><input id="scenario" value={scenario} onChange={event => setScenario(event.target.value)} aria-invalid={!!errors.scenario} aria-describedby={errors.scenario ? 'scenario-error' : undefined} maxLength={256} /><p className="hint">Например, наблюдение за земляными работами.</p>{errors.scenario && <p id="scenario-error" className="error">{errors.scenario}</p>}</div><div className="field"><label htmlFor="area">Зона наблюдения</label><input id="area" value={area} onChange={event => setArea(event.target.value)} aria-invalid={!!errors.observation_area} aria-describedby={errors.observation_area ? 'area-error' : undefined} maxLength={256} /><p className="hint">Укажите конкретный участок, к которому относятся кадры.</p>{errors.observation_area && <p id="area-error" className="error">{errors.observation_area}</p>}</div><div className="field"><label htmlFor="period">Дата и время наблюдения</label><input id="period" type="datetime-local" value={period} onChange={event => setPeriod(event.target.value)} aria-invalid={!!errors.period} aria-describedby={errors.period ? 'period-error' : undefined} />{errors.period && <p id="period-error" className="error">{errors.period}</p>}</div></fieldset></section>
