@@ -12,15 +12,18 @@ const snapshot = (state: string, states = Array(6).fill('pending'), reasons: Rec
 
 describe('Observation result', () => {
   const runId = '12345678-1234-1234-1234-123456789abc'
-  const inputs = [0, 1].map(ordinal => ({ input_id: `input-${ordinal}`, ordinal, sha256: 'same', artifact_id: `image-${ordinal}` }))
+  const inputs = [0, 1].map(ordinal => ({ input_id: `input-${ordinal}`, ordinal, sha256: `hash-${ordinal}`, artifact_id: `image-${ordinal}` }))
   const observations = inputs.flatMap(input => ['excavator', 'dump_truck'].map(class_name => ({
     input_id: input.input_id, ordinal: input.ordinal, class_name,
     state: class_name === 'excavator' && input.ordinal === 0 ? 'detected' : 'not_detected_in_frame', reason: null,
     source_artifact_id: input.artifact_id,
   })))
+  const projectionFrames = (rows: typeof observations = observations, frameInputs: typeof inputs = inputs) => rows.map(item => ({ ...item,
+    input_sha256: frameInputs.find(input => input.input_id === item.input_id)?.sha256 }))
   const completed = { ...snapshot('succeeded'), context: { period: '2026-09-23T12:00:00+03:00', observation_area: 'north_gate' },
     inputs, observations, requested_classes: ['excavator', 'dump_truck'], outcome: 'observations_only',
-    result_projection: { outcome: 'observations_only', series: { usable_count: 2,
+    profile_snapshot: { adapter: { code: 'grounding_dino' } },
+    result_projection: { outcome: 'observations_only', frames: projectionFrames(), series: { usable_count: 2,
       usable_input_ids: inputs.map(item => item.input_id), declared_observation_area: 'north_gate',
       input_order: inputs.map(item => item.input_id), excavator_supporting_input_ids: [inputs[0].input_id],
       dump_truck_persistence_input_ids: inputs.map(item => item.input_id),
@@ -32,8 +35,11 @@ describe('Observation result', () => {
   beforeEach(() => {
     history.replaceState({}, '', `/runs/${runId}`)
     vi.stubGlobal('URL', { ...URL, createObjectURL: vi.fn(() => 'blob:test'), revokeObjectURL: vi.fn() })
-    HTMLDialogElement.prototype.showModal = function () { this.setAttribute('open', '') }
-    HTMLDialogElement.prototype.close = function () { this.removeAttribute('open') }
+    HTMLDialogElement.prototype.showModal = function () {
+      this.setAttribute('open', '')
+      this.querySelector('button')?.focus()
+    }
+    HTMLDialogElement.prototype.close = function () { this.removeAttribute('open'); this.dispatchEvent(new Event('close')) }
   })
 
   it('shows source-bound rows, series evidence, focus jump, and native provenance', async () => {
@@ -42,45 +48,132 @@ describe('Observation result', () => {
       series: { ...completed.result_projection.series, input_order: ['input-1', 'input-0'] } } }
     vi.stubGlobal('fetch', vi.fn(async (url: string) => url === `/api/runs/${runId}`
       ? { ok: true, json: async () => projected }
-      : url.endsWith('native-0') ? { ok: true, text: async () => '{"detections":[]}' }
+      : url.endsWith('native-0') ? { ok: true, text: async () => '{"count":1,"detections":[{"confidence":0.9,"geometry":[1,2]}]}' }
         : { ok: true, blob: async () => new Blob(['jpeg']) }))
-    render(<App />)
+    const view = render(<App />)
     expect(await screen.findByRole('heading', { name: 'Только наблюдения' })).toBeTruthy()
-    expect(screen.getByText('Правило этапа не проверялось')).toBeTruthy()
-    expect(screen.getAllByText(/Не обнаружен в кадре/)).toHaveLength(3)
+    expect(screen.getByText(/Правило этапа не проверялось/)).toBeTruthy()
     expect(screen.getByText(/Самосвал не обнаружен ни в одном из 2 пригодных кадров/)).toBeTruthy()
     expect(screen.getByText(/Порядок: Кадр 2 \(input-1\) → Кадр 1 \(input-0\)/)).toBeTruthy()
     expect(screen.getByText('Кадры с экскаватором: input-0.')).toBeTruthy()
-    const cards = screen.getAllByRole('article')
-    expect(inputs[0].sha256).toBe(inputs[1].sha256)
-    expect(within(cards[0]).getByText('Экскаватор: Обнаружен')).toBeTruthy()
-    expect(within(cards[0]).getAllByText(/Кадр 1, входной ID/).every(item => item.textContent?.includes('input-0'))).toBe(true)
-    expect(within(cards[1]).getByText('Экскаватор: Не обнаружен в кадре')).toBeTruthy()
-    expect(within(cards[1]).getAllByText(/Кадр 2, входной ID/).every(item => item.textContent?.includes('input-1'))).toBe(true)
+    const rows = view.container.querySelectorAll<HTMLElement>('.observation-row')
+    expect(inputs[0].sha256).not.toBe(inputs[1].sha256)
+    expect(within(rows[0]).getByText('Экскаватор: Обнаружен')).toBeTruthy()
+    expect(within(rows[0]).getByText(/input-0/)).toBeTruthy()
+    expect(within(rows[2]).getByText('Экскаватор: Не обнаружен в кадре')).toBeTruthy()
+    expect(within(rows[2]).getByText(/input-1/)).toBeTruthy()
     expect(screen.getByText(/по изображениям не подтверждена/)).toBeTruthy()
     await user.click(screen.getByRole('button', { name: 'Перейти к результату' }))
     expect(document.activeElement).toBe(screen.getByRole('heading', { name: 'Только наблюдения' }))
-    await user.click(screen.getByRole('button', { name: 'Открыть кадр 1' }))
-    expect(screen.getByRole('dialog', { name: 'Просмотр исходных кадров' })).toBeTruthy()
+    const opener = screen.getByRole('button', { name: 'Открыть кадр 1' })
+    opener.focus()
+    await user.keyboard('{Enter}')
+    const dialog = screen.getByRole('dialog', { name: 'Просмотр исходных кадров' })
+    expect(dialog).toBeTruthy()
+    expect(dialog.contains(document.activeElement)).toBe(true)
+    expect(screen.getByText('Номер кадра: 1. Пригодность: пригоден.')).toBeTruthy()
+    expect(screen.getByText(/Наблюдения: Экскаватор: Обнаружен\. Самосвал: Не обнаружен в кадре\./)).toBeTruthy()
+    expect(dialog.textContent).toContain('Исходный артефакт ID: image-0')
+    expect(dialog.textContent).toContain('SHA-256 исходного кадра: hash-0')
+    const zoom = within(dialog).getByRole('button', { name: 'Увеличить' })
+    zoom.focus()
+    await user.keyboard('{Enter}')
+    expect(within(dialog).getByRole('status').textContent).toContain('150%')
+    const reset = within(dialog).getByRole('button', { name: 'Сбросить масштаб' })
+    reset.focus()
+    await user.keyboard('{Enter}')
+    expect(within(dialog).getByRole('status').textContent).toContain('100%')
     await user.click(screen.getByText('Технические данные наблюдателя'))
-    expect(await screen.findByText('{"detections":[]}')).toBeTruthy()
+    const nativeDetails = screen.getByText('Технические данные наблюдателя').closest('details')!
+    expect(await within(nativeDetails).findByText('{"count":1,"detections":[{"confidence":0.9,"geometry":[1,2]}]}')).toBeTruthy()
+    expect(within(nativeDetails).getByText('Данные конкретного наблюдателя. Не используются правилом этапа.')).toBeTruthy()
+    expect(screen.getByText(/grounding_dino/)).toBeTruthy()
     expect(screen.getByText(/invocation-0/)).toBeTruthy()
     expect(screen.getByText(/native-hash/)).toBeTruthy()
     expect(screen.getByText(/ревизия допуска: 1/)).toBeTruthy()
-    await user.click(screen.getByRole('button', { name: 'Следующий кадр' }))
+    expect(dialog.textContent).toContain('Предобработка: pre-1')
+    const next = within(dialog).getByRole('button', { name: 'Следующий кадр' })
+    next.focus()
+    await user.keyboard('{Enter}')
     expect(within(screen.getByRole('dialog')).getByRole('status').textContent).toContain('Кадр 2 из 2')
+    const previous = within(dialog).getByRole('button', { name: 'Предыдущий кадр' })
+    previous.focus()
+    await user.keyboard('{Enter}')
+    expect(within(dialog).getByRole('status').textContent).toContain('Кадр 1 из 2')
+    const close = within(dialog).getByRole('button', { name: 'Закрыть' })
+    close.focus()
+    await user.keyboard('{Enter}')
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+    expect(document.activeElement).toBe(opener)
   })
 
   it('shows a single-frame result without inventing series evidence', async () => {
     vi.stubGlobal('fetch', vi.fn(async (url: string) => url === `/api/runs/${runId}`
       ? { ok: true, json: async () => ({ ...completed, inputs: inputs.slice(0, 1),
-        observations: observations.slice(0, 2), result_projection: { outcome: 'observations_only' } }) }
+        observations: observations.slice(0, 2), result_projection: { outcome: 'observations_only', frames: projectionFrames(observations.slice(0, 2)), series: completed.result_projection.series } }) }
       : { ok: true, blob: async () => new Blob(['jpeg']) }))
     render(<App />)
     expect(await screen.findByRole('heading', { name: 'Только наблюдения' })).toBeTruthy()
     expect(screen.getByText('Самосвал: Не обнаружен в кадре')).toBeTruthy()
+    expect(screen.getByText('Период наблюдения: 2026-09-23T12:00:00+03:00.')).toBeTruthy()
     expect(await screen.findByRole('img', { name: /Исходное изображение: Кадр 1\. Экскаватор: Обнаружен/ })).toBeTruthy()
     expect(screen.queryByRole('heading', { name: 'Данные серии' })).toBeNull()
+  })
+
+  it('shows unavailable series evidence for completed multi-frame observations', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => url === `/api/runs/${runId}`
+      ? { ok: true, json: async () => ({ ...completed,
+        result_projection: { ...completed.result_projection, series: undefined } }) }
+      : { ok: true, blob: async () => new Blob(['jpeg']) }))
+    render(<App />)
+    expect(await screen.findByRole('heading', { name: 'Данные серии' })).toBeTruthy()
+    expect(screen.getByText('Сводные данные серии недоступны для этого анализа.')).toBeTruthy()
+  })
+
+  it('renders successful observations, rule and outcome only from the projection', async () => {
+    const projectedRule = { name: 'Проверка по проекции', revision: 'projected-v2',
+      expectation: 'Ожидание из проекции', provenance: 'Источник из проекции', recommendation: null }
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => url === `/api/runs/${runId}`
+      ? { ok: true, json: async () => ({ ...completed, intent: 'observation_only', outcome: 'check_requested',
+        inputs: inputs.map(input => input.input_id === 'input-0' ? { ...input, ordinal: 7 } : input),
+        rule_snapshot: { ...projectedRule, name: 'Неверный снимок' },
+        observations: [{ ...observations[0], state: 'not_detected_in_frame' }],
+        result_projection: { ...completed.result_projection, outcome: 'no_check', frames: projectionFrames(),
+          series: { ...completed.result_projection.series, usable_input_ids: ['input-0'] },
+          rule: projectedRule, reason: 'Результат из проекции', uncertainty: 'Неопределённость из проекции',
+          supporting_input_ids: ['input-0'] } }) }
+      : { ok: true, blob: async () => new Blob(['jpeg']) }))
+    const view = render(<App />)
+    const user = userEvent.setup()
+    expect(await screen.findByRole('heading', { name: 'Проверка не запрошена' })).toBeTruthy()
+    expect(screen.getByText('Экскаватор: Обнаружен')).toBeTruthy()
+    expect(within(view.container.querySelectorAll<HTMLElement>('.observation-row')[0]).queryByText('Экскаватор: Не обнаружен в кадре')).toBeNull()
+    expect(within(view.container.querySelectorAll<HTMLElement>('.observation-row')[0]).getByRole('heading', { name: 'Кадр 1' })).toBeTruthy()
+    expect(screen.getByText('Пригодность: не пригоден.')).toBeTruthy()
+    expect(screen.getByText(/Проверка по проекции/)).toBeTruthy()
+    expect(screen.getByText('Источник правила: Источник из проекции.')).toBeTruthy()
+    expect(within(view.container.querySelectorAll<HTMLElement>('.source-thumbnail')[0]).getByRole('heading', { name: 'Кадр 1' })).toBeTruthy()
+    expect(view.container.querySelector('.rule-provenance')?.textContent).toContain('Результат правила: Результат из проекции')
+    expect(screen.getByText('Неопределённость из проекции')).toBeTruthy()
+    expect(screen.queryByRole('region', { name: 'Проверка человеком' })).toBeNull()
+    await user.click(screen.getByRole('button', { name: 'Открыть кадр 1' }))
+    expect(screen.getByText('Номер кадра: 1. Пригодность: пригоден.')).toBeTruthy()
+  })
+
+  it('states when optional projection details are unavailable', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => url === `/api/runs/${runId}`
+      ? { ok: true, json: async () => ({ ...completed, intent: 'rule_evaluation',
+        result_projection: { outcome: 'no_check', frames: projectionFrames(), reason: 'Причина из проекции',
+          supporting_input_ids: ['input-0'] } }) }
+      : { ok: true, blob: async () => new Blob(['jpeg']) }))
+    const view = render(<App />)
+    expect(await screen.findByText('Сводные данные серии недоступны для этого анализа.')).toBeTruthy()
+    expect(screen.getByText('Данные о правиле в проекции недоступны.')).toBeTruthy()
+    expect(view.container.querySelector('.rule-provenance')?.textContent).toContain('Результат правила: Причина из проекции')
+    expect(view.container.querySelector('.rule-provenance')?.textContent).toContain('Подтверждающие входные ID: input-0.')
+    expect(screen.getByText('Неопределённость не указана в проекции.')).toBeTruthy()
+    expect(view.container.querySelectorAll('.source-thumbnail')).toHaveLength(inputs.length)
+    expect(view.container.querySelector('.source-thumbnail')?.textContent).toContain('Исходный артефакт ID: image-0')
   })
 
   it('renders the persisted rule outcome and human-check boundary', async () => {
@@ -92,31 +185,53 @@ describe('Observation result', () => {
       input_id: 'input-2', ordinal: 2, class_name, state: 'not_detected_in_frame',
       reason: null, source_artifact_id: 'image-2',
     }))]
+    const checkFrames = projectionFrames(checkObservations, checkInputs)
     const checkSeries = { ...completed.result_projection.series, usable_count: 3,
-      usable_input_ids: checkInputs.map(input => input.input_id),
+      usable_input_ids: checkInputs.map(input => input.input_id), declared_observation_area: 'series_gate',
       input_order: checkInputs.map(input => input.input_id),
       dump_truck_persistence_input_ids: checkInputs.map(input => input.input_id) }
     vi.stubGlobal('fetch', vi.fn(async (url: string) => url === `/api/runs/${runId}`
       ? { ok: true, json: async () => ({ ...completed, intent: 'rule_evaluation', outcome: 'check_requested', rule_snapshot: rule,
         inputs: checkInputs, observations: checkObservations,
-        result_projection: { ...completed.result_projection, outcome: 'check_requested', context: completed.context,
-          series: checkSeries, rule, supporting_input_ids: checkInputs.map(input => input.input_id),
+        result_projection: { ...completed.result_projection, outcome: 'check_requested', frames: checkFrames,
+          series: checkSeries, context: { ...completed.context, observation_area: 'projection_gate' },
+          rule, supporting_input_ids: checkInputs.map(input => input.input_id),
           reason: 'Есть повод проверить возможную задержку вывоза грунта: экскаватор обнаружен хотя бы в одном пригодном кадре, самосвал не обнаружен ни в одном пригодном кадре.',
           uncertainty: 'Необнаружение в кадре не доказывает отсутствие на площадке.',
           recommendation: rule.recommendation } }) }
       : { ok: true, blob: async () => new Blob(['jpeg']) }))
     render(<App />)
     expect(await screen.findByRole('heading', { name: 'Рекомендована проверка человеком' })).toBeTruthy()
-    const panel = screen.getByRole('region', { name: 'Запрос проверки вывоза грунта' })
-    expect(within(panel).getByText(/Основание: Есть повод проверить возможную задержку вывоза грунта/)).toBeTruthy()
-    expect(within(panel).getByText('Подтверждающие входные ID: input-0, input-1, input-2.')).toBeTruthy()
-    expect(within(panel).getByText(/Период: 2026-09-23T12:00:00\+03:00\. Заявленная зона: north_gate/)).toBeTruthy()
-    expect(within(panel).getByText(/ревизия rule-immutable-evidence-v1/)).toBeTruthy()
-    expect(within(panel).getByText('Ожидание: Экскаватор работает постоянно, самосвалы появляются периодически.')).toBeTruthy()
-    expect(within(panel).getByText('Неопределённость: Необнаружение в кадре не доказывает отсутствие на площадке.')).toBeTruthy()
-    expect(within(panel).getByText('Рекомендуемая проверка человеком: Проверить вручную')).toBeTruthy()
+    const panel = screen.getByRole('region', { name: 'Проверка человеком' })
+    expect(panel.textContent).toContain('Основание: Есть повод проверить возможную задержку вывоза грунта')
+    expect(panel.textContent).toContain('Подтверждающие входные ID: input-0, input-1, input-2.')
+    expect(panel.textContent).toContain('Период: 2026-09-23T12:00:00+03:00. Заявленная зона: series_gate')
+    expect(panel.textContent).toContain('Рекомендуемая проверка человеком: Проверить вручную.')
     expect(within(panel).getByText('Это рекомендация для проверки, а не подтверждение нарушения.')).toBeTruthy()
-    expect(within(panel).getByText(/demonstration rule/)).toBeTruthy()
+    expect(screen.getByText(/ревизия rule-immutable-evidence-v1/)).toBeTruthy()
+    expect(document.querySelector('.rule-provenance')?.textContent).toContain('Ожидание: Экскаватор работает постоянно, самосвалы появляются периодически.')
+    expect(screen.getByText('Источник правила: demonstration rule.')).toBeTruthy()
+    expect(screen.getByText('Необнаружение в кадре не доказывает отсутствие на площадке.')).toBeTruthy()
+    const headings = [...document.querySelectorAll('.result h3')].map(item => item.textContent)
+    expect(headings).toEqual(['Наблюдения по кадрам', 'Данные серии', 'Исходные кадры', 'Правило и его источник', 'Неопределённость', 'Проверка человеком'])
+  })
+
+  it('falls back to projected and run areas when series area is missing', async () => {
+    for (const [context, expected] of [
+      [{ period: completed.context.period, observation_area: 'projection_gate' }, 'projection_gate'],
+      [{ period: completed.context.period }, 'run_gate'],
+    ] as const) {
+      const run = { ...completed, intent: 'rule_evaluation', context: { ...completed.context, observation_area: 'run_gate' },
+        result_projection: { ...completed.result_projection, outcome: 'check_requested', frames: projectionFrames(),
+          series: undefined, context, reason: 'Проверка нужна', supporting_input_ids: [], recommendation: null } }
+      vi.stubGlobal('fetch', vi.fn(async (url: string) => url === `/api/runs/${runId}`
+        ? { ok: true, json: async () => run }
+        : { ok: true, blob: async () => new Blob(['jpeg']) }))
+      const view = render(<App />)
+      const panel = await screen.findByRole('region', { name: 'Проверка человеком' })
+      expect(panel.textContent).toContain(`Заявленная зона: ${expected}`)
+      view.unmount()
+    }
   })
 
   it('shows positive evidence as a bounded no-check result', async () => {
@@ -130,6 +245,7 @@ describe('Observation result', () => {
       ...['excavator', 'dump_truck'].map(class_name => ({ input_id: 'input-2', ordinal: 2, class_name,
         state: 'not_detected_in_frame', reason: null, source_artifact_id: 'image-2' })),
     ]
+    const positiveFrames = projectionFrames(positiveObservations, positiveInputs)
     const series = { ...completed.result_projection.series, usable_count: 3,
       usable_input_ids: positiveInputs.map(item => item.input_id),
       input_order: positiveInputs.map(item => item.input_id),
@@ -137,15 +253,15 @@ describe('Observation result', () => {
     vi.stubGlobal('fetch', vi.fn(async (url: string) => url === `/api/runs/${runId}`
       ? { ok: true, json: async () => ({ ...completed, intent: 'rule_evaluation', outcome: 'no_check',
         rule_snapshot: rule, inputs: positiveInputs, observations: positiveObservations,
-        result_projection: { ...completed.result_projection, series, outcome: 'no_check',
+        result_projection: { ...completed.result_projection, frames: positiveFrames, series, outcome: 'no_check', rule,
           reason: 'Самосвал обнаружен в пригодной серии; запрос проверки не сформирован.',
           uncertainty: 'Необнаружение в кадре не доказывает отсутствие техники на всей площадке.',
           supporting_input_ids: ['input-0', 'input-1'], recommendation: null } }) }
       : { ok: true, blob: async () => new Blob(['jpeg']) }))
     render(<App />)
     expect(await screen.findByRole('heading', { name: 'Проверка не запрошена' })).toBeTruthy()
-    expect(screen.getByText('Самосвал обнаружен в пригодной серии; запрос проверки не сформирован.')).toBeTruthy()
-    expect(screen.getByText('Подтверждающие входные ID: input-0, input-1.')).toBeTruthy()
+    expect(document.querySelector('.rule-provenance')?.textContent).toContain('Самосвал обнаружен в пригодной серии; запрос проверки не сформирован.')
+    expect(document.querySelector('.rule-provenance')?.textContent).toContain('Подтверждающие входные ID: input-0, input-1.')
     expect(screen.getByText(/ревизия rule-positive-v1/)).toBeTruthy()
     expect(screen.getByText('Необнаружение в кадре не доказывает отсутствие техники на всей площадке.')).toBeTruthy()
     expect(screen.getByText('Экскаватор: Обнаружен')).toBeTruthy()
@@ -159,7 +275,7 @@ describe('Observation result', () => {
   it('keeps single-frame text and native metadata when verified bytes fail', async () => {
     const user = userEvent.setup()
     vi.stubGlobal('fetch', vi.fn(async (url: string) => url === `/api/runs/${runId}`
-      ? { ok: true, json: async () => ({ ...completed, inputs: inputs.slice(0, 1), observations: observations.slice(0, 2), result_projection: { outcome: 'observations_only' } }) }
+      ? { ok: true, json: async () => ({ ...completed, inputs: inputs.slice(0, 1), observations: observations.slice(0, 2), result_projection: { outcome: 'observations_only', frames: projectionFrames(observations.slice(0, 2)), series: completed.result_projection.series } }) }
       : { ok: false, json: async () => ({ code: 'artifact_integrity_failed' }) }))
     render(<App />)
     expect(await screen.findByRole('heading', { name: 'Только наблюдения' })).toBeTruthy()
@@ -171,28 +287,33 @@ describe('Observation result', () => {
     expect(screen.getByText(/invocation-0/)).toBeTruthy()
   })
 
-  it('keeps legacy result and partial failed evidence readable when source retrieval fails', async () => {
+  it('keeps projected metadata on source failure and uses legacy observations only for partial recovery', async () => {
     const user = userEvent.setup()
     const fetchMock = vi.fn(async (url: string): Promise<unknown> => url === `/api/runs/${runId}`
-      ? { ok: true, json: async () => ({ ...completed, result_projection: { outcome: 'observations_only' } }) }
+      ? { ok: true, json: async () => completed }
       : { ok: false, json: async () => ({ code: 'artifact_integrity_failed' }) })
     vi.stubGlobal('fetch', fetchMock)
     const view = render(<App />)
-    expect(await screen.findByText('Сводные данные серии недоступны для этого анализа.')).toBeTruthy()
+    expect(await screen.findAllByText('Пригодность: пригоден.')).toHaveLength(2)
+    expect(view.container.querySelector('.source-thumbnail')?.textContent).toContain('Исходный артефакт ID: image-0')
+    expect(view.container.querySelector('.source-thumbnail')?.textContent).toContain('SHA-256: hash-0')
     expect((await screen.findAllByText('Целостность артефакта не подтверждена')).length).toBeGreaterThan(0)
-    expect(screen.getAllByText(/Не обнаружен в кадре/)).toHaveLength(3)
+    expect(view.container.querySelectorAll('.observation-row')).toHaveLength(4)
     view.unmount()
     fetchMock.mockImplementation(async (url: string) => url === `/api/runs/${runId}`
-      ? { ok: true, json: async () => ({ ...completed, state: 'failed', outcome: null, result_projection: null,
+      ? { ok: true, json: async () => ({ ...completed, state: 'failed', intent: 'rule_evaluation', outcome: null, result_projection: null,
         observations: [{ ...observations[0], state: 'insufficient_data', reason: 'frame_unassessable' },
           { ...observations[1], state: 'not_analyzed', reason: 'unsupported_class' }] }) }
       : { ok: false, json: async () => ({ code: 'artifact_read_unavailable' }) })
     render(<App />)
     expect(await screen.findByRole('heading', { name: 'Частичные наблюдения — анализ не завершён' })).toBeTruthy()
-    expect(screen.getByText('Кадр непригоден для распознавания.')).toBeTruthy()
-    expect(screen.getByText('Класс не поддерживается профилем распознавания.')).toBeTruthy()
+    expect(screen.getByText(/Кадр непригоден для распознавания/)).toBeTruthy()
+    expect(screen.getByText(/Класс не поддерживается профилем распознавания/)).toBeTruthy()
+    expect(screen.getByText('Период наблюдения: 2026-09-23T12:00:00+03:00.')).toBeTruthy()
+    expect(screen.getByText('Статус правила недоступен: анализ не завершён.')).toBeTruthy()
+    expect(screen.queryByText('Правило этапа не проверялось.')).toBeNull()
     expect(screen.queryByText('Правило этапа не проверялось')).toBeNull()
-    expect(await screen.findByText('Не удалось открыть исходное изображение')).toBeTruthy()
+    expect((await screen.findAllByText('Не удалось открыть исходное изображение')).length).toBeGreaterThan(0)
   })
 
   it('retries one source without disturbing the other frame', async () => {
@@ -205,14 +326,15 @@ describe('Observation result', () => {
       if (url.endsWith('image-0')) return new Promise(resolve => { resolveRetry = resolve })
       return Promise.resolve({ ok: true, blob: async () => new Blob(['jpeg']) })
     }))
-    render(<App />)
-    const cards = await screen.findAllByRole('article')
-    expect(await within(cards[1]).findByRole('img', { name: /Кадр 2/ })).toBeTruthy()
-    await user.click(await within(cards[0]).findByRole('button', { name: 'Повторить' }))
-    expect(within(cards[0]).getByText('Загружаем изображение…')).toBeTruthy()
-    expect(within(cards[1]).getByRole('img', { name: /Кадр 2/ })).toBeTruthy()
+    const view = render(<App />)
+    await screen.findByRole('heading', { name: 'Только наблюдения' })
+    const thumbnails = [...view.container.querySelectorAll<HTMLElement>('.source-thumbnail')]
+    expect(await within(thumbnails[1]).findByRole('img', { name: /Кадр 2/ })).toBeTruthy()
+    await user.click(await within(thumbnails[0]).findByRole('button', { name: 'Повторить' }))
+    expect(within(thumbnails[0]).getByText('Загружаем изображение…')).toBeTruthy()
+    expect(within(thumbnails[1]).getByRole('img', { name: /Кадр 2/ })).toBeTruthy()
     await act(async () => { resolveRetry({ ok: true, blob: async () => new Blob(['recovered']) }) })
-    expect(await within(cards[0]).findByRole('img', { name: /Кадр 1/ })).toBeTruthy()
+    expect(await within(thumbnails[0]).findByRole('img', { name: /Кадр 1/ })).toBeTruthy()
   })
 
   it('shows a later native failure instead of stale successful content', async () => {

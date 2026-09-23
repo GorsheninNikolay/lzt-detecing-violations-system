@@ -5,12 +5,15 @@ type Pending = { endpoint: string; body: string; key: string }
 type Errors = Partial<Record<'scenario' | 'observation_area' | 'period' | 'images' | 'submit', string>>
 type Stage = { name: string; state: string; reason?: string | null; timestamp?: string | null }
 type Input = { input_id: string; ordinal: number; sha256: string; artifact_id: string | null }
-type Observation = { input_id: string; ordinal: number; class_name: string; state: string; reason?: string | null; source_artifact_id: string | null }
-type NativeEvidence = { artifact_id: string; input_id: string; ordinal: number; sha256: string; invocation_id: string; profile_id: string; profile_revision: number; preprocessing_revision: string }
+type Observation = { input_id: string; ordinal: number; class_name: string; state: string; reason?: string | null; source_artifact_id: string | null; input_sha256?: string; invocation_id?: string | null }
+type NativeEvidence = { artifact_id: string; input_id: string; ordinal: number; sha256: string; invocation_id: string; profile_id: string; profile_revision: number; preprocessing_revision?: string | null }
 type Series = { usable_count: number; usable_input_ids: string[]; declared_observation_area: string | null; input_order: string[]; excavator_supporting_input_ids: string[]; dump_truck_persistence_input_ids: string[]; dump_truck_persistence_text: string | null }
-type Rule = { name: string; revision: string; expectation: string; provenance: string; recommendation: string }
+type Rule = { name: string; revision: string; expectation: string; provenance: string; recommendation: string | null }
 type Choice = { id: string; label: string; rule: Rule | null }
-type RunSnapshot = { run_id?: string; state: string; stages: Stage[]; context?: { period?: string; observation_area?: string }; intent?: string; stage?: string | null; rule_snapshot?: Rule | null; requested_classes?: string[]; inputs?: Input[]; observations?: Observation[]; native_evidence_by_frame?: NativeEvidence[]; outcome?: string | null; result_projection?: { outcome: string; context?: { period?: string; observation_area?: string }; series?: Series; reason?: string; uncertainty?: string; recommendation?: string; rule?: Rule; supporting_input_ids?: string[] } | null }
+type ResultProjection = { outcome: string; frames?: Observation[]; context?: { period?: string; observation_area?: string }; series?: Series; reason?: string | null; uncertainty?: string | null; recommendation?: string | null; rule?: Rule | null; supporting_input_ids?: string[] | null }
+type ProfileSnapshot = { adapter?: { code?: string } }
+type ResultFrame = { input_id: string; ordinal: number; artifact_id: string | null; sha256: string | null; usable: boolean | null; observations: Observation[] }
+type RunSnapshot = { run_id?: string; state: string; stages: Stage[]; context?: { period?: string; observation_area?: string }; intent?: string; stage?: string | null; profile_snapshot?: ProfileSnapshot; rule_snapshot?: Rule | null; requested_classes?: string[]; inputs?: Input[]; observations?: Observation[]; native_evidence_by_frame?: NativeEvidence[]; outcome?: string | null; result_projection?: ResultProjection | null }
 
 const CLASS_LABELS: Record<string, string> = { excavator: 'Экскаватор', dump_truck: 'Самосвал' }
 const OBSERVATION_STATES: Record<string, string> = { detected: 'Обнаружен', not_detected_in_frame: 'Не обнаружен в кадре', insufficient_data: 'Недостаточно данных', not_analyzed: 'Не анализировалось' }
@@ -49,23 +52,58 @@ function SourceImage({ runId, artifactId, label, description }: { runId: string;
       <p className="muted">Загружаем изображение…</p>}</div>
 }
 
-function frameDescription(observations: Observation[], inputId: string): string {
-  return observations.filter(item => item.input_id === inputId).map(item =>
+function frameDescription(observations: Observation[]): string {
+  return observations.map(item =>
     `${CLASS_LABELS[item.class_name] ?? item.class_name}: ${OBSERVATION_STATES[item.state] ?? item.state}${item.reason ? `; ${OBSERVATION_REASONS[item.reason] ?? item.reason}` : ''}`).join('. ')
 }
 
-function EvidenceViewer({ runId, inputs, observations, native, context, selected, onClose, onSelect }: {
-  runId: string; inputs: Input[]; observations: Observation[]; native: NativeEvidence[]; context?: RunSnapshot['context']; selected: number;
+function makeResultFrames(observations: Observation[], inputs: Input[], usableInputIds?: string[], projected = false): ResultFrame[] {
+  const inputsById = new Map(inputs.map(input => [input.input_id, input]))
+  const frames = new Map<string, ResultFrame>(inputs.map(input => [input.input_id, {
+    input_id: input.input_id, ordinal: input.ordinal, artifact_id: input.artifact_id, sha256: input.sha256,
+    usable: usableInputIds ? usableInputIds.includes(input.input_id) : null, observations: [],
+  }]))
+  for (const observation of observations) {
+    let frame = frames.get(observation.input_id)
+    if (!frame) {
+      const input = inputsById.get(observation.input_id)
+      frame = { input_id: observation.input_id, ordinal: observation.ordinal,
+        artifact_id: observation.source_artifact_id ?? input?.artifact_id ?? null,
+        sha256: input?.sha256 ?? observation.input_sha256 ?? null,
+        usable: usableInputIds ? usableInputIds.includes(observation.input_id) : null, observations: [] }
+      frames.set(observation.input_id, frame)
+    }
+    if (projected) {
+      frame.ordinal = observation.ordinal
+      frame.artifact_id = observation.source_artifact_id ?? frame.artifact_id
+    }
+    frame.observations.push(observation)
+  }
+  return [...frames.values()].sort((left, right) => left.ordinal - right.ordinal)
+}
+
+function EvidenceViewer({ runId, frames, native, profile, context, selected, onClose, onSelect }: {
+  runId: string; frames: ResultFrame[]; native: NativeEvidence[]; profile?: ProfileSnapshot; context?: RunSnapshot['context']; selected: number;
   onClose: () => void; onSelect: (index: number) => void
 }) {
   const dialog = useRef<HTMLDialogElement>(null)
+  const handledClose = useRef(false)
   const [zoom, setZoom] = useState(1)
   const [nativeResult, setNativeResult] = useState<{ id: string; text: string } | null>(null)
   const [nativeError, setNativeError] = useState<{ id: string; code: string } | null>(null)
   const [nativeAttempt, retryNative] = useState(0)
-  const frame = inputs[selected]
+  const frame = frames[selected]
   const evidence = native.find(item => item.input_id === frame.input_id)
-  useEffect(() => { dialog.current?.showModal(); return () => dialog.current?.close() }, [])
+  const handleClose = () => {
+    if (handledClose.current) return
+    handledClose.current = true
+    onClose()
+  }
+  useEffect(() => {
+    handledClose.current = false
+    dialog.current?.showModal()
+    return () => { if (dialog.current?.open) dialog.current.close() }
+  }, [])
   useEffect(() => {
     if (!evidence) return
     const controller = new AbortController()
@@ -79,12 +117,15 @@ function EvidenceViewer({ runId, inputs, observations, native, context, selected
     }).catch(error => { if (!controller.signal.aborted) setNativeError({ id: evidence.artifact_id, code: error.message === 'integrity' ? 'integrity' : 'unavailable' }) })
     return () => controller.abort()
   }, [runId, evidence?.artifact_id, nativeAttempt])
-  return <dialog ref={dialog} aria-label="Просмотр исходных кадров" onClose={onClose} className="evidence-dialog">
-    <div className="viewer-toolbar"><button type="button" className="secondary" onClick={onClose}>Закрыть</button><button type="button" className="secondary" disabled={selected === 0} onClick={() => { onSelect(selected - 1); setZoom(1) }}>Предыдущий кадр</button><button type="button" className="secondary" disabled={selected === inputs.length - 1} onClick={() => { onSelect(selected + 1); setZoom(1) }}>Следующий кадр</button><button type="button" className="secondary" onClick={() => setZoom(value => Math.min(4, value + .5))}>Увеличить</button><button type="button" className="secondary" onClick={() => setZoom(value => Math.max(1, value - .5))}>Уменьшить</button><button type="button" className="secondary" onClick={() => setZoom(1)}>Сбросить масштаб</button></div>
-    <p role="status">Кадр {selected + 1} из {inputs.length}. Масштаб {Math.round(zoom * 100)}%.</p>
-    <p>Входной ID: <code>{frame.input_id}</code>. Период: {context?.period ?? 'не указан'}. SHA-256 исходного кадра: <code>{frame.sha256}</code>.</p>
-    <div className="viewer-image"><div style={{ width: `${zoom * 100}%` }}><SourceImage key={frame.input_id} runId={runId} artifactId={frame.artifact_id} label={`Кадр ${selected + 1}`} description={frameDescription(observations, frame.input_id)} /></div></div>
-    {evidence && <details><summary>Технические данные наблюдателя</summary><p>Данные конкретного наблюдателя. Не используются правилом этапа.</p><p>Кадр {selected + 1}, входной ID <code>{frame.input_id}</code>. Вызов <code>{evidence.invocation_id}</code>. Профиль <code>{evidence.profile_id}</code>, ревизия допуска: {evidence.profile_revision}. Наблюдатель/адаптер: Grounding DINO local. Предобработка <code>{evidence.preprocessing_revision}</code>. Артефакт <code>{evidence.artifact_id}</code>, SHA-256 <code>{evidence.sha256}</code>.</p>{nativeError?.id === evidence.artifact_id ? <p className="error">{nativeError.code === 'integrity' ? 'Целостность артефакта не подтверждена' : 'Не удалось открыть технические данные'} <button type="button" className="secondary" onClick={() => { setNativeResult(null); setNativeError(null); retryNative(value => value + 1) }}>Повторить</button></p> : nativeResult?.id === evidence.artifact_id ? <pre>{nativeResult.text}</pre> : <p>Загружаем технические данные…</p>}</details>}
+  return <dialog ref={dialog} aria-label="Просмотр исходных кадров" onClose={handleClose} className="evidence-dialog">
+    <div className="viewer-toolbar"><button type="button" className="secondary" onClick={() => dialog.current?.close()}>Закрыть</button><button type="button" className="secondary" disabled={selected === 0} onClick={() => { onSelect(selected - 1); setZoom(1) }}>Предыдущий кадр</button><button type="button" className="secondary" disabled={selected === frames.length - 1} onClick={() => { onSelect(selected + 1); setZoom(1) }}>Следующий кадр</button><button type="button" className="secondary" onClick={() => setZoom(value => Math.min(4, value + .5))}>Увеличить</button><button type="button" className="secondary" onClick={() => setZoom(value => Math.max(1, value - .5))}>Уменьшить</button><button type="button" className="secondary" onClick={() => setZoom(1)}>Сбросить масштаб</button></div>
+    <p role="status">Кадр {selected + 1} из {frames.length}. Масштаб {Math.round(zoom * 100)}%.</p>
+    <p>Номер кадра: {frame.ordinal + 1}. Пригодность: {frame.usable === null ? 'не указана' : frame.usable ? 'пригоден' : 'не пригоден'}.</p>
+    <p>Наблюдения: {frameDescription(frame.observations) || 'не указаны'}.</p>
+    <p>Входной ID: <code>{frame.input_id}</code>. Период: {context?.period ?? 'не указан'}.</p>
+    <p>Исходный артефакт ID: <code>{frame.artifact_id ?? 'не указан'}</code>. SHA-256 исходного кадра: <code>{frame.sha256 ?? 'не указан'}</code>.</p>
+    <div className="viewer-image"><div style={{ width: `${zoom * 100}%` }}><SourceImage key={frame.input_id} runId={runId} artifactId={frame.artifact_id} label={`Кадр ${frame.ordinal + 1}`} description={frameDescription(frame.observations)} /></div></div>
+    {evidence && <details><summary>Технические данные наблюдателя</summary><p>Данные конкретного наблюдателя. Не используются правилом этапа.</p><p>Адаптер: <code>{profile?.adapter?.code ?? 'не указан'}</code>. Профиль <code>{evidence.profile_id}</code>, ревизия допуска: {evidence.profile_revision}. Вызов <code>{evidence.invocation_id}</code>. Входной ID <code>{evidence.input_id}</code>. Предобработка: {evidence.preprocessing_revision ? <code>{evidence.preprocessing_revision}</code> : 'не указана'}. Артефакт <code>{evidence.artifact_id}</code>, SHA-256 <code>{evidence.sha256}</code>.</p>{nativeError?.id === evidence.artifact_id ? <p className="error">{nativeError.code === 'integrity' ? 'Целостность артефакта не подтверждена' : 'Не удалось открыть технические данные'} <button type="button" className="secondary" onClick={() => { setNativeResult(null); setNativeError(null); retryNative(value => value + 1) }}>Повторить</button></p> : nativeResult?.id === evidence.artifact_id ? <pre>{nativeResult.text}</pre> : <p>Загружаем технические данные…</p>}</details>}
   </dialog>
 }
 
@@ -92,13 +133,87 @@ function ObservationResult({ run, runId }: { run: RunSnapshot; runId: string }) 
   const heading = useRef<HTMLHeadingElement>(null)
   const [selected, setSelected] = useState<number | null>(null)
   const opener = useRef<HTMLButtonElement | null>(null)
+  const projection = run.result_projection
   const inputs = run.inputs ?? []
-  const observations = run.observations ?? []
-  const complete = run.state === 'succeeded' && !!run.outcome
+  const complete = run.state === 'succeeded' && !!projection?.outcome
+  const observations = complete ? projection.frames ?? [] : run.observations ?? []
+  const frames = makeResultFrames(observations, inputs, complete ? projection.series?.usable_input_ids : undefined, complete)
+  const outcome = complete ? projection.outcome : null
   const outcomeLabel: Record<string, string> = { observations_only: 'Только наблюдения', insufficient_data: 'Недостаточно данных для проверки правила', not_analyzed: 'Правило не анализировалось', no_check: 'Проверка не запрошена', check_requested: 'Рекомендована проверка человеком' }
-  const series = run.result_projection?.series
   if (!complete && !observations.length) return null
-  return <><button type="button" className="secondary" onClick={() => heading.current?.focus()}>{complete ? 'Перейти к результату' : 'Перейти к частичным наблюдениям'}</button><section className="panel result" aria-labelledby="result-heading"><h2 ref={heading} tabIndex={-1} id="result-heading">{complete ? outcomeLabel[run.outcome ?? ''] ?? 'Результат анализа' : 'Частичные наблюдения — анализ не завершён'}</h2>{complete && run.outcome !== 'check_requested' && <p>{run.outcome === 'observations_only' ? 'Правило этапа не проверялось' : run.result_projection?.reason}</p>}{complete && run.intent === 'rule_evaluation' && run.outcome !== 'check_requested' && <div className="rule-outcome"><p>Правило: {run.rule_snapshot?.name}, ревизия {run.rule_snapshot?.revision}. Источник: {run.rule_snapshot?.provenance}.</p><p>{run.rule_snapshot?.expectation}</p><p>{run.result_projection?.uncertainty}</p>{run.outcome === 'no_check' && <p>Подтверждающие входные ID: {run.result_projection?.supporting_input_ids?.join(', ') ?? 'не указаны'}.</p>}</div>}{complete && run.outcome === 'check_requested' && <section className="check-request" aria-labelledby="check-request-heading"><h3 id="check-request-heading">Запрос проверки вывоза грунта</h3><p>Основание: {run.result_projection?.reason}</p><p>Подтверждающие входные ID: {run.result_projection?.supporting_input_ids?.join(', ') ?? 'не указаны'}.</p><p>Период: {run.result_projection?.context?.period ?? 'не указан'}. Заявленная зона: {series?.declared_observation_area ?? 'не указана'} (со слов пользователя).</p><p>Правило: {run.result_projection?.rule?.name}, ревизия {run.result_projection?.rule?.revision}. Источник: {run.result_projection?.rule?.provenance}.</p><p>Ожидание: {run.result_projection?.rule?.expectation}</p><p>Неопределённость: {run.result_projection?.uncertainty}</p><p>Рекомендуемая проверка человеком: {run.result_projection?.recommendation}</p><p>Это рекомендация для проверки, а не подтверждение нарушения.</p></section>}<p>Период наблюдения: {run.context?.period ?? 'не указан'}</p><div className="result-frames">{inputs.filter(input => observations.some(item => item.input_id === input.input_id)).map(input => <article className="result-frame" key={input.input_id}><div><h3>Кадр {input.ordinal + 1}</h3><p>Входной ID: <code>{input.input_id}</code></p><SourceImage runId={runId} artifactId={input.artifact_id} label={`Кадр ${input.ordinal + 1}`} description={frameDescription(observations, input.input_id)} /><button type="button" className="secondary" onClick={event => { opener.current = event.currentTarget; setSelected(inputs.indexOf(input)) }}>Открыть кадр {input.ordinal + 1}</button></div><ul>{observations.filter(item => item.input_id === input.input_id).map(item => <li key={item.class_name}><strong>{CLASS_LABELS[item.class_name] ?? item.class_name}: {OBSERVATION_STATES[item.state] ?? item.state}</strong>{item.reason && <p>{OBSERVATION_REASONS[item.reason] ?? item.reason}</p>}<p>Кадр {input.ordinal + 1}, входной ID <code>{item.input_id}</code></p></li>)}</ul></article>)}</div>{complete && inputs.length > 1 && <section className="series-evidence" aria-labelledby="series-heading"><h3 id="series-heading">Данные серии</h3>{series ? <><p>Пригодных кадров: {series.usable_count}. Входные ID: {series.usable_input_ids.length ? series.usable_input_ids.join(', ') : 'нет'}.</p><p>Заявленная зона наблюдения: {series.declared_observation_area ?? 'не указана'} (со слов пользователя; по изображениям не подтверждена).</p><p>Порядок: {series.input_order.map(inputId => { const input = inputs.find(item => item.input_id === inputId); return input ? `Кадр ${input.ordinal + 1} (${inputId})` : inputId }).join(' → ')}.</p>{run.requested_classes?.includes('excavator') && <p>Кадры с экскаватором: {series.excavator_supporting_input_ids.length ? series.excavator_supporting_input_ids.join(', ') : 'нет подтверждённых'}.</p>}{series.dump_truck_persistence_text && <p>{series.dump_truck_persistence_text} Подтверждающие входные ID: {series.dump_truck_persistence_input_ids.join(', ')}.</p>}</> : <p>Сводные данные серии недоступны для этого анализа.</p>}</section>}</section>{selected !== null && <EvidenceViewer runId={runId} inputs={inputs} observations={observations} native={run.native_evidence_by_frame ?? []} context={run.context} selected={selected} onSelect={setSelected} onClose={() => { setSelected(null); opener.current?.focus() }} />}</>
+  const series = projection?.series
+  const projectionContext = projection?.context
+  const ruleRun = complete && outcome !== 'observations_only'
+  const showSeries = complete && (ruleRun || frames.length > 1)
+  return <>
+    <button type="button" className="secondary" onClick={() => heading.current?.focus()}>{complete ? 'Перейти к результату' : 'Перейти к частичным наблюдениям'}</button>
+    <section className="panel result" aria-labelledby="result-heading">
+      <h2 ref={heading} tabIndex={-1} id="result-heading">{complete ? outcomeLabel[outcome ?? ''] ?? 'Результат анализа' : 'Частичные наблюдения — анализ не завершён'}</h2>
+      <section className="observation-rows" aria-labelledby="observations-heading">
+        <h3 id="observations-heading">Наблюдения по кадрам</h3>
+        {observations.length ? observations.map((item, index) => {
+          const input = inputs.find(value => value.input_id === item.input_id)
+          const ordinal = complete ? item.ordinal : input?.ordinal ?? item.ordinal
+          return <article className="observation-row" key={`${item.input_id}-${item.class_name}-${index}`}>
+            <h4>Кадр {ordinal + 1}</h4>
+            <p><strong>{`${CLASS_LABELS[item.class_name] ?? item.class_name}: ${OBSERVATION_STATES[item.state] ?? item.state}`}</strong>{item.reason ? ` — ${OBSERVATION_REASONS[item.reason] ?? item.reason}` : ''}</p>
+            <p>Входной ID: <code>{item.input_id}</code></p>
+          </article>
+        }) : <p>{complete ? 'Данные наблюдений в проекции недоступны.' : 'Частичные наблюдения недоступны.'}</p>}
+      </section>
+      {!showSeries && <p>Период наблюдения: {projectionContext?.period ?? run.context?.period ?? 'не указан'}.</p>}
+      {showSeries && <section className="series-evidence" aria-labelledby="series-heading">
+        <h3 id="series-heading">Данные серии</h3>
+        <p>Период наблюдения: {projectionContext?.period ?? run.context?.period ?? 'не указан'}.</p>
+        {series ? <>
+          <p>Пригодных кадров: {series.usable_count}. Входные ID: {series.usable_input_ids.length ? series.usable_input_ids.join(', ') : 'нет'}.</p>
+          <p>Заявленная зона наблюдения: {series.declared_observation_area ?? 'не указана'} (со слов пользователя; по изображениям не подтверждена).</p>
+          <p>Порядок: {series.input_order.map(inputId => { const frame = frames.find(item => item.input_id === inputId); return frame ? `Кадр ${frame.ordinal + 1} (${inputId})` : inputId }).join(' → ') || 'не указан'}.</p>
+          {observations.some(item => item.class_name === 'excavator') && <p>Кадры с экскаватором: {series.excavator_supporting_input_ids.length ? series.excavator_supporting_input_ids.join(', ') : 'нет подтверждённых'}.</p>}
+          {series.dump_truck_persistence_text && <p>{series.dump_truck_persistence_text} Подтверждающие входные ID: {series.dump_truck_persistence_input_ids.join(', ')}.</p>}
+        </> : <p>Сводные данные серии недоступны для этого анализа.</p>}
+      </section>}
+      <section className="source-thumbnails" aria-labelledby="source-heading">
+        <h3 id="source-heading">Исходные кадры</h3>
+        {frames.length ? frames.map((frame, index) => <article className="source-thumbnail" key={frame.input_id}>
+          <h4>Кадр {frame.ordinal + 1}</h4>
+          <p>Пригодность: {frame.usable === null ? 'не указана' : frame.usable ? 'пригоден' : 'не пригоден'}.</p>
+          <p>Входной ID: <code>{frame.input_id}</code></p>
+          <p>Исходный артефакт ID: <code>{frame.artifact_id ?? 'не указан'}</code></p>
+          <p>SHA-256: <code>{frame.sha256 ?? 'не указан'}</code></p>
+          <SourceImage runId={runId} artifactId={frame.artifact_id} label={`Кадр ${frame.ordinal + 1}`} description={frameDescription(frame.observations)} />
+          <button type="button" className="secondary" onClick={event => { opener.current = event.currentTarget; setSelected(index) }}>Открыть кадр {frame.ordinal + 1}</button>
+        </article>) : <p>{complete ? 'Исходные кадры в проекции недоступны.' : 'Исходные кадры недоступны.'}</p>}
+      </section>
+      <section className="rule-provenance" aria-labelledby="rule-provenance-heading">
+        <h3 id="rule-provenance-heading">Правило и его источник</h3>
+        {ruleRun ? <>
+          {projection?.rule ? <>
+            <p>Правило: {projection.rule.name || 'не указано'}, ревизия {projection.rule.revision || 'не указана'}.</p>
+            <p>Источник правила: {projection.rule.provenance || 'не указан'}.</p>
+            <p>Ожидание: {projection.rule.expectation || 'не указано'}.</p>
+          </> : <p>Данные о правиле в проекции недоступны.</p>}
+          <p>{projection?.reason ? `Результат правила: ${projection.reason}` : 'Результат правила в проекции недоступен.'}</p>
+          {outcome === 'no_check' && <p>Подтверждающие входные ID: {projection?.supporting_input_ids?.join(', ') || 'не указаны'}.</p>}
+        </> : complete ? <p>Правило этапа не проверялось.</p> : <p>Статус правила недоступен: анализ не завершён.</p>}
+      </section>
+      {ruleRun && <section className="uncertainty" aria-labelledby="uncertainty-heading">
+        <h3 id="uncertainty-heading">Неопределённость</h3>
+        <p>{projection?.uncertainty || 'Неопределённость не указана в проекции.'}</p>
+      </section>}
+      {ruleRun && outcome === 'check_requested' && <section className="check-request" aria-labelledby="check-request-heading">
+        <h3 id="check-request-heading">Проверка человеком</h3>
+        <p>Основание: {projection?.reason || 'не указано'}.</p>
+        <p>Подтверждающие входные ID: {projection?.supporting_input_ids?.join(', ') || 'не указаны'}.</p>
+        <p>Период: {projectionContext?.period ?? run.context?.period ?? 'не указан'}. Заявленная зона: {series?.declared_observation_area ?? projectionContext?.observation_area ?? run.context?.observation_area ?? 'не указана'} (со слов пользователя).</p>
+        <p>Рекомендуемая проверка человеком: {projection?.recommendation || 'не указана'}.</p>
+        <p>Это рекомендация для проверки, а не подтверждение нарушения.</p>
+      </section>}
+    </section>
+    {selected !== null && <EvidenceViewer runId={runId} frames={frames} native={run.native_evidence_by_frame ?? []} profile={run.profile_snapshot}
+      context={projectionContext ?? run.context} selected={selected} onSelect={setSelected}
+      onClose={() => { setSelected(null); opener.current?.focus() }} />}
+  </>
 }
 
 const STAGE_LABELS: Record<string, string> = {
