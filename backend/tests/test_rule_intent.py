@@ -2,6 +2,7 @@ import base64
 import asyncio
 import json
 import uuid
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -80,11 +81,22 @@ def test_rule_uses_normalized_frame_states(states, usable, outcome):
     result = evaluate_rule(frames, [str(index) for index in range(usable)], RULE_POLICY, RULE, CONTEXT)
     assert result["outcome"] == outcome
     assert result["rule"]["revision"] == RULE["revision"]
-    assert result["supporting_input_ids"] == (["0", "1", "2"] if outcome == 'check_requested' else [])
+    assert result["supporting_input_ids"] == (["0", "1", "2"] if outcome in ('check_requested', 'no_check') else [])
     if outcome == "insufficient_data" and any(state == "insufficient_data"
                                               for pair in states for state in pair):
         assert "Наблюдатель не смог оценить" in result["reason"]
         assert result["recommendation"] is None
+
+
+def test_positive_development_fixture_is_separate_and_requests_no_check():
+    fixture = json.loads((Path(__file__).parent / "fixtures/positive_no_check.json").read_text())
+    held_out = json.loads((Path(__file__).parent.parent / "admission/exclusions/held_out_evaluation.json").read_text())
+    assert fixture["source_group"] not in held_out["reserved_source_groups"]
+    assert all(item.get("source_group") != fixture["source_group"] for item in held_out["fixtures"])
+    result = evaluate_rule(fixture["observations"], fixture["usable_input_ids"], RULE_POLICY, RULE, fixture["context"])
+    assert result["outcome"] == "no_check"
+    assert result["supporting_input_ids"] == ["frame-0", "frame-2"]
+    assert result["recommendation"] is None
 
 
 def test_stricter_policy_revision_uses_its_bound_minimum_in_the_reason():
@@ -189,12 +201,21 @@ def test_rule_intent_survives_publication_execution_and_readback(integration, mo
         insert_binding(RULE_POLICY, {**snapshot, "runtime": {"batch_timeout_seconds": 1}})
 
     detected_dump = False
+    observed_index = 0
 
     def observed(*_):
-        detections = [{"label": "an excavator", "score": 0.8, "box": [1, 2, 3, 4]}]
-        if detected_dump:
+        nonlocal observed_index
+        index = observed_index
+        observed_index += 1
+        excavator_seen = not detected_dump or index == 0
+        dump_seen = detected_dump and index == 2
+        detections = []
+        if excavator_seen:
+            detections.append({"label": "an excavator", "score": 0.8, "box": [1, 2, 3, 4]})
+        if dump_seen:
             detections.append({"label": "a dump truck", "score": 0.8, "box": [1, 2, 3, 4]})
-        return {"states": {"excavator": "detected", "dump_truck": "detected" if detected_dump else "not_detected_in_frame"},
+        return {"states": {"excavator": "detected" if excavator_seen else "not_detected_in_frame",
+                           "dump_truck": "detected" if dump_seen else "not_detected_in_frame"},
                 "returned_model_identity": f"checkpoint-sha256:{'a' * 64}", "actual_device": "cpu",
                 "latency_ms": 1.0, "peak_memory_bytes": 1024,
                 "native": {"detections": detections,
@@ -205,8 +226,9 @@ def test_rule_intent_survives_publication_execution_and_readback(integration, mo
     loop.store, loop.artifacts, loop.snapshot_dir = store, artifacts, "unused"
 
     async def run_case(count, expected, dump=False):
-        nonlocal detected_dump
+        nonlocal detected_dump, observed_index
         detected_dump = dump
+        observed_index = 0
         images = [jpeg((10 + index, 20, 30)) for index in range(count)]
         body = {**request(), **({"image_base64": base64.b64encode(images[0]).decode()} if count == 1
                                else {"images_base64": [base64.b64encode(image).decode() for image in images]})}
@@ -231,8 +253,24 @@ def test_rule_intent_survives_publication_execution_and_readback(integration, mo
         assert done["stages"][4]["state"] == "succeeded"
         assert bool(done["result_projection"]["recommendation"]) == (expected == "check_requested")
         if expected == "no_check":
-            assert done["result_projection"]["outcome"] == "no_check"
-            assert done["result_projection"]["recommendation"] is None
+            projection = done["result_projection"]
+            assert projection["outcome"] == "no_check"
+            assert projection["recommendation"] is None
+            assert projection["rule"]["revision"] == queued["rule_snapshot"]["revision"]
+            assert projection["policy"]["revision"] == queued["policy_snapshot"]["revision"]
+            assert projection["context"] == CONTEXT
+            assert projection["series"]["usable_input_ids"] == [item["input_id"] for item in done["inputs"]]
+            assert projection["supporting_input_ids"] == [done["inputs"][0]["input_id"], done["inputs"][2]["input_id"]]
+            assert projection["frames"] == [{key: item[key] for key in ("input_id", "ordinal", "class_name", "state", "reason", "source_artifact_id", "invocation_id")}
+                                            for item in done["observations"]]
+            assert all(frame["source_artifact_id"] == next(item["artifact_id"] for item in done["inputs"]
+                                                            if item["input_id"] == frame["input_id"])
+                       for frame in projection["frames"])
+            with store.engine.connect() as connection:
+                assert connection.execute(text("SELECT count(*) FROM result_projections WHERE run_id = :run"),
+                                          {"run": run_id}).scalar_one() == 1
+                assert connection.execute(text("SELECT count(*) FROM result_projections WHERE run_id = :run AND outcome = 'check_requested'"),
+                                          {"run": run_id}).scalar_one() == 0
         return run_id
 
     asyncio.run(run_case(1, "insufficient_data"))

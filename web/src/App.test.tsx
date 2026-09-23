@@ -101,6 +101,43 @@ describe('Observation result', () => {
     expect(screen.getByText(/demonstration rule/)).toBeTruthy()
   })
 
+  it('shows positive evidence as a bounded no-check result', async () => {
+    const rule = { name: 'Проверка вывоза грунта', revision: 'rule-positive-v1',
+      expectation: 'Экскаватор работает постоянно, самосвалы появляются периодически.',
+      provenance: 'demonstration rule', recommendation: 'Проверить вручную' }
+    const positiveInputs = [...inputs, { input_id: 'input-2', ordinal: 2, sha256: 'third', artifact_id: 'image-2' }]
+    const positiveObservations = [
+      ...observations.map(item => item.input_id === 'input-1' && item.class_name === 'dump_truck'
+        ? { ...item, state: 'detected' } : item),
+      ...['excavator', 'dump_truck'].map(class_name => ({ input_id: 'input-2', ordinal: 2, class_name,
+        state: 'not_detected_in_frame', reason: null, source_artifact_id: 'image-2' })),
+    ]
+    const series = { ...completed.result_projection.series, usable_count: 3,
+      usable_input_ids: positiveInputs.map(item => item.input_id),
+      input_order: positiveInputs.map(item => item.input_id),
+      dump_truck_persistence_input_ids: [], dump_truck_persistence_text: null }
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => url === `/api/runs/${runId}`
+      ? { ok: true, json: async () => ({ ...completed, intent: 'rule_evaluation', outcome: 'no_check',
+        rule_snapshot: rule, inputs: positiveInputs, observations: positiveObservations,
+        result_projection: { ...completed.result_projection, series, outcome: 'no_check',
+          reason: 'Самосвал обнаружен в пригодной серии; запрос проверки не сформирован.',
+          uncertainty: 'Необнаружение в кадре не доказывает отсутствие техники на всей площадке.',
+          supporting_input_ids: ['input-0', 'input-1'], recommendation: null } }) }
+      : { ok: true, blob: async () => new Blob(['jpeg']) }))
+    render(<App />)
+    expect(await screen.findByRole('heading', { name: 'Проверка не запрошена' })).toBeTruthy()
+    expect(screen.getByText('Самосвал обнаружен в пригодной серии; запрос проверки не сформирован.')).toBeTruthy()
+    expect(screen.getByText('Подтверждающие входные ID: input-0, input-1.')).toBeTruthy()
+    expect(screen.getByText(/ревизия rule-positive-v1/)).toBeTruthy()
+    expect(screen.getByText('Необнаружение в кадре не доказывает отсутствие техники на всей площадке.')).toBeTruthy()
+    expect(screen.getByText('Экскаватор: Обнаружен')).toBeTruthy()
+    expect(screen.getByText('Самосвал: Обнаружен')).toBeTruthy()
+    expect(screen.getByText(/Пригодных кадров: 3\. Входные ID: input-0, input-1, input-2/)).toBeTruthy()
+    expect(screen.queryByText(/Самосвал не обнаружен ни в одном/)).toBeNull()
+    expect(screen.queryByText(/Проверить вручную/)).toBeNull()
+    expect(screen.queryByText(/этап.*здоров|нарушени[йя] нет/i)).toBeNull()
+  })
+
   it('keeps single-frame text and native metadata when verified bytes fail', async () => {
     const user = userEvent.setup()
     vi.stubGlobal('fetch', vi.fn(async (url: string) => url === `/api/runs/${runId}`

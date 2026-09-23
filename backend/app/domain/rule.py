@@ -62,7 +62,13 @@ def evaluate_rule(frames: list[dict], usable_ids: list[str], policy: dict, rule:
         outcome, reason = "check_requested", "Экскаватор обнаружен, самосвал не обнаружен ни в одном пригодном кадре."
     else:
         outcome, reason = "insufficient_data", "Наблюдения не подтверждают работу экскаватора для оценки вывоза грунта."
+    supporting_ids = []
+    if outcome == "check_requested":
+        supporting_ids = usable_ids
+    elif outcome == "no_check":
+        supporting_ids = [input_id for input_id in usable_ids
+                          if states[input_id, excavator] == "detected" or states[input_id, dump_truck] == "detected"]
     return {"outcome": outcome, "reason": reason, "rule": rule, "policy": policy,
-            "context": context, "supporting_input_ids": usable_ids if outcome == "check_requested" else [],
+            "context": context, "supporting_input_ids": supporting_ids,
             "uncertainty": "Необнаружение в кадре не доказывает отсутствие техники на всей площадке.",
             "recommendation": rule["recommendation"] if outcome == "check_requested" else None}
