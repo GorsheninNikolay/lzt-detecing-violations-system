@@ -14,6 +14,7 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.engine import make_url
 from sqlalchemy.exc import IntegrityError
 
+from app.adapters import postgres
 from app.adapters.artifacts import ArtifactGateError, ArtifactStore
 from app.adapters.postgres import AdmissionStoreError, PostgresStore
 from app.application import executor, submission
@@ -226,7 +227,7 @@ def test_ordered_series_http_postgres_s3(isolated_admission_database, integratio
         missing_bucket.read_verified(f"sha256/{absent_digest}", absent_digest, 1)
     parent, profile = uuid.uuid4(), uuid.uuid4()
     snapshot = {"model_files": {"model.safetensors": "a" * 64},
-                "runtime": {"per_image_timeout_seconds": 2}}
+                "runtime": {"per_image_timeout_seconds": 2, "batch_timeout_seconds": 600}}
     with store.engine.begin() as connection:
         connection.execute(text("INSERT INTO observer_profiles (id, status, profile_hash, snapshot) VALUES (:id, 'draft', :hash, '{}'::jsonb)"),
                            {"id": parent, "hash": uuid.uuid4().hex})
@@ -511,6 +512,128 @@ def test_ordered_series_http_postgres_s3(isolated_admission_database, integratio
                                           {"run": preflight_run}).scalars().all()[1:] == [
                                               "failed", "skipped", "skipped", "skipped", "skipped"]
             monkeypatch.setattr(artifacts, "read_verified", original_read)
+
+            snapshot["runtime"]["batch_timeout_seconds"] = 3
+            clock = [0.0]
+            monkeypatch.setattr(executor, "monotonic", lambda: clock[0])
+            original_monotonic = postgres.monotonic
+            monkeypatch.setattr(postgres, "monotonic", lambda: clock[0])
+            allowances = []
+
+            def consume_first_frame(*args):
+                allowances.append(args[-1])
+                if len(allowances) == 1:
+                    clock[0] = 1.5
+                return observed(*args)
+
+            monkeypatch.setattr(executor, "_observe_bounded", consume_first_frame)
+            within = await client.post("/runs/series", headers={"Idempotency-Key": uuid.uuid4().hex},
+                                       json=body(first, second))
+            within_run = uuid.UUID(within.json()["run_id"])
+            snapshot["runtime"]["batch_timeout_seconds"] = 600
+            await loop._execute(store.claim_ordinary(profile, 1, 30), 1)
+            snapshot["runtime"]["batch_timeout_seconds"] = 3
+            within_result = (await client.get(f"/runs/{within_run}")).json()
+            assert within_result["state"] == "succeeded"
+            assert len(within_result["observations"]) == 4
+            assert allowances == pytest.approx([2, 1.5])
+
+            clock[0] = 0
+            allowances.clear()
+            timeout = await client.post("/runs/series", headers={"Idempotency-Key": uuid.uuid4().hex},
+                                        json=body(first, second))
+            timeout_run = uuid.UUID(timeout.json()["run_id"])
+
+            def exhaust_second_frame(*args):
+                result = consume_first_frame(*args)
+                if len(allowances) == 2:
+                    clock[0] = 3
+                return result
+
+            monkeypatch.setattr(executor, "_observe_bounded", exhaust_second_frame)
+            await loop._execute(store.claim_ordinary(profile, 1, 30), 1)
+            timeout_result = (await client.get(f"/runs/{timeout_run}")).json()
+            assert timeout_result["state"] == "failed" and timeout_result["error_code"] == "observer_timeout"
+            assert timeout_result["outcome"] is None and timeout_result["result_projection"] is None
+            assert len(timeout_result["observations"]) == 2
+            assert allowances == pytest.approx([2, 1.5])
+
+            monkeypatch.setattr(executor, "_observe_bounded", consume_first_frame)
+            clock[0] = 0
+            allowances.clear()
+            native_publish = artifacts.publish_final
+            published = 0
+
+            def expire_during_publication(*args):
+                nonlocal published
+                result = native_publish(*args)
+                published += 1
+                if published == 2:
+                    clock[0] = 3
+                return result
+
+            expired = await client.post("/runs/series", headers={"Idempotency-Key": uuid.uuid4().hex},
+                                        json=body(first, second))
+            expired_run = uuid.UUID(expired.json()["run_id"])
+            monkeypatch.setattr(artifacts, "publish_final", expire_during_publication)
+            await loop._execute(store.claim_ordinary(profile, 1, 30), 1)
+            expired_result = (await client.get(f"/runs/{expired_run}")).json()
+            assert expired_result["state"] == "failed" and expired_result["error_code"] == "observer_timeout"
+            assert expired_result["outcome"] is None and expired_result["result_projection"] is None
+            assert len(expired_result["observations"]) == 2
+            assert allowances == pytest.approx([2, 1.5])
+            with store.engine.connect() as connection:
+                assert connection.execute(text("SELECT count(*) FROM result_projections WHERE run_id = :run"),
+                                          {"run": expired_run}).scalar_one() == 0
+            monkeypatch.setattr(artifacts, "publish_final", native_publish)
+
+            clock[0] = 0
+            allowances.clear()
+            preflight = await client.post("/runs/series", headers={"Idempotency-Key": uuid.uuid4().hex},
+                                          json=body(first, second))
+            preflight_run = uuid.UUID(preflight.json()["run_id"])
+            preflight_work = store.claim_ordinary(profile, 1, 30)
+
+            def expire_during_preflight(key, digest, size):
+                image = original_read(key, digest, size)
+                if key == preflight_work["frames"][1]["key"]:
+                    clock[0] = 3
+                return image
+
+            monkeypatch.setattr(artifacts, "read_verified", expire_during_preflight)
+            await loop._execute(preflight_work, 1)
+            preflight_expired = (await client.get(f"/runs/{preflight_run}")).json()
+            assert preflight_expired["state"] == "failed" and preflight_expired["error_code"] == "observer_timeout"
+            assert preflight_expired["observations"] == [] and preflight_expired["result_projection"] is None
+            with store.engine.connect() as connection:
+                assert connection.execute(text("SELECT count(*) FROM result_projections WHERE run_id = :run"),
+                                          {"run": preflight_run}).scalar_one() == 0
+            monkeypatch.setattr(artifacts, "read_verified", original_read)
+
+            clock[0] = 0
+            allowances.clear()
+            final = await client.post("/runs/series", headers={"Idempotency-Key": uuid.uuid4().hex},
+                                      json=body(first, second))
+            final_run = uuid.UUID(final.json()["run_id"])
+            monkeypatch.setattr(executor, "_observe_bounded", observed)
+            completion_checks = 0
+
+            def expire_in_completion():
+                nonlocal completion_checks
+                completion_checks += 1
+                return 3 if completion_checks == 2 else 0
+
+            monkeypatch.setattr(postgres, "monotonic", expire_in_completion)
+            await loop._execute(store.claim_ordinary(profile, 1, 30), 1)
+            final_expired = (await client.get(f"/runs/{final_run}")).json()
+            assert completion_checks == 2
+            assert final_expired["state"] == "failed" and final_expired["error_code"] == "observer_timeout"
+            assert len(final_expired["observations"]) == 2 and final_expired["result_projection"] is None
+            with store.engine.connect() as connection:
+                assert connection.execute(text("SELECT count(*) FROM result_projections WHERE run_id = :run"),
+                                          {"run": final_run}).scalar_one() == 0
+            monkeypatch.setattr(postgres, "monotonic", original_monotonic)
+            snapshot["runtime"]["batch_timeout_seconds"] = 600
 
             owner_key, foreign_key = "x", "x:1"
             _, _, owner_intent, _ = store.begin_submission(owner_key, uuid.uuid4().hex, "image/jpeg")

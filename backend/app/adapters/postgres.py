@@ -6,6 +6,7 @@ import json
 import math
 import uuid
 from pathlib import Path
+from time import monotonic
 
 from app.domain.observations import CLASSES, STAGES, normalized_states
 from app.profiles import grounding_dino
@@ -613,7 +614,7 @@ class PostgresStore:
 
     def finish_ordinary(self, run_id: uuid.UUID, owner: str, revision: int, invocation: uuid.UUID | None,
                         result: dict | None, native_intent: uuid.UUID | None, observations: list[dict],
-                        input_id: uuid.UUID | None = None) -> None:
+                        input_id: uuid.UUID | None = None, batch_deadline: float | None = None) -> None:
         with self.engine.begin() as connection:
             row = connection.execute(text("""SELECT r.profile_snapshot, r.state, r.lease_owner,
                 r.lease_expires_at > clock_timestamp() AS live, r.authorization_revision,
@@ -676,6 +677,8 @@ class PostgresStore:
             completed = connection.execute(text("""SELECT count(DISTINCT input_id) FROM observations
                 WHERE run_id = :run"""), {"run": run_id}).scalar_one()
             if completed != inputs:
+                if batch_deadline is not None and monotonic() >= batch_deadline:
+                    raise RuntimeError("observer_timeout")
                 return
             if connection.execute(text("SELECT count(*) FROM observations WHERE run_id = :run"),
                                   {"run": run_id}).scalar_one() != inputs * len(expected_classes):
@@ -732,6 +735,8 @@ class PostgresStore:
                 AND lease_expires_at > clock_timestamp()"""), {"run": run_id, "owner": owner})
             if changed.rowcount != 1:
                 raise AdmissionStoreError("ordinary_completion_rejected")
+            if batch_deadline is not None and monotonic() >= batch_deadline:
+                raise RuntimeError("observer_timeout")
 
     def fail_ordinary(self, run_id: uuid.UUID, owner: str, code: str) -> None:
         with self.engine.begin() as connection:

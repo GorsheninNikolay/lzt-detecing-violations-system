@@ -104,7 +104,7 @@ action_items:
     action: "F8 (deferred): Enforce the snapshotted batch deadline across ordered-series
       execution and test remaining-budget exhaustion."
     owner: "Backend maintainer"
-    status: open
+    status: done
     ref: "_bmad-output/implementation-artifacts/epic-1-retro-2026-09-23.md"
   - id: "epic-1-retro-bound-submit-wait"
     epic: 1
