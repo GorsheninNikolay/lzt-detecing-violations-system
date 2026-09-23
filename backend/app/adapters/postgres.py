@@ -12,6 +12,7 @@ from app.domain.observations import CLASSES, STAGES, normalized_states
 from app.profiles import grounding_dino
 from app.profiles.grounding_dino import canonical_bytes, digest
 from app.adapters.artifacts import ArtifactGateError, ArtifactStore
+from app.domain.rule import RULE, RULE_POLICY, evaluate_rule
 
 
 class DatabaseGateError(RuntimeError):
@@ -488,21 +489,25 @@ class PostgresStore:
                 WHERE idempotency_key = :key AND state = 'publishing'"""), {"key": key, "code": code})
 
     def commit_submission(self, key: str, profile_id: uuid.UUID, revision: int, snapshot: dict,
-                          context: dict, requested_classes: list[str], image_hash: str, image_size: int) -> uuid.UUID:
+                          context: dict, requested_classes: list[str], image_hash: str, image_size: int,
+                          intent: str = "observation_only", stage: str | None = None) -> uuid.UUID:
         with self.engine.connect() as connection:
             intent_id = connection.execute(text("SELECT intent_id FROM submission_requests WHERE idempotency_key = :key"), {"key": key}).scalar_one()
         return self.commit_series_submission(key, profile_id, revision, snapshot, context, requested_classes,
-                                             [(intent_id, image_hash, image_size)])
+                                             [(intent_id, image_hash, image_size)], intent, stage)
 
     def commit_series_submission(self, key: str, profile_id: uuid.UUID, revision: int, snapshot: dict,
                                  context: dict, requested_classes: list[str],
-                                 manifest: list[tuple[uuid.UUID, str, int]]) -> uuid.UUID:
+                                 manifest: list[tuple[uuid.UUID, str, int]],
+                                 intent: str = "observation_only", stage: str | None = None) -> uuid.UUID:
         run_id = uuid.uuid4()
         with self.engine.begin() as connection:
             request = connection.execute(text("""SELECT * FROM submission_requests
                 WHERE idempotency_key = :key FOR UPDATE"""), {"key": key}).one()
             if request.state != "publishing":
                 raise AdmissionStoreError("submission_state_changed")
+            if intent not in ("observation_only", "rule_evaluation") or (intent == "rule_evaluation" and stage != "excavation"):
+                raise AdmissionStoreError("rule_not_applicable")
             authorization = connection.execute(text("""SELECT p.status, a.state, a.revision FROM observer_profiles p
                 JOIN profile_authorizations a ON a.profile_id = p.id WHERE p.id = :id FOR UPDATE OF a"""),
                 {"id": profile_id}).one_or_none()
@@ -510,31 +515,35 @@ class PostgresStore:
                 raise AdmissionStoreError("profile_unauthorized")
             if not manifest or manifest[0][0] != request.intent_id or len({item[0] for item in manifest}) != len(manifest):
                 raise AdmissionStoreError("publication_incomplete")
-            intents = []
+            publications = []
             for intent_id, image_hash, image_size in manifest:
-                intent = connection.execute(text("""SELECT sha256, size, final_key FROM publication_intents
+                publication = connection.execute(text("""SELECT sha256, size, final_key FROM publication_intents
                     WHERE id = :id AND submission_key = :key AND run_id IS NULL
                       AND state = 'object_published' FOR UPDATE"""),
                     {"id": intent_id, "key": key}).one_or_none()
-                if not intent or intent.sha256 != image_hash or intent.size != image_size or intent.final_key != f"sha256/{image_hash}":
+                if not publication or publication.sha256 != image_hash or publication.size != image_size or publication.final_key != f"sha256/{image_hash}":
                     raise AdmissionStoreError("publication_incomplete")
-                intents.append(intent)
+                publications.append(publication)
             connection.execute(text("""INSERT INTO analysis_runs
                 (id, state, purpose, profile_id, authorization_revision, binding_kind, profile_snapshot,
-                 request_context, policy_snapshot, taxonomy_snapshot, requested_classes)
+                 request_context, policy_snapshot, rule_snapshot, analysis_intent, stage_key,
+                 taxonomy_snapshot, requested_classes)
                 VALUES (:run, 'queued', 'ordinary', :profile, :revision, 'admitted_profile',
                     CAST(:snapshot AS jsonb), CAST(:context AS jsonb), CAST(:policy AS jsonb),
+                    CAST(:rule AS jsonb), :intent, :stage,
                     CAST(:taxonomy AS jsonb), CAST(:classes AS jsonb))"""),
                 {"run": run_id, "profile": profile_id, "revision": revision,
                  "snapshot": json.dumps(snapshot), "context": json.dumps(context),
-                 "policy": json.dumps({"intent": "observation_only", "revision": "observations-only-v1"}),
+                 "policy": json.dumps({"intent": intent, **(RULE_POLICY if intent == "rule_evaluation" else {"revision": "observations-only-v1"})}),
+                 "rule": json.dumps(RULE) if intent == "rule_evaluation" else None,
+                 "intent": intent, "stage": stage,
                  "taxonomy": json.dumps({"portable_classes": list(CLASSES), "revision": "presence-only-v1"}),
                  "classes": json.dumps(requested_classes)})
-            for ordinal, ((intent_id, image_hash, image_size), intent) in enumerate(zip(manifest, intents)):
+            for ordinal, ((intent_id, image_hash, image_size), publication) in enumerate(zip(manifest, publications)):
                 artifact_id = uuid.uuid4()
                 connection.execute(text("""INSERT INTO artifact_metadata (id, run_id, intent_id, key, sha256, size, media_type)
                     VALUES (:id, :run, :intent, :key, :hash, :size, 'image/jpeg')"""),
-                    {"id": artifact_id, "run": run_id, "intent": intent_id, "key": intent.final_key,
+                    {"id": artifact_id, "run": run_id, "intent": intent_id, "key": publication.final_key,
                      "hash": image_hash, "size": image_size})
                 connection.execute(text("""INSERT INTO run_inputs (run_id, ordinal, sha256, size, context, artifact_id)
                     VALUES (:run, :ordinal, :hash, :size, CAST(:context AS jsonb), :artifact)"""),
@@ -697,7 +706,11 @@ class PostgresStore:
                 WHERE run_id = :run AND ordinal = 3"""),
                 {"run": run_id, "state": "succeeded" if inputs > 1 else "skipped",
                  "reason": None if inputs > 1 else "not_applicable"})
-            connection.execute(text("UPDATE analysis_stages SET state = 'skipped', reason = 'not_applicable' WHERE run_id = :run AND ordinal = 4"), {"run": run_id})
+            binding = connection.execute(text("SELECT analysis_intent, policy_snapshot, rule_snapshot, request_context FROM analysis_runs WHERE id = :run"),
+                                         {"run": run_id}).one()
+            connection.execute(text("UPDATE analysis_stages SET state = :state, reason = :reason WHERE run_id = :run AND ordinal = 4"),
+                               {"run": run_id, "state": "succeeded" if binding.analysis_intent == "rule_evaluation" else "skipped",
+                                "reason": None if binding.analysis_intent == "rule_evaluation" else "not_applicable"})
             connection.execute(text("UPDATE analysis_stages SET state = 'running' WHERE run_id = :run AND ordinal = 5"), {"run": run_id})
             evidence = connection.execute(text("""SELECT i.input_id, i.ordinal, o.class_name, o.state, o.reason,
                 o.source_artifact_id, o.invocation_id FROM run_inputs i JOIN observations o
@@ -727,9 +740,13 @@ class PostgresStore:
                  "source_artifact_id": str(item["source_artifact_id"]),
                  "invocation_id": str(item["invocation_id"]) if item["invocation_id"] else None}
                 for item in evidence], "series": series}
+            if binding.analysis_intent == "rule_evaluation":
+                projection.update(evaluate_rule(projection["frames"], usable_ids,
+                                                binding.policy_snapshot, binding.rule_snapshot,
+                                                binding.request_context))
             connection.execute(text("""INSERT INTO result_projections (run_id, outcome, snapshot)
-                VALUES (:run, 'observations_only', CAST(:snapshot AS jsonb))"""),
-                {"run": run_id, "snapshot": json.dumps(projection)})
+                VALUES (:run, :outcome, CAST(:snapshot AS jsonb))"""),
+                {"run": run_id, "outcome": projection["outcome"], "snapshot": json.dumps(projection)})
             connection.execute(text("UPDATE analysis_stages SET state = 'succeeded' WHERE run_id = :run AND ordinal = 5"), {"run": run_id})
             changed = connection.execute(text("""UPDATE analysis_runs SET state = 'succeeded', lease_owner = NULL,
                 lease_expires_at = NULL WHERE id = :run AND state = 'running' AND lease_owner = :owner
@@ -764,7 +781,8 @@ class PostgresStore:
 
     def read_ordinary(self, run_id: uuid.UUID) -> dict | None:
         with self.engine.connect().execution_options(isolation_level="REPEATABLE READ") as connection:
-            row = connection.execute(text("""SELECT id, state, error_code, request_context, requested_classes
+            row = connection.execute(text("""SELECT id, state, error_code, request_context, requested_classes,
+                analysis_intent, stage_key, policy_snapshot, rule_snapshot
                 FROM analysis_runs WHERE id = :id AND purpose = 'ordinary'"""), {"id": run_id}).one_or_none()
             if not row:
                 return None
@@ -783,6 +801,8 @@ class PostgresStore:
                 WHERE i.run_id = :id ORDER BY r.ordinal"""), {"id": run_id}).mappings().all()
             return {"run_id": str(row.id), "state": row.state, "error_code": row.error_code,
                     "context": row.request_context, "requested_classes": row.requested_classes,
+                    "intent": row.analysis_intent or "observation_only", "stage": row.stage_key,
+                    "policy_snapshot": row.policy_snapshot, "rule_snapshot": row.rule_snapshot,
                     "stages": [dict(item) for item in stages],
                     "inputs": [{**item, "input_id": str(item["input_id"]),
                                 "artifact_id": str(item["artifact_id"]) if item["artifact_id"] else None}

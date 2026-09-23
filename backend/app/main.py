@@ -13,6 +13,7 @@ from app.adapters.artifacts import ArtifactGateError, ArtifactStore
 from app.adapters.postgres import AdmissionStoreError, DatabaseGateError, PostgresStore, ReconciliationGateError, RecoveryGateError
 from app.application.executor import ClaimLoop
 from app.application.submission import SubmissionError, submit, submit_series
+from app.domain.rule import ANALYSIS_CHOICES
 from app.config import Config
 from app.profiles.grounding_dino import verify_snapshot
 
@@ -116,6 +117,10 @@ def create_app() -> FastAPI:
         state = app.state.readiness
         result = {"ready": state.ready.is_set(), "code": state.code}
         return JSONResponse(result, status_code=200 if result["ready"] else 503)
+
+    @app.get("/analysis-choices")
+    def analysis_choices() -> dict:
+        return ANALYSIS_CHOICES
 
     @app.post("/runs/single-image")
     @app.post("/runs/series")

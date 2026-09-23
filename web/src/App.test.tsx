@@ -83,6 +83,21 @@ describe('Observation result', () => {
     expect(screen.queryByRole('heading', { name: 'Данные серии' })).toBeNull()
   })
 
+  it('renders the persisted rule outcome and human-check boundary', async () => {
+    const rule = { name: 'Проверка вывоза грунта', revision: 'v1', expectation: 'Самосвалы периодически',
+      provenance: 'demonstration rule', recommendation: 'Проверить вручную' }
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => url === `/api/runs/${runId}`
+      ? { ok: true, json: async () => ({ ...completed, intent: 'rule_evaluation', outcome: 'check_requested', rule_snapshot: rule,
+        result_projection: { ...completed.result_projection, outcome: 'check_requested', reason: 'Самосвал не обнаружен.',
+          uncertainty: 'Необнаружение в кадре не доказывает отсутствие на площадке.', recommendation: rule.recommendation } }) }
+      : { ok: true, blob: async () => new Blob(['jpeg']) }))
+    render(<App />)
+    expect(await screen.findByRole('heading', { name: 'Рекомендована проверка человеком' })).toBeTruthy()
+    expect(screen.getByText(/Самосвал не обнаружен\./)).toBeTruthy()
+    expect(screen.getByText(/Это рекомендация для проверки, а не подтверждение нарушения/)).toBeTruthy()
+    expect(screen.getByText(/demonstration rule/)).toBeTruthy()
+  })
+
   it('keeps single-frame text and native metadata when verified bytes fail', async () => {
     const user = userEvent.setup()
     vi.stubGlobal('fetch', vi.fn(async (url: string) => url === `/api/runs/${runId}`
@@ -169,6 +184,7 @@ describe('Observation result', () => {
 
 beforeEach(() => {
   history.replaceState({}, '', '/')
+  vi.stubGlobal('__ANALYSIS_CHOICES__', [{ id: 'excavation', label: 'Земляные работы', rule: null }, { id: 'other', label: 'Другой этап', rule: null }])
   sessionStorage.clear()
   Object.defineProperty(navigator, 'onLine', { configurable: true, value: true })
   vi.stubGlobal('createImageBitmap', vi.fn(async () => ({ width: 2, height: 2, close: vi.fn() })))
@@ -232,6 +248,83 @@ function quotaBackedRequests() {
 }
 
 describe('New Analysis', () => {
+  const configuredChoices = { stages: [{ id: 'excavation', label: 'Земляные работы', rule: {
+    name: 'Проверка вывоза грунта', revision: 'v1', expectation: 'Самосвалы периодически',
+    provenance: 'demonstration rule', recommendation: 'Проверить вручную',
+  } }, { id: 'other', label: 'Другой этап', rule: null }] }
+
+  it('loads live choices and defaults to an enabled rule submission', async () => {
+    vi.stubGlobal('__ANALYSIS_CHOICES__', undefined)
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => configuredChoices })
+    vi.stubGlobal('fetch', fetchMock)
+    render(<App />)
+    expect(await screen.findByText('Проверка вывоза грунта')).toBeTruthy()
+    expect(fetchMock.mock.calls[0][0]).toBe('/api/analysis-choices')
+    expect((screen.getByRole('radio', { name: 'Проверить правило этапа' }) as HTMLInputElement).checked).toBe(true)
+    expect((screen.getByRole('button', { name: 'Запустить анализ' }) as HTMLButtonElement).disabled).toBe(false)
+  })
+
+  it('retries failed live choices without losing prepared form context', async () => {
+    const user = userEvent.setup()
+    vi.stubGlobal('__ANALYSIS_CHOICES__', undefined)
+    const fetchMock = vi.fn().mockRejectedValueOnce(new Error('offline'))
+      .mockResolvedValueOnce({ ok: true, json: async () => configuredChoices })
+    vi.stubGlobal('fetch', fetchMock)
+    render(<App />)
+    await screen.findByRole('button', { name: 'Повторить загрузку настроек' })
+    await user.type(screen.getByLabelText('Зона наблюдения'), 'Северная зона')
+    await user.click(screen.getByRole('button', { name: 'Повторить загрузку настроек' }))
+    expect(await screen.findByText('Проверка вывоза грунта')).toBeTruthy()
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect((screen.getByLabelText('Зона наблюдения') as HTMLInputElement).value).toBe('Северная зона')
+    expect((screen.getByRole('button', { name: 'Запустить анализ' }) as HTMLButtonElement).disabled).toBe(false)
+  })
+
+  it('keeps an explicit observation preference across stage changes', async () => {
+    const user = userEvent.setup()
+    vi.stubGlobal('__ANALYSIS_CHOICES__', configuredChoices.stages)
+    render(<App />)
+    await user.click(screen.getByRole('radio', { name: 'Только распознать технику' }))
+    await user.selectOptions(screen.getByLabelText('Этап'), 'other')
+    await user.selectOptions(screen.getByLabelText('Этап'), 'excavation')
+    expect((screen.getByRole('radio', { name: 'Только распознать технику' }) as HTMLInputElement).checked).toBe(true)
+    expect((screen.getByRole('radio', { name: 'Проверить правило этапа' }) as HTMLInputElement).disabled).toBe(false)
+  })
+
+  it('defaults to the server-provided excavation rule and explains an unconfigured stage', async () => {
+    const user = userEvent.setup()
+    vi.stubGlobal('__ANALYSIS_CHOICES__', [{ id: 'excavation', label: 'Земляные работы', rule: {
+      name: 'Проверка вывоза грунта', revision: 'excavation-haulage-v1',
+      expectation: 'Экскаватор постоянно, самосвал периодически.', provenance: 'demonstration rule', recommendation: 'Проверить вручную.',
+    } }, { id: 'other', label: 'Другой этап', rule: null }])
+    render(<App />)
+    expect((screen.getByRole('radio', { name: 'Проверить правило этапа' }) as HTMLInputElement).checked).toBe(true)
+    expect(screen.getByText('Проверка вывоза грунта')).toBeTruthy()
+    expect(screen.getByText('excavation-haulage-v1')).toBeTruthy()
+    expect(screen.getByText('demonstration rule')).toBeTruthy()
+    expect(screen.getByText(/Зона: не указана/)).toBeTruthy()
+    await user.selectOptions(screen.getByLabelText('Этап'), 'other')
+    expect((screen.getByRole('radio', { name: 'Только распознать технику' }) as HTMLInputElement).checked).toBe(true)
+    expect((screen.getByRole('radio', { name: 'Проверить правило этапа' }) as HTMLInputElement).disabled).toBe(true)
+    expect(screen.getByText('Для этого этапа правило не настроено в прототипе')).toBeTruthy()
+  })
+
+  it('allows a short rule series and sends its exact selected intent', async () => {
+    const user = userEvent.setup()
+    vi.stubGlobal('__ANALYSIS_CHOICES__', [{ id: 'excavation', label: 'Земляные работы', rule: {
+      name: 'Проверка вывоза грунта', revision: 'v1', expectation: 'Техника', provenance: 'demonstration rule', recommendation: 'Проверить',
+    } }])
+    const post = vi.fn().mockResolvedValue({ status: 202, json: async () => ({ run_id: '12345678-1234-1234-1234-123456789abc' }) })
+    vi.stubGlobal('fetch', post)
+    render(<App />)
+    await fillContext(user)
+    await user.upload(screen.getByLabelText('Выбрать JPEG'), image('one.jpg'))
+    expect(screen.getByText(/нужны минимум три пригодных кадра/)).toBeTruthy()
+    await user.click(screen.getByRole('button', { name: 'Запустить анализ' }))
+    await waitFor(() => expect(post).toHaveBeenCalled())
+    expect(JSON.parse(post.mock.calls[0][1].body)).toMatchObject({ intent: 'rule_evaluation', stage: 'excavation' })
+  })
+
   it('submits reordered distinct bytes and retains duplicate frames', async () => {
     const user = userEvent.setup()
     const post = vi.fn().mockImplementation(async (url: string) => /^\/api\/runs\/[0-9a-f-]{36}$/i.test(url)

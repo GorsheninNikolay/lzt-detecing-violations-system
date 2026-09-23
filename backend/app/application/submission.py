@@ -35,8 +35,12 @@ def validate_request(body: dict) -> tuple[bytes, dict, list[str], str]:
 
 
 def validate_images(body: dict, series: bool) -> tuple[list[bytes], dict, list[str], str]:
-    if not isinstance(body, dict) or body.get("intent") != "observation_only":
+    if not isinstance(body, dict) or body.get("intent") not in ("observation_only", "rule_evaluation"):
         raise SubmissionError("invalid_observation_intent")
+    if body["intent"] == "rule_evaluation" and body.get("stage") != "excavation":
+        raise SubmissionError("rule_not_applicable")
+    if "stage" in body and body["stage"] not in ("excavation", "other"):
+        raise SubmissionError("invalid_stage")
     context = {key: body.get(key) for key in ("scenario", "observation_area", "period")}
     if not all(isinstance(value, str) and 0 < len(value.strip()) <= 256 for value in context.values()):
         raise SubmissionError("invalid_observation_context")
@@ -50,6 +54,8 @@ def validate_images(body: dict, series: bool) -> tuple[list[bytes], dict, list[s
     if (not isinstance(requested, list) or not requested or len(requested) > 32
             or any(not isinstance(name, str) or not name.isidentifier() or len(name) > 64 for name in requested)
             or len(set(requested)) != len(requested)):
+        raise SubmissionError("invalid_requested_classes")
+    if body["intent"] == "rule_evaluation" and not {"excavator", "dump_truck"}.issubset(requested):
         raise SubmissionError("invalid_requested_classes")
     raw_images = body.get("images_base64") if series else [body.get("image_base64")]
     if not isinstance(raw_images, list) or (series and not 2 <= len(raw_images) <= 8):
@@ -70,8 +76,11 @@ def validate_images(body: dict, series: bool) -> tuple[list[bytes], dict, list[s
             raise SubmissionError("invalid_image_file") from None
         images.append(image)
     image_hashes = [hashlib.sha256(image).hexdigest() for image in images]
-    canonical = json.dumps({"context": context, "requested_classes": sorted(requested),
-                            "image_sha256": image_hashes if series else image_hashes[0]},
+    identity = {"context": context, "requested_classes": sorted(requested),
+                "image_sha256": image_hashes if series else image_hashes[0]}
+    if body["intent"] != "observation_only" or "stage" in body:
+        identity.update({"intent": body["intent"], "stage": body.get("stage")})
+    canonical = json.dumps(identity,
                            sort_keys=True, separators=(",", ":"))
     return images, context, requested, hashlib.sha256(canonical.encode()).hexdigest()
 
@@ -102,7 +111,8 @@ def submit(store: PostgresStore, artifacts: ArtifactStore, key: str, body: dict,
         artifacts.publish_final(intent_id, image, "image/jpeg", image_hash, size)
         store.publication_object_published(intent_id)
         artifacts.read_verified(f"sha256/{image_hash}", image_hash, size)
-        run_id = store.commit_submission(key, profile_id, revision, snapshot, context, requested, image_hash, size)
+        run_id = store.commit_submission(key, profile_id, revision, snapshot, context, requested, image_hash, size,
+            **({"intent": body["intent"], "stage": body["stage"]} if "stage" in body else {}))
         return "queued", run_id
     except Exception as exc:
         code = "profile_unauthorized" if str(exc) == "profile_unauthorized" else "submission_publication_failed"
@@ -138,7 +148,8 @@ def submit_series(store: PostgresStore, artifacts: ArtifactStore, key: str, body
             artifacts.read_verified(f"sha256/{image_hash}", image_hash, size)
             manifest.append((intent_id, image_hash, size))
         return "queued", store.commit_series_submission(
-            key, profile_id, revision, snapshot, context, requested, manifest)
+            key, profile_id, revision, snapshot, context, requested, manifest,
+            **({"intent": body["intent"], "stage": body["stage"]} if "stage" in body else {}))
     except Exception as exc:
         code = "profile_unauthorized" if str(exc) == "profile_unauthorized" else "submission_publication_failed"
         store.fail_submission(key, code)
