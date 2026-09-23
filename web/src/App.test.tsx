@@ -1,10 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import App from './App'
 
 const jpeg = new Uint8Array([0xff, 0xd8, 0xff, 0xd9])
 const image = (name: string, marker = 0) => new File([jpeg, new Uint8Array([marker])], name, { type: 'image/jpeg' })
+const stageNames = ['input_registration', 'frame_usability', 'equipment_observation', 'series_aggregation', 'rule_evaluation', 'result_projection']
+const snapshot = (state: string, states = Array(6).fill('pending'), reasons: Record<number, string> = {}) => ({
+  state, stages: stageNames.map((name, index) => ({ name, state: states[index], ...(reasons[index] ? { reason: reasons[index] } : {}) })),
+})
 
 beforeEach(() => {
   history.replaceState({}, '', '/')
@@ -13,7 +17,7 @@ beforeEach(() => {
   vi.stubGlobal('createImageBitmap', vi.fn(async () => ({ width: 2, height: 2, close: vi.fn() })))
   vi.stubGlobal('crypto', { randomUUID: vi.fn().mockReturnValueOnce('frame-1').mockReturnValueOnce('frame-2').mockReturnValueOnce('frame-3').mockReturnValue('key-1') })
 })
-afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.restoreAllMocks() })
+afterEach(() => { vi.useRealTimers(); cleanup(); vi.unstubAllGlobals(); vi.restoreAllMocks() })
 
 async function fillContext(user: ReturnType<typeof userEvent.setup>) {
   await user.type(screen.getByLabelText('Сценарий'), 'Земляные работы')
@@ -24,7 +28,7 @@ describe('New Analysis', () => {
   it('submits reordered distinct bytes and retains duplicate frames', async () => {
     const user = userEvent.setup()
     const post = vi.fn().mockImplementation(async (url: string) => /^\/runs\/[0-9a-f-]{36}$/i.test(url)
-      ? { ok: true, json: async () => ({ state: 'queued' }) }
+      ? { ok: true, json: async () => snapshot('queued') }
       : { status: 202, json: async () => ({ run_id: '12345678-1234-1234-1234-123456789abc' }) })
     vi.stubGlobal('fetch', post)
     render(<App />)
@@ -36,8 +40,8 @@ describe('New Analysis', () => {
     expect(within(rows[0]).getByText('second.jpg')).toBeTruthy()
     expect(within(rows[1]).getByText('first.jpg')).toBeTruthy()
     await user.click(screen.getByRole('button', { name: 'Запустить анализ' }))
-    await screen.findByText('Анализ создан')
-    expect(document.activeElement).toBe(screen.getByRole('heading', { name: 'Анализ создан' }))
+    await screen.findByText('Анализ поставлен в очередь')
+    expect(document.activeElement).toBe(screen.getByRole('heading', { name: 'Анализ поставлен в очередь' }))
     expect(document.title).toBe('Анализ — Контроль строительства')
     expect(location.pathname).toBe('/runs/12345678-1234-1234-1234-123456789abc')
     const [url, options] = post.mock.calls[0]
@@ -70,7 +74,7 @@ describe('New Analysis', () => {
     const fetchMock = vi.fn().mockRejectedValueOnce(new Error('connection lost'))
       .mockResolvedValueOnce({ status: 503, json: async () => ({ code: 'service_not_ready' }) })
       .mockResolvedValueOnce({ status: 202, json: async () => ({ run_id: '12345678-1234-1234-1234-123456789abc' }) })
-      .mockResolvedValue({ ok: true, json: async () => ({ state: 'queued' }) })
+      .mockResolvedValue({ ok: true, json: async () => snapshot('queued') })
     vi.stubGlobal('fetch', fetchMock)
     render(<App />)
     await fillContext(user)
@@ -84,7 +88,7 @@ describe('New Analysis', () => {
     await user.click(screen.getByRole('button', { name: 'Повторить отправку' }))
     expect(await screen.findByText(/Результат отправки пока неизвестен/)).toBeTruthy()
     await user.click(screen.getByRole('button', { name: 'Повторить отправку' }))
-    await screen.findByText('Анализ создан')
+    await screen.findByText('Анализ поставлен в очередь')
     const requests = fetchMock.mock.calls.slice(0, 3)
     expect(requests.map(call => call[0])).toEqual(['/runs/single-image', '/runs/single-image', '/runs/single-image'])
     expect(requests[0][1].body).toBe(requests[1][1].body)
@@ -161,15 +165,144 @@ describe('New Analysis', () => {
     history.replaceState({}, '', '/runs/12345678-1234-1234-1234-123456789abc')
     const fetchMock = vi.fn().mockResolvedValueOnce({ status: 404, ok: false })
       .mockRejectedValueOnce(new Error('offline'))
-      .mockResolvedValueOnce({ status: 200, ok: true, json: async () => ({ state: 'queued' }) })
+      .mockResolvedValueOnce({ status: 200, ok: true, json: async () => snapshot('queued') })
     vi.stubGlobal('fetch', fetchMock)
     render(<App />)
     await screen.findByRole('heading', { name: 'Анализ не найден' })
+    expect(screen.queryByRole('heading', { name: 'Этапы анализа' })).toBeNull()
     cleanup()
     render(<App />)
     await screen.findByRole('heading', { name: 'Статус анализа неизвестен' })
-    await user.click(screen.getByRole('button', { name: 'Проверить снова' }))
-    await screen.findByRole('heading', { name: 'Анализ создан' })
+    await user.click(screen.getByRole('button', { name: 'Проверить статус' }))
+    await screen.findByRole('heading', { name: 'Анализ поставлен в очередь' })
+  })
+
+  it('shows committed transitions in order, announces them once, and preserves completed stages after failure', async () => {
+    history.replaceState({}, '', '/runs/12345678-1234-1234-1234-123456789abc')
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => snapshot('queued') })
+      .mockResolvedValueOnce({ ok: true, json: async () => {
+        const data = snapshot('running', ['succeeded', 'running', 'pending', 'pending', 'pending', 'pending'])
+        return { ...data, stages: data.stages.map((stage, index) => index === 1 ? { ...stage, timestamp: '2026-09-23T08:00:00Z' } : stage) }
+      } })
+      .mockResolvedValueOnce({ ok: true, json: async () => snapshot('running', ['succeeded', 'running', 'pending', 'pending', 'pending', 'pending']) })
+      .mockResolvedValueOnce({ ok: true, json: async () => snapshot('failed', ['succeeded', 'failed', 'skipped', 'skipped', 'skipped', 'skipped'], { 1: 'executor_interrupted', 2: 'dependency_failed', 3: 'dependency_failed', 4: 'dependency_failed', 5: 'dependency_failed' }) })
+    vi.stubGlobal('fetch', fetchMock)
+    vi.useFakeTimers()
+    await act(async () => { render(<App />) })
+    expect(screen.getByRole('heading', { name: 'Анализ поставлен в очередь' })).toBeTruthy()
+    const list = screen.getByRole('list', { name: '' })
+    expect(within(list).getAllByRole('listitem').map(item => within(item).getByRole('heading').textContent)).toEqual([
+      'Регистрация входных данных', 'Проверка пригодности кадров', 'Распознавание техники',
+      'Объединение наблюдений серии', 'Проверка правила', 'Формирование результата',
+    ])
+    const navigationButton = screen.getByRole('button', { name: 'Новый анализ' })
+    navigationButton.focus()
+    await act(async () => { await vi.advanceTimersByTimeAsync(3000) })
+    expect(within(list).getAllByRole('listitem')[0].textContent).toContain('Завершено')
+    expect(within(list).getByText('2026-09-23T08:00:00Z').getAttribute('datetime')).toBe('2026-09-23T08:00:00Z')
+    expect(document.activeElement).toBe(navigationButton)
+    expect(screen.getByRole('status').textContent).toContain('Проверка пригодности кадров: Выполняется.')
+    const announcement = screen.getByRole('status').textContent
+    await act(async () => { await vi.advanceTimersByTimeAsync(3000) })
+    expect(announcement).toContain('Проверка пригодности кадров: Выполняется.')
+    expect(screen.getByRole('status').textContent).toBe('')
+    await act(async () => { await vi.advanceTimersByTimeAsync(3000) })
+    expect(screen.getByRole('heading', { name: 'Анализ завершился ошибкой' })).toBeTruthy()
+    expect(within(list).getAllByRole('listitem')[0].textContent).toContain('Завершено')
+    expect(within(list).getAllByRole('listitem')[1].textContent).toContain('Выполнение анализа прервалось.')
+    expect(within(list).getAllByRole('listitem')[2].textContent).toContain('Предыдущий этап завершился ошибкой.')
+    expect(screen.getByRole('status').textContent).toContain('Проверка пригодности кадров: Ошибка выполнения.')
+    await act(async () => { await vi.advanceTimersByTimeAsync(6000) })
+    expect(fetchMock).toHaveBeenCalledTimes(4)
+    vi.useRealTimers()
+  })
+
+  it('keeps the last snapshot on disconnect, retries the same run, and ignores a response after route switch', async () => {
+    const runId = '12345678-1234-1234-1234-123456789abc'
+    history.replaceState({}, '', `/runs/${runId}`)
+    let resolveLate!: (value: unknown) => void
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => snapshot('running', ['succeeded', 'running', 'pending', 'pending', 'pending', 'pending']) })
+      .mockRejectedValueOnce(new Error('offline'))
+      .mockImplementationOnce(() => new Promise(resolve => { resolveLate = resolve }))
+    vi.stubGlobal('fetch', fetchMock)
+    vi.useFakeTimers()
+    await act(async () => { render(<App />) })
+    expect(screen.getByRole('heading', { name: 'Анализ выполняется' })).toBeTruthy()
+    await act(async () => { await vi.advanceTimersByTimeAsync(3000) })
+    expect(screen.getByRole('status').textContent).toBe('Связь потеряна. Анализ может продолжаться на сервере.')
+    expect(screen.getByText('Проверка пригодности кадров')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Проверить статус' }))
+    await act(async () => { await Promise.resolve() })
+    expect(screen.getByRole('button', { name: 'Проверяем статус…' })).toHaveProperty('disabled', true)
+    expect(screen.getByRole('heading', { name: 'Анализ выполняется' }).closest('.run-workspace')?.getAttribute('aria-busy')).toBe('true')
+    fireEvent.click(screen.getByRole('button', { name: 'Проверяем статус…' }))
+    expect(fetchMock).toHaveBeenCalledTimes(3)
+    expect(fetchMock.mock.calls[2][0]).toBe(`/runs/${runId}`)
+    fireEvent.click(screen.getByRole('button', { name: 'Новый анализ' }))
+    await act(async () => { resolveLate({ ok: true, json: async () => snapshot('failed') }); await Promise.resolve() })
+    expect(fetchMock.mock.calls[2][1].signal.aborted).toBe(true)
+    expect(screen.getByRole('heading', { name: 'Наблюдение за техникой' })).toBeTruthy()
+    expect(screen.queryByText('Проверка пригодности кадров')).toBeNull()
+    vi.useRealTimers()
+  })
+
+  it('clears a disconnect warning after a successful terminal read and explains skipped stages', async () => {
+    history.replaceState({}, '', '/runs/12345678-1234-1234-1234-123456789abc')
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => snapshot('running', ['succeeded', 'running', 'pending', 'pending', 'pending', 'pending']) })
+      .mockRejectedValueOnce(new Error('offline'))
+      .mockResolvedValueOnce({ ok: true, json: async () => snapshot('succeeded', ['succeeded', 'succeeded', 'succeeded', 'skipped', 'skipped', 'succeeded'], { 3: 'not_applicable', 4: 'not_applicable' }) })
+    vi.stubGlobal('fetch', fetchMock)
+    vi.useFakeTimers()
+    await act(async () => { render(<App />) })
+    await act(async () => { await vi.advanceTimersByTimeAsync(3000) })
+    expect(screen.getByRole('status').textContent).toContain('Связь потеряна')
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Проверить статус' })) })
+    expect(screen.getByRole('heading', { name: 'Анализ завершён' })).toBeTruthy()
+    expect(screen.queryByText('Связь потеряна. Анализ может продолжаться на сервере.')).toBeNull()
+    expect(screen.getByRole('heading', { name: 'Анализ завершён' }).closest('.run-workspace')?.getAttribute('aria-busy')).toBe('false')
+    const stages = screen.getAllByRole('listitem')
+    expect(stages[3].textContent).toContain('Не требуется для этого анализа.')
+    expect(stages[4].textContent).toContain('Не требуется для этого анализа.')
+    expect(screen.getByRole('status').textContent).toContain('Формирование результата: Завершено.')
+    await act(async () => { await vi.advanceTimersByTimeAsync(6000) })
+    expect(fetchMock).toHaveBeenCalledTimes(3)
+  })
+
+  it('keeps a known run when a later read returns 404 and does not label an unknown state as running', async () => {
+    history.replaceState({}, '', '/runs/12345678-1234-1234-1234-123456789abc')
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => snapshot('running') })
+      .mockResolvedValueOnce({ status: 404, ok: false })
+      .mockResolvedValueOnce({ ok: true, json: async () => snapshot('unknown_state') })
+    vi.stubGlobal('fetch', fetchMock)
+    vi.useFakeTimers()
+    await act(async () => { render(<App />) })
+    await act(async () => { await vi.advanceTimersByTimeAsync(3000) })
+    expect(screen.getByRole('heading', { name: 'Анализ выполняется' })).toBeTruthy()
+    expect(screen.getByText('Проверка пригодности кадров')).toBeTruthy()
+    expect(screen.getByRole('status').textContent).toContain('Не удалось получить актуальный статус')
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Проверить статус' })) })
+    expect(screen.getByRole('heading', { name: 'Статус анализа неизвестен' })).toBeTruthy()
+    expect(fetchMock).toHaveBeenCalledTimes(3)
+  })
+
+  it('times out a stalled status request, retains the snapshot, and offers retry', async () => {
+    history.replaceState({}, '', '/runs/12345678-1234-1234-1234-123456789abc')
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => snapshot('running') })
+      .mockImplementationOnce(() => new Promise(() => {}))
+    vi.stubGlobal('fetch', fetchMock)
+    vi.useFakeTimers()
+    await act(async () => { render(<App />) })
+    await act(async () => { await vi.advanceTimersByTimeAsync(3000) })
+    expect(screen.getByRole('heading', { name: 'Анализ выполняется' }).closest('.run-workspace')?.getAttribute('aria-busy')).toBe('true')
+    await act(async () => { await vi.advanceTimersByTimeAsync(10000) })
+    expect(fetchMock.mock.calls[1][1].signal.aborted).toBe(true)
+    expect(screen.getByRole('button', { name: 'Проверить статус' })).toBeTruthy()
+    expect(screen.getByText('Проверка пригодности кадров')).toBeTruthy()
   })
 
   it('keeps undo disabled when a restored frame would exceed eight', async () => {

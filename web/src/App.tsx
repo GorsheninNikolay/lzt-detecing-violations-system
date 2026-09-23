@@ -3,6 +3,37 @@ import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from 'r
 type Frame = { id: string; file: File }
 type Pending = { endpoint: string; body: string; key: string }
 type Errors = Partial<Record<'scenario' | 'observation_area' | 'period' | 'images' | 'submit', string>>
+type Stage = { name: string; state: string; reason?: string | null; timestamp?: string | null }
+type RunSnapshot = { run_id?: string; state: string; stages: Stage[] }
+
+const STAGE_LABELS: Record<string, string> = {
+  input_registration: 'Регистрация входных данных', frame_usability: 'Проверка пригодности кадров',
+  equipment_observation: 'Распознавание техники', series_aggregation: 'Объединение наблюдений серии',
+  rule_evaluation: 'Проверка правила', result_projection: 'Формирование результата',
+}
+const STAGE_STATES: Record<string, string> = {
+  pending: 'Ожидает', running: 'Выполняется', succeeded: 'Завершено', failed: 'Ошибка выполнения', skipped: 'Пропущено',
+}
+const STAGE_REASONS: Record<string, string> = {
+  dependency_failed: 'Предыдущий этап завершился ошибкой.', not_applicable: 'Не требуется для этого анализа.',
+  no_assessable_frame_or_supported_class: 'Нет пригодного кадра или поддерживаемого класса техники.',
+  profile_unauthorized: 'Профиль анализа больше не разрешён.', executor_interrupted: 'Выполнение анализа прервалось.',
+  observer_timeout: 'Время распознавания истекло.', observer_execution_failed: 'Не удалось выполнить распознавание.',
+  artifact_integrity_failed: 'Не удалось подтвердить целостность данных.',
+  observer_identity_or_device_invalid: 'Профиль распознавания не прошёл проверку.',
+  observation_normalization_failed: 'Не удалось обработать наблюдение.',
+  artifact_publication_failed: 'Не удалось сохранить данные анализа.',
+  ordinary_completion_rejected: 'Не удалось завершить этап анализа.',
+  ordinary_reservation_rejected: 'Не удалось начать распознавание.',
+  ordinary_lease_rejected: 'Выполнение анализа прервалось.',
+}
+const RUN_STATES: Record<string, string> = {
+  queued: 'В очереди', running: 'Выполняется', succeeded: 'Завершён', failed: 'Ошибка выполнения',
+}
+const RUN_HEADINGS: Record<string, string> = {
+  queued: 'Анализ поставлен в очередь', running: 'Анализ выполняется',
+  succeeded: 'Анализ завершён', failed: 'Анализ завершился ошибкой',
+}
 
 const MAX_BYTES = 16_000_000
 const MAX_PIXELS = 40_000_000
@@ -143,11 +174,14 @@ export default function App() {
   const [sending, setSending] = useState(false)
   const [pending, setPending] = useState<Pending | null>(null)
   const [recovering, setRecovering] = useState(true)
-  const [runState, setRunState] = useState('')
+  const [runSnapshot, setRunSnapshot] = useState<RunSnapshot | null>(null)
+  const [runAnnouncement, setRunAnnouncement] = useState('')
   const [runError, setRunError] = useState('')
   const [runChecked, setRunChecked] = useState(false)
   const [runMissing, setRunMissing] = useState(false)
   const [runReadAttempt, setRunReadAttempt] = useState(0)
+  const [runReading, setRunReading] = useState(false)
+  const announcedStages = useRef<string | null>(null)
   const summary = useRef<HTMLDivElement>(null)
   const pageHeading = useRef<HTMLHeadingElement>(null)
   const focusAfterNavigation = useRef(false)
@@ -182,20 +216,60 @@ export default function App() {
   }, [])
 
   useEffect(() => {
-    if (!route) return
     closeCamera()
-    let active = true
-    setRunState('')
+    setRunSnapshot(null)
+    setRunAnnouncement('')
     setRunError('')
     setRunChecked(false)
     setRunMissing(false)
-    fetch(`/runs/${route}`).then(async response => {
-      if (response.status === 404) { if (active) { setRunMissing(true); setRunChecked(true) }; return null }
-      if (!response.ok) throw new Error()
-      return response.json()
-    }).then(data => { if (active && data) { setRunState(String(data.state ?? '')); setRunChecked(true) } })
-      .catch(() => { if (active) { setRunError('Не удалось проверить анализ. Проверьте соединение и повторите запрос.'); setRunChecked(true) } })
-    return () => { active = false }
+    setRunReading(false)
+    announcedStages.current = null
+  }, [route])
+
+  useEffect(() => {
+    if (!route) return
+    let active = true
+    let timer: ReturnType<typeof setTimeout>
+    let timeout: ReturnType<typeof setTimeout>
+    let controller: AbortController | null = null
+    async function read() {
+      controller = new AbortController()
+      setRunReading(true)
+      try {
+        const response = await Promise.race([
+          fetch(`/runs/${route}`, { signal: controller.signal }),
+          new Promise<Response>((_, reject) => { timeout = setTimeout(() => { controller?.abort(); reject(new Error('timeout')) }, 10000) }),
+        ])
+        if (!active) return
+        if (response.status === 404) {
+          if (announcedStages.current === null) setRunMissing(true)
+          else setRunError('Не удалось получить актуальный статус. Повторите проверку.')
+          setRunChecked(true)
+          return
+        }
+        if (!response.ok) throw new Error()
+        const data = await response.json() as RunSnapshot
+        if (!active) return
+        setRunSnapshot(data)
+        setRunError('')
+        setRunChecked(true)
+        const states = data.stages.map(stage => `${stage.name}:${stage.state}`).join('|')
+        if (announcedStages.current !== null && announcedStages.current !== states) {
+          const previous = announcedStages.current.split('|')
+          const changed = data.stages.filter((stage, index) => previous[index] !== `${stage.name}:${stage.state}`)
+          setRunAnnouncement(changed.map(stage => `${STAGE_LABELS[stage.name] ?? 'Этап анализа'}: ${STAGE_STATES[stage.state] ?? 'Состояние доступно на сервере'}.`).join(' '))
+        } else setRunAnnouncement('')
+        announcedStages.current = states
+        if (data.state === 'queued' || data.state === 'running') timer = setTimeout(read, 3000)
+      } catch {
+        if (active) { setRunError('Связь потеряна. Анализ может продолжаться на сервере.'); setRunChecked(true) }
+      } finally {
+        clearTimeout(timeout)
+        if (active) setRunReading(false)
+      }
+    }
+    void read()
+    return () => { active = false; controller?.abort(); clearTimeout(timer); clearTimeout(timeout) }
   }, [route, runReadAttempt])
 
   useEffect(() => {
@@ -416,7 +490,7 @@ export default function App() {
     <a className="skip-link" href="#main">К основному содержимому</a>
     <header className="topbar"><div className="topbar-inner"><a className="brand" href="/" onClick={event => { event.preventDefault(); navigate('/') }}>Контроль строительства <span>17 мгновений ИИ</span></a><nav aria-label="Основная навигация"><a href="/" aria-current={!route ? 'page' : undefined} onClick={event => { event.preventDefault(); navigate('/') }}>Новый анализ</a></nav></div></header>
     <main id="main" className="page">
-      {route ? <section className="panel run-panel" aria-labelledby="run-heading"><p className="eyebrow">Анализ</p><h1 ref={pageHeading} tabIndex={-1} id="run-heading">{runMissing ? 'Анализ не найден' : runError ? 'Статус анализа неизвестен' : runChecked ? 'Анализ создан' : 'Проверяем анализ…'}</h1><p>Номер анализа: <code>{route}</code></p>{runState && <p>Состояние сервера: <strong>{({ queued: 'В очереди', running: 'Выполняется', succeeded: 'Завершён', failed: 'Ошибка выполнения' } as Record<string, string>)[runState] ?? 'Статус доступен на сервере'}</strong></p>}{runError && <><p role="alert" className="error">{runError}</p><button type="button" className="secondary" onClick={() => setRunReadAttempt(value => value + 1)}>Проверить снова</button></>}<p className="muted">Подробный ход и результаты анализа появятся в следующей версии интерфейса.</p><button type="button" className="secondary" onClick={() => navigate('/')}>Новый анализ</button></section> : <>
+      {route ? <section className="run-workspace" aria-labelledby="run-heading" aria-busy={runReading}><div className="panel run-header"><p className="eyebrow">Анализ</p><h1 ref={pageHeading} tabIndex={-1} id="run-heading">{runMissing ? 'Анализ не найден' : runSnapshot ? RUN_HEADINGS[runSnapshot.state] ?? 'Статус анализа неизвестен' : runChecked ? 'Статус анализа неизвестен' : 'Проверяем анализ…'}</h1><p>Номер анализа: <code>{route}</code></p>{runSnapshot && <p>Состояние сервера: <strong>{RUN_STATES[runSnapshot.state] ?? 'Состояние доступно на сервере'}</strong></p>}{runError && <div className="attention"><p>{runError}</p><button type="button" className="secondary" disabled={runReading} onClick={() => { if (!runReading) { setRunReading(true); setRunReadAttempt(value => value + 1) } }}>{runReading ? 'Проверяем статус…' : 'Проверить статус'}</button></div>}<p role="status" className="sr-only">{runError || runAnnouncement}</p><button type="button" className="secondary" onClick={() => navigate('/')}>Новый анализ</button></div>{runSnapshot && <section className="panel pipeline" aria-labelledby="pipeline-heading"><h2 id="pipeline-heading">Этапы анализа</h2><ol className="pipeline-stages">{runSnapshot.stages.map(stage => <li key={stage.name} className={`pipeline-stage stage-${stage.state}`}><h3>{STAGE_LABELS[stage.name] ?? 'Этап анализа'}</h3><p>{STAGE_STATES[stage.state] ?? 'Состояние доступно на сервере'}</p>{stage.reason && <><p className="stage-reason">{STAGE_REASONS[stage.reason] ?? 'Причина не описана для пользователя.'}</p>{!STAGE_REASONS[stage.reason] && <details><summary>Техническая причина</summary><code>{stage.reason}</code></details>}</>}{stage.timestamp && <time dateTime={stage.timestamp}>{stage.timestamp}</time>}</li>)}</ol></section>}</section> : <>
         <div className="page-intro"><p className="eyebrow">Новый анализ</p><h1 ref={pageHeading} tabIndex={-1}>Наблюдение за техникой</h1><p>Добавьте снимки и контекст наблюдения. Анализ распознаёт экскаватор и самосвал на отдельных кадрах; правило этапа и отсутствие техники на всей площадке здесь не проверяются.</p></div>
         <form onSubmit={submit} noValidate aria-busy={sending}>
           <div className="form-grid"><section className="panel" aria-labelledby="context-heading"><h2 id="context-heading">Контекст наблюдения</h2><p className="muted">Режим: только распознать технику</p><fieldset disabled={!!pending || sending || validating}><div className="field"><label htmlFor="scenario">Сценарий</label><input id="scenario" value={scenario} onChange={event => setScenario(event.target.value)} aria-invalid={!!errors.scenario} aria-describedby={errors.scenario ? 'scenario-error' : undefined} maxLength={256} /><p className="hint">Например, наблюдение за земляными работами.</p>{errors.scenario && <p id="scenario-error" className="error">{errors.scenario}</p>}</div><div className="field"><label htmlFor="area">Зона наблюдения</label><input id="area" value={area} onChange={event => setArea(event.target.value)} aria-invalid={!!errors.observation_area} aria-describedby={errors.observation_area ? 'area-error' : undefined} maxLength={256} /><p className="hint">Укажите конкретный участок, к которому относятся кадры.</p>{errors.observation_area && <p id="area-error" className="error">{errors.observation_area}</p>}</div><div className="field"><label htmlFor="period">Дата и время наблюдения</label><input id="period" type="datetime-local" value={period} onChange={event => setPeriod(event.target.value)} aria-invalid={!!errors.period} aria-describedby={errors.period ? 'period-error' : undefined} />{errors.period && <p id="period-error" className="error">{errors.period}</p>}</div></fieldset></section>
