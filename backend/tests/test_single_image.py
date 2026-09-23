@@ -4,21 +4,25 @@ import io
 import json
 import multiprocessing
 import os
+import threading
+import time
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import pytest
 from httpx import ASGITransport, AsyncClient
 from PIL import Image, ImageDraw
-from sqlalchemy import text
+from sqlalchemy import event, text
 
 from app.adapters.artifacts import ArtifactStore
-from app.adapters.postgres import PostgresStore
+from app.adapters.postgres import AdmissionStoreError, PostgresStore, RecoveryGateError
 from app.application import executor
 from app.application import admission, submission
 from app.application.submission import SubmissionError, validate_request
 from app.config import Config
 from app.main import MAX_HTTP_BODY_BYTES, create_app
+from app.profiles.grounding_dino import PREPROCESSING_REVISION
 from test_admission import isolated_admission_database
 from test_startup import database, integration
 
@@ -331,3 +335,99 @@ def test_admitted_profile_http_background_cpu(isolated_admission_database, integ
         executor._observe_bounded(snapshot_dir, json.loads((admission_dir / "model-files.json").read_text()),
                                   image, 0.001)
     assert {child.pid for child in multiprocessing.active_children()} == before
+
+
+def test_expired_lease_fences_completion_during_recovery(isolated_admission_database, request):
+    store = PostgresStore(isolated_admission_database)
+    request.addfinalizer(store.close)
+    parent, profile = uuid.uuid4(), uuid.uuid4()
+    image_hash = "a" * 64
+    with store.engine.begin() as connection:
+        connection.execute(text("INSERT INTO observer_profiles (id, status, profile_hash, snapshot) VALUES (:id, 'draft', :hash, '{}'::jsonb)"),
+                           {"id": parent, "hash": uuid.uuid4().hex})
+        connection.execute(text("""INSERT INTO observer_profiles (id, parent_id, status, profile_hash, snapshot, audit_hash)
+            VALUES (:id, :parent, 'admitted', :hash, '{}'::jsonb, :audit)"""),
+            {"id": profile, "parent": parent, "hash": uuid.uuid4().hex, "audit": uuid.uuid4().hex})
+        connection.execute(text("""INSERT INTO profile_authorizations
+            (profile_id, revision, state, reason, audit_hash, interactive_retry_allowed)
+            SELECT :id, 1, 'enabled', 'test', audit_hash, false FROM observer_profiles WHERE id = :id"""), {"id": profile})
+    key = uuid.uuid4().hex
+    _, _, intent, _ = store.begin_submission(key, uuid.uuid4().hex, "image/jpeg")
+    store.publication_content_verified(intent, image_hash, 1, f"sha256/{image_hash}")
+    store.publication_object_published(intent)
+    snapshot = {"model_files": {"model.safetensors": image_hash}}
+    run_id = store.commit_submission(key, profile, 1, snapshot, {}, ["excavator", "dump_truck"], image_hash, 1)
+    work = store.claim_ordinary(profile, 1, 3)
+    assert work["id"] == run_id
+    invocation = store.reserve_ordinary(run_id, work["owner"], 1, image_hash)
+    native_intent = store.create_publication_intent(run_id, "application/json", f"{run_id}:native")
+    store.publication_content_verified(native_intent, "b" * 64, 2, f"sha256/{'b' * 64}")
+    store.publication_object_published(native_intent)
+    result = {"returned_model_identity": f"checkpoint-sha256:{image_hash}", "actual_device": "cpu",
+              "preprocessing_revision": PREPROCESSING_REVISION, "latency_ms": 1.0, "peak_memory_bytes": 1}
+    observations = [{"class_name": name, "state": "not_detected_in_frame", "reason": None,
+                     "source_artifact_id": str(work["artifact_id"])} for name in ("excavator", "dump_truck")]
+    locked, release = threading.Event(), threading.Event()
+    lock_error_states = []
+
+    def hold_completion_after_lock(_conn, _cursor, statement, _params, _context, _many):
+        if "SELECT r.profile_snapshot, r.state, r.lease_owner" in statement:
+            locked.set()
+            assert release.wait(10), "completion lock was not released"
+
+    def capture_recovery_error(context):
+        if context.statement and "FOR UPDATE NOWAIT" in context.statement:
+            lock_error_states.append(getattr(context.original_exception, "sqlstate", None))
+
+    event.listen(store.engine, "after_cursor_execute", hold_completion_after_lock)
+    event.listen(store.engine, "handle_error", capture_recovery_error)
+    try:
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            completion = pool.submit(store.finish_ordinary, run_id, work["owner"], 1,
+                                     invocation, result, native_intent, observations)
+            assert locked.wait(5), "completion did not acquire the run lock"
+            with store.engine.connect() as connection:
+                live = connection.execute(text("SELECT lease_expires_at > clock_timestamp() FROM analysis_runs WHERE id = :id"),
+                                          {"id": run_id}).scalar_one()
+            assert live, "lease expired before completion acquired its lock"
+            deadline = time.monotonic() + 5
+            while True:
+                with store.engine.connect() as connection:
+                    expired = connection.execute(text("SELECT lease_expires_at <= clock_timestamp() FROM analysis_runs WHERE id = :id"),
+                                                 {"id": run_id}).scalar_one()
+                if expired:
+                    break
+                assert time.monotonic() < deadline, "lease did not expire"
+                time.sleep(0.02)
+            with pytest.raises(RecoveryGateError, match="recovery_gate_failed"):
+                store.recover()
+            assert lock_error_states == ["55P03"]
+            release.set()
+            with pytest.raises(AdmissionStoreError, match="ordinary_completion_rejected"):
+                completion.result(timeout=10)
+    finally:
+        release.set()
+        event.remove(store.engine, "after_cursor_execute", hold_completion_after_lock)
+        event.remove(store.engine, "handle_error", capture_recovery_error)
+    with pytest.raises(AdmissionStoreError, match="ordinary_lease_rejected"):
+        store.renew_ordinary(run_id, work["owner"], 1, 30)
+    store.recover()
+    with store.engine.connect() as connection:
+        run = connection.execute(text("SELECT state, error_code, lease_owner FROM analysis_runs WHERE id = :id"),
+                                 {"id": run_id}).one()
+        stages = connection.execute(text("SELECT ordinal, state, reason FROM analysis_stages WHERE run_id = :id ORDER BY ordinal"),
+                                    {"id": run_id}).all()
+        projections = connection.execute(text("SELECT count(*) FROM result_projections WHERE run_id = :id"),
+                                         {"id": run_id}).scalar_one()
+        persisted_observations = connection.execute(text("SELECT count(*) FROM observations WHERE run_id = :id"),
+                                                    {"id": run_id}).scalar_one()
+        invocation_state = connection.execute(text("SELECT state, native_artifact_id FROM observer_invocations WHERE id = :id"),
+                                              {"id": invocation}).one()
+        native_references = connection.execute(text("SELECT count(*) FROM artifact_metadata WHERE intent_id = :id"),
+                                               {"id": native_intent}).scalar_one()
+    assert run == ("failed", "executor_interrupted", None)
+    assert stages[2] == (2, "failed", "executor_interrupted")
+    assert all(state == "skipped" and reason == "dependency_failed" for _, state, reason in stages[3:])
+    assert projections == persisted_observations == 0
+    assert invocation_state == ("failed", None)
+    assert native_references == 0
