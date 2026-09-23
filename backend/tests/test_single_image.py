@@ -44,6 +44,124 @@ def request_body(image: bytes, classes=None) -> dict:
     return body
 
 
+@pytest.mark.parametrize("after_execute", [False, True], ids=["pre-claim", "post-execution"])
+@pytest.mark.parametrize("series", [False, True], ids=["single", "series"])
+def test_runtime_recovery_preserves_active_submission(isolated_admission_database, integration, monkeypatch,
+                                                      series, after_execute):
+    config, _, _ = integration
+    store = PostgresStore(isolated_admission_database)
+    artifacts = ArtifactStore(Config(isolated_admission_database, config.s3_endpoint, config.s3_bucket,
+                                     config.s3_access_key, config.s3_secret_key))
+    parent, profile, expired = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+    snapshot = {"runtime": {"per_image_timeout_seconds": 2}}
+    with store.engine.begin() as connection:
+        connection.execute(text("INSERT INTO observer_profiles (id, status, profile_hash, snapshot) VALUES (:id, 'draft', :hash, '{}'::jsonb)"),
+                           {"id": parent, "hash": uuid.uuid4().hex})
+        connection.execute(text("""INSERT INTO observer_profiles (id, parent_id, status, profile_hash, snapshot, audit_hash)
+            VALUES (:id, :parent, 'admitted', :hash, '{}'::jsonb, :audit)"""),
+            {"id": profile, "parent": parent, "hash": uuid.uuid4().hex, "audit": uuid.uuid4().hex})
+        connection.execute(text("""INSERT INTO profile_authorizations
+            (profile_id, revision, state, reason, audit_hash, interactive_retry_allowed)
+            SELECT :id, 1, 'enabled', 'test', audit_hash, false FROM observer_profiles WHERE id = :id"""),
+            {"id": profile})
+        connection.execute(text("""INSERT INTO analysis_runs (id, state, lease_owner, lease_expires_at)
+            VALUES (:id, 'running', 'expired-owner', clock_timestamp() + (:seconds * interval '1 second'))"""),
+            {"id": expired, "seconds": 3600 if after_execute else -1})
+    orphan = store.create_publication_intent(expired, "application/json", uuid.uuid4().hex)
+    worker_key = uuid.uuid4().hex if after_execute else None
+    worker_run = submission.submit(store, artifacts, worker_key, request_body(jpeg((77, 88, 99))),
+                                   profile, 1, snapshot)[1] if after_execute else None
+    key = uuid.uuid4().hex
+    image_a, image_b = jpeg((11, 22, 33)), jpeg((44, 55, 66))
+    body = request_body(image_a) if not series else {
+        **{k: v for k, v in request_body(image_a).items() if k != "image_base64"},
+        "images_base64": [base64.b64encode(image).decode() for image in (image_a, image_b)]}
+    ready_to_pause, resume = threading.Event(), threading.Event()
+    upload = artifacts.upload_temporary
+    calls = 0
+
+    def paused_upload(*args):
+        nonlocal calls
+        calls += 1
+        if calls == (2 if series else 1):
+            ready_to_pause.set()
+            assert resume.wait(10)
+        return upload(*args)
+
+    monkeypatch.setattr(artifacts, "upload_temporary", paused_upload)
+    from concurrent.futures import ThreadPoolExecutor
+
+    try:
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            publish = pool.submit(submission.submit_series if series else submission.submit,
+                                  store, artifacts, key, body, profile, 1, snapshot)
+            assert ready_to_pause.wait(10)
+            with store.engine.connect() as connection:
+                live_intents = connection.execute(text("SELECT id, state FROM publication_intents WHERE submission_key = :key ORDER BY id"),
+                                                  {"key": key}).all()
+            assert len(live_intents) == (2 if series else 1)
+            assert all(row.state != "quarantined" for row in live_intents)
+
+            async def recover_in_loop():
+                ready = asyncio.Event()
+                ready.set()
+                loop = executor.ClaimLoop()
+                loop.store, loop.artifacts = store, artifacts
+                executed = False
+                if after_execute:
+                    loop.runtime_binding = profile, 1
+
+                    async def expire_after_execute(work, revision):
+                        nonlocal executed
+                        assert work["id"] == worker_run and revision == 1
+                        with store.engine.begin() as connection:
+                            connection.execute(text("""UPDATE analysis_runs
+                                SET lease_expires_at = clock_timestamp() - interval '1 second' WHERE id = :id"""),
+                                {"id": expired})
+                        executed = True
+
+                    monkeypatch.setattr(loop, "_execute", expire_after_execute)
+                loop.start(ready, artifacts, "unused" if after_execute else None)
+                try:
+                    for _ in range(50):
+                        with store.engine.connect() as connection:
+                            states = connection.execute(text("SELECT state FROM publication_intents WHERE id = :id"),
+                                                        {"id": orphan}).scalar_one()
+                        if states == "quarantined":
+                            break
+                        await asyncio.sleep(0.1)
+                    assert states == "quarantined"
+                    assert executed == after_execute
+                    assert ready.is_set()
+                finally:
+                    ready.clear()
+                    await loop.stop()
+
+            asyncio.run(recover_in_loop())
+            resume.set()
+            status, published_run = publish.result(timeout=10)
+            assert status == "queued"
+        retry = submission.submit_series if series else submission.submit
+        _, run_id = retry(store, artifacts, key, body, profile, 1, snapshot)
+        assert run_id == published_run
+        with store.engine.connect() as connection:
+            request = connection.execute(text("SELECT state, run_id, error_code FROM submission_requests WHERE idempotency_key = :key"),
+                                         {"key": key}).one()
+            states = connection.execute(text("SELECT state, run_id FROM publication_intents WHERE submission_key = :key"),
+                                        {"key": key}).all()
+        assert request == ("accepted", run_id, None)
+        assert len(states) == (2 if series else 1)
+        assert all(row == ("referenced", run_id) for row in states)
+    finally:
+        resume.set()
+        with store.engine.connect() as connection:
+            keys = connection.execute(text("SELECT id FROM publication_intents WHERE submission_key IN (:key, :worker_key)"),
+                                      {"key": key, "worker_key": worker_key}).scalars().all()
+        for intent in keys:
+            artifacts.client.delete_object(Bucket=config.s3_bucket, Key=f"tmp/{intent}")
+        store.close()
+
+
 def test_validation_before_publication():
     for body in (request_body(b"bad"), request_body(jpeg((0, 0, 0))) | {"period": "yesterday"},
                  request_body(jpeg((0, 0, 0))) | {"intent": "evaluate_rule"}):

@@ -14,7 +14,7 @@ const CLASS_LABELS: Record<string, string> = { excavator: 'Экскаватор'
 const OBSERVATION_STATES: Record<string, string> = { detected: 'Обнаружен', not_detected_in_frame: 'Не обнаружен в кадре', insufficient_data: 'Недостаточно данных', not_analyzed: 'Не анализировалось' }
 const OBSERVATION_REASONS: Record<string, string> = { frame_unassessable: 'Кадр непригоден для распознавания.', unsupported_class: 'Класс не поддерживается профилем распознавания.', observer_unavailable: 'Распознавание недоступно.' }
 
-function artifactUrl(runId: string, artifactId: string) { return `/runs/${runId}/artifacts/${artifactId}` }
+function artifactUrl(runId: string, artifactId: string) { return `/api/runs/${runId}/artifacts/${artifactId}` }
 
 function useArtifact(runId: string, artifactId: string | null) {
   const [attempt, retry] = useState(0)
@@ -176,17 +176,22 @@ async function recoverPending(): Promise<Pending | null> {
 }
 
 async function clearPending(): Promise<void> {
-  sessionStorage.removeItem(PENDING_STORAGE)
   const key = sessionStorage.getItem(PENDING_POINTER)
+  if (key) {
+    try {
+      const db = await pendingDatabase()
+      try {
+        await new Promise<void>((resolve, reject) => {
+          const transaction = db.transaction('requests', 'readwrite')
+          transaction.objectStore('requests').delete(key)
+          transaction.oncomplete = () => resolve()
+          transaction.onerror = () => reject(transaction.error)
+        })
+      } finally { db.close() }
+    } catch { /* The pointer is cleared below even if IndexedDB cleanup fails. */ }
+  }
   sessionStorage.removeItem(PENDING_POINTER)
-  if (!key) return
-  try {
-    const db = await pendingDatabase()
-    const transaction = db.transaction('requests', 'readwrite')
-    transaction.objectStore('requests').delete(key)
-    transaction.oncomplete = () => db.close()
-    transaction.onerror = () => db.close()
-  } catch { /* Ignore cleanup failure after clearing the session pointer. */ }
+  sessionStorage.removeItem(PENDING_STORAGE)
 }
 
 function readFile(file: Blob): Promise<ArrayBuffer> {
@@ -329,7 +334,7 @@ export default function App() {
       setRunReading(true)
       try {
         const response = await Promise.race([
-          fetch(`/runs/${route}`, { signal: controller.signal }),
+          fetch(`/api/runs/${route}`, { signal: controller.signal }),
           new Promise<Response>((_, reject) => { timeout = setTimeout(() => { controller?.abort(); reject(new Error('timeout')) }, 10000) }),
         ])
         if (!active) return
@@ -514,7 +519,7 @@ export default function App() {
     setSending(true)
     setErrors(current => ({ ...current, submit: undefined }))
     try {
-      const response = await fetch(request.endpoint, {
+      const response = await fetch(request.endpoint.replace(/^\/runs\//, '/api/runs/'), {
         method: 'POST', headers: { 'Content-Type': 'application/json', 'Idempotency-Key': request.key }, body: request.body,
       })
       if (response.status >= 400 && response.status < 500) {
@@ -533,6 +538,11 @@ export default function App() {
         await clearPending()
         setPending(null)
         navigate(`/runs/${data.run_id}`)
+      } else if (response.status === 503 && (data?.code === 'submission_publication_failed' || data?.code === 'submission_interrupted')) {
+        await clearPending()
+        setPending(null)
+        setErrors(current => ({ ...current, submit: 'Отправка завершилась ошибкой. Проверьте данные и явно запустите новый анализ: будет создан новый ключ отправки.' }))
+        queueMicrotask(() => summary.current?.focus())
       } else {
         setErrors(current => ({ ...current, submit: 'Результат отправки пока неизвестен. Повторите запрос с тем же ключом; изображения и контекст сохранены.' }))
         queueMicrotask(() => summary.current?.focus())
@@ -564,7 +574,7 @@ export default function App() {
         period: periodWithOffset(period), requested_classes: ['excavator', 'dump_truck'],
         ...(images.length === 1 ? { image_base64: images[0] } : { images_base64: images }),
       })
-      const request = { endpoint: images.length === 1 ? '/runs/single-image' : '/runs/series', body, key: crypto.randomUUID() }
+      const request = { endpoint: images.length === 1 ? '/api/runs/single-image' : '/api/runs/series', body, key: crypto.randomUUID() }
       await storePending(request)
       setPending(request)
       busy.current = false

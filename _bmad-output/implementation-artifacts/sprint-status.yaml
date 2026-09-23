@@ -4,7 +4,7 @@
 # Retrospective: optional, done
 # Action item: open, in-progress, done
 generated: 09-22-2026 21:57
-last_updated: 09-23-2026 14:17
+last_updated: 09-23-2026 15:31
 project: lzt-detecing-violations-system
 project_key: NOKEY
 tracking_system: file-system
@@ -20,7 +20,7 @@ development_status:
   1-6-follow-authoritative-pipeline-progress: done
   1-7-inspect-the-source-bound-observation-result: done
   1-8-recover-interrupted-runs-and-artifact-publication: done
-  epic-1-retrospective: optional
+  epic-1-retrospective: done
 
   epic-2: backlog
   2-1-choose-an-applicable-analysis-intent: backlog
@@ -48,3 +48,68 @@ development_status:
   4-6-inspect-prototype-readiness: backlog
   4-7-inspect-provider-comparison-separately: backlog
   epic-4-retrospective: optional
+action_items:
+  - id: "epic-1-retro-protect-live-submissions"
+    epic: 1
+    action: "F1: Coordinate runtime reconciliation with live submission ownership;
+      add a concurrent upload/recovery regression check."
+    owner: "Backend maintainer"
+    status: done
+    ref: "_bmad-output/implementation-artifacts/epic-1-retro-2026-09-23.md"
+  - id: "epic-1-retro-separate-document-api-routes"
+    epic: 1
+    action: "F2: Separate SPA document routing from API proxy routing and verify direct
+      navigation and reload through the documented server."
+    owner: "Frontend maintainer"
+    status: done
+    ref: "_bmad-output/implementation-artifacts/epic-1-retro-2026-09-23.md"
+  - id: "epic-1-retro-recover-terminal-submission"
+    epic: 1
+    action: "F3: Handle authoritative terminal submission failure with an explicit
+      fresh-key submission while preserving same-key retry for uncertain outcomes."
+    owner: "Frontend and backend maintainers"
+    status: done
+    ref: "_bmad-output/implementation-artifacts/epic-1-retro-2026-09-23.md"
+  - id: "epic-1-retro-version-usability-policy"
+    epic: 1
+    action: "F4: Remove unsupported usability thresholds or propose an evidenced immutable
+      PolicyProfile; persist the complete applied policy."
+    owner: "Backend maintainer and product owner"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-1-retro-2026-09-23.md"
+  - id: "epic-1-retro-truthful-series-stage"
+    epic: 1
+    action: "F5: Make run-level frame-usability completion truthful for every series
+      frame and verify intermediate persisted stages."
+    owner: "Backend maintainer"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-1-retro-2026-09-23.md"
+  - id: "epic-1-retro-verify-rendered-ui"
+    epic: 1
+    action: "F6: Obtain permitted rendered-browser evidence for 320px, 200% zoom,
+      dialog focus and real source-image loading; GUI work remains prohibited in this
+      session."
+    owner: "QA owner / Gorshenin-nik"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-1-retro-2026-09-23.md"
+  - id: "epic-1-retro-verify-indexeddb-recovery"
+    epic: 1
+    action: "F7 (deferred): Verify quota-triggered IndexedDB persistence, reload recovery
+      and cleanup of the exact request/key."
+    owner: "Frontend maintainer"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-1-retro-2026-09-23.md"
+  - id: "epic-1-retro-enforce-batch-deadline"
+    epic: 1
+    action: "F8 (deferred): Enforce the snapshotted batch deadline across ordered-series
+      execution and test remaining-budget exhaustion."
+    owner: "Backend maintainer"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-1-retro-2026-09-23.md"
+  - id: "epic-1-retro-bound-submit-wait"
+    epic: 1
+    action: "F9 (deferred): Bound stalled submission fetch and expose safe same-key
+      retry without losing durable request state."
+    owner: "Frontend maintainer"
+    status: open
+    ref: "_bmad-output/implementation-artifacts/epic-1-retro-2026-09-23.md"

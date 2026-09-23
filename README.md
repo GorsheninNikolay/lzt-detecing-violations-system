@@ -47,7 +47,7 @@ The directory boundaries are `backend/app/domain` for evidence contracts, `appli
 
 ## Responsive web client
 
-After starting the ready backend with an admitted observer profile, run `cd web && npm ci && npm run dev` and open `http://127.0.0.1:5173`. The development server proxies `/runs` to the local API. The Russian New Analysis page accepts a single JPEG or an ordered series of 2–8 JPEGs, preserves duplicate frames and local order, and submits `observation_only` with scenario, area, and timezone-aware period. It routes to `/runs/{run_id}` only when the API returns an ID. See [web/README.md](web/README.md) for validation, retry, and route limits.
+After starting the ready backend with an admitted observer profile, run `cd web && npm ci && npm run dev` and open `http://127.0.0.1:5173`. The development server proxies `/api/runs/*` to backend `/runs/*` and serves `/runs/{run_id}` as a web page. The Russian New Analysis page accepts a single JPEG or an ordered series of 2–8 JPEGs, preserves duplicate frames and local order, and submits `observation_only` with scenario, area, and timezone-aware period. It routes to `/runs/{run_id}` only when the API returns an ID. See [web/README.md](web/README.md) for validation, retry, and route limits.
 
 ## Initial local observer admission
 

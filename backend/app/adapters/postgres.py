@@ -60,7 +60,7 @@ class PostgresStore:
         except Exception:
             raise DatabaseGateError("database_smoke_failed") from None
 
-    def reconcile(self, artifacts: ArtifactStore | None = None) -> None:
+    def reconcile(self, artifacts: ArtifactStore | None = None, *, runtime: bool = False) -> None:
         observed_count = 0
         try:
             with self.engine.begin() as connection:
@@ -72,7 +72,9 @@ class PostgresStore:
                 rows = connection.execute(text("""SELECT i.id, i.state, i.run_id, i.sha256, i.size, i.final_key,
                     i.media_type
                     FROM publication_intents i
-                    WHERE i.state NOT IN ('referenced', 'quarantined', 'failed_integrity') FOR UPDATE OF i""")).all()
+                    WHERE i.state NOT IN ('referenced', 'quarantined', 'failed_integrity')
+                      AND (:runtime = false OR i.run_id IS NOT NULL) FOR UPDATE OF i"""),
+                    {"runtime": runtime}).all()
                 observed_count = len(rows)
                 def inspect_final(row):
                     status, creator = artifacts.inspect_reconciliation(row.final_key, row.sha256, row.size)
@@ -128,8 +130,9 @@ class PostgresStore:
                              "size": row.size, "media": row.media_type}).first()
                     connection.execute(text("UPDATE publication_intents SET state = :state WHERE id = :id"),
                                        {"id": row.id, "state": "referenced" if reference else "quarantined"})
-                connection.execute(text("""UPDATE submission_requests SET state = 'failed', error_code = 'submission_interrupted'
-                    WHERE state = 'publishing'"""))
+                if not runtime:
+                    connection.execute(text("""UPDATE submission_requests SET state = 'failed', error_code = 'submission_interrupted'
+                        WHERE state = 'publishing'"""))
                 connection.execute(text("""INSERT INTO reconciliation_runs (started_at, completed_at, intent_count, status, error_code)
                     VALUES (clock_timestamp(), clock_timestamp(), :count, :status, :error)"""),
                     {"count": observed_count, "status": "failed" if integrity_failed else "succeeded",

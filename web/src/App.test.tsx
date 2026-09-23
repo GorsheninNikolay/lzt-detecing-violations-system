@@ -40,7 +40,7 @@ describe('Observation result', () => {
     const user = userEvent.setup()
     const projected = { ...completed, result_projection: { ...completed.result_projection,
       series: { ...completed.result_projection.series, input_order: ['input-1', 'input-0'] } } }
-    vi.stubGlobal('fetch', vi.fn(async (url: string) => url === `/runs/${runId}`
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => url === `/api/runs/${runId}`
       ? { ok: true, json: async () => projected }
       : url.endsWith('native-0') ? { ok: true, text: async () => '{"detections":[]}' }
         : { ok: true, blob: async () => new Blob(['jpeg']) }))
@@ -72,7 +72,7 @@ describe('Observation result', () => {
   })
 
   it('shows a single-frame result without inventing series evidence', async () => {
-    vi.stubGlobal('fetch', vi.fn(async (url: string) => url === `/runs/${runId}`
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => url === `/api/runs/${runId}`
       ? { ok: true, json: async () => ({ ...completed, inputs: inputs.slice(0, 1),
         observations: observations.slice(0, 2), result_projection: { outcome: 'observations_only' } }) }
       : { ok: true, blob: async () => new Blob(['jpeg']) }))
@@ -85,7 +85,7 @@ describe('Observation result', () => {
 
   it('keeps single-frame text and native metadata when verified bytes fail', async () => {
     const user = userEvent.setup()
-    vi.stubGlobal('fetch', vi.fn(async (url: string) => url === `/runs/${runId}`
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => url === `/api/runs/${runId}`
       ? { ok: true, json: async () => ({ ...completed, inputs: inputs.slice(0, 1), observations: observations.slice(0, 2), result_projection: { outcome: 'observations_only' } }) }
       : { ok: false, json: async () => ({ code: 'artifact_integrity_failed' }) }))
     render(<App />)
@@ -100,7 +100,7 @@ describe('Observation result', () => {
 
   it('keeps legacy result and partial failed evidence readable when source retrieval fails', async () => {
     const user = userEvent.setup()
-    const fetchMock = vi.fn(async (url: string): Promise<unknown> => url === `/runs/${runId}`
+    const fetchMock = vi.fn(async (url: string): Promise<unknown> => url === `/api/runs/${runId}`
       ? { ok: true, json: async () => ({ ...completed, result_projection: { outcome: 'observations_only' } }) }
       : { ok: false, json: async () => ({ code: 'artifact_integrity_failed' }) })
     vi.stubGlobal('fetch', fetchMock)
@@ -109,7 +109,7 @@ describe('Observation result', () => {
     expect((await screen.findAllByText('Целостность артефакта не подтверждена')).length).toBeGreaterThan(0)
     expect(screen.getAllByText(/Не обнаружен в кадре/)).toHaveLength(3)
     view.unmount()
-    fetchMock.mockImplementation(async (url: string) => url === `/runs/${runId}`
+    fetchMock.mockImplementation(async (url: string) => url === `/api/runs/${runId}`
       ? { ok: true, json: async () => ({ ...completed, state: 'failed', outcome: null, result_projection: null,
         observations: [{ ...observations[0], state: 'insufficient_data', reason: 'frame_unassessable' },
           { ...observations[1], state: 'not_analyzed', reason: 'unsupported_class' }] }) }
@@ -127,7 +127,7 @@ describe('Observation result', () => {
     let resolveRetry!: (value: unknown) => void
     let firstReads = 0
     vi.stubGlobal('fetch', vi.fn((url: string) => {
-      if (url === `/runs/${runId}`) return Promise.resolve({ ok: true, json: async () => completed })
+      if (url === `/api/runs/${runId}`) return Promise.resolve({ ok: true, json: async () => completed })
       if (url.endsWith('image-0') && ++firstReads === 1) return Promise.resolve({ ok: false, json: async () => ({ code: 'artifact_read_unavailable' }) })
       if (url.endsWith('image-0')) return new Promise(resolve => { resolveRetry = resolve })
       return Promise.resolve({ ok: true, blob: async () => new Blob(['jpeg']) })
@@ -147,7 +147,7 @@ describe('Observation result', () => {
     let firstNativeReads = 0
     const run = { ...completed, native_evidence_by_frame: [...completed.native_evidence_by_frame,
       { ...completed.native_evidence_by_frame[0], artifact_id: 'native-1', input_id: 'input-1', ordinal: 1 }] }
-    vi.stubGlobal('fetch', vi.fn(async (url: string) => url === `/runs/${runId}`
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => url === `/api/runs/${runId}`
       ? { ok: true, json: async () => run }
       : url.endsWith('native-0') ? ++firstNativeReads === 1
         ? { ok: true, text: async () => 'old native result' }
@@ -184,7 +184,7 @@ async function fillContext(user: ReturnType<typeof userEvent.setup>) {
 describe('New Analysis', () => {
   it('submits reordered distinct bytes and retains duplicate frames', async () => {
     const user = userEvent.setup()
-    const post = vi.fn().mockImplementation(async (url: string) => /^\/runs\/[0-9a-f-]{36}$/i.test(url)
+    const post = vi.fn().mockImplementation(async (url: string) => /^\/api\/runs\/[0-9a-f-]{36}$/i.test(url)
       ? { ok: true, json: async () => snapshot('queued') }
       : { status: 202, json: async () => ({ run_id: '12345678-1234-1234-1234-123456789abc' }) })
     vi.stubGlobal('fetch', post)
@@ -201,8 +201,9 @@ describe('New Analysis', () => {
     expect(document.activeElement).toBe(screen.getByRole('heading', { name: 'Анализ поставлен в очередь' }))
     expect(document.title).toBe('Анализ — Контроль строительства')
     expect(location.pathname).toBe('/runs/12345678-1234-1234-1234-123456789abc')
+    expect(sessionStorage.getItem('observation-pending')).toBeNull()
     const [url, options] = post.mock.calls[0]
-    expect(url).toBe('/runs/series')
+    expect(url).toBe('/api/runs/series')
     const body = JSON.parse(options.body)
     expect(body.intent).toBe('observation_only')
     expect(body.images_base64).toHaveLength(3)
@@ -247,11 +248,85 @@ describe('New Analysis', () => {
     await user.click(screen.getByRole('button', { name: 'Повторить отправку' }))
     await screen.findByText('Анализ поставлен в очередь')
     const requests = fetchMock.mock.calls.slice(0, 3)
-    expect(requests.map(call => call[0])).toEqual(['/runs/single-image', '/runs/single-image', '/runs/single-image'])
+    expect(requests.map(call => call[0])).toEqual(['/api/runs/single-image', '/api/runs/single-image', '/api/runs/single-image'])
     expect(requests[0][1].body).toBe(requests[1][1].body)
     expect(requests[1][1].body).toBe(requests[2][1].body)
     expect(requests[0][1].headers['Idempotency-Key']).toBe(requests[1][1].headers['Idempotency-Key'])
     expect(requests[1][1].headers['Idempotency-Key']).toBe(requests[2][1].headers['Idempotency-Key'])
+  })
+
+  for (const [code, filenames] of [
+    ['submission_publication_failed', ['one.jpg']],
+    ['submission_interrupted', ['one.jpg', 'two.jpg']],
+  ] as const) {
+    it(`unlocks ${filenames.length === 1 ? 'single' : 'series'} form after terminal ${code} and sends a fresh key only on user action`, async () => {
+      const user = userEvent.setup()
+      let sequence = 0
+      vi.stubGlobal('crypto', { randomUUID: vi.fn(() => `id-${++sequence}`) })
+      const post = vi.fn()
+        .mockResolvedValueOnce({ status: 503, json: async () => ({ code }) })
+        .mockResolvedValueOnce({ status: 202, json: async () => ({ code: 'submission_in_progress' }) })
+      vi.stubGlobal('fetch', post)
+      render(<App />)
+      await fillContext(user)
+      await user.upload(screen.getByLabelText('Выбрать JPEG'), filenames.map(name => image(name)))
+      await user.click(screen.getByRole('button', { name: 'Запустить анализ' }))
+      expect(await screen.findByText(/Отправка завершилась ошибкой.*новый ключ отправки/)).toBeTruthy()
+      expect(post).toHaveBeenCalledTimes(1)
+      expect(sessionStorage.getItem('observation-pending')).toBeNull()
+      expect(screen.queryByRole('button', { name: 'Повторить отправку' })).toBeNull()
+      expect(screen.getByLabelText('Сценарий')).toHaveProperty('disabled', false)
+      for (const filename of filenames) expect(screen.getByText(filename)).toBeTruthy()
+      await user.clear(screen.getByLabelText('Сценарий'))
+      await user.type(screen.getByLabelText('Сценарий'), 'Новый сценарий')
+      await user.click(screen.getByRole('button', { name: 'Запустить анализ' }))
+      expect(await screen.findByText(/Результат отправки пока неизвестен/)).toBeTruthy()
+      expect(post).toHaveBeenCalledTimes(2)
+      expect(post.mock.calls.map(call => call[0])).toEqual(Array(2).fill(filenames.length === 1 ? '/api/runs/single-image' : '/api/runs/series'))
+      expect(post.mock.calls[1][1].headers['Idempotency-Key']).not.toBe(post.mock.calls[0][1].headers['Idempotency-Key'])
+      expect(JSON.parse(post.mock.calls[1][1].body).scenario).toBe('Новый сценарий')
+      expect(JSON.parse(post.mock.calls[1][1].body)[filenames.length === 1 ? 'image_base64' : 'images_base64'])
+        .toEqual(JSON.parse(post.mock.calls[0][1].body)[filenames.length === 1 ? 'image_base64' : 'images_base64'])
+    })
+  }
+
+  it('retains the exact saved request across unreadable and in-progress responses', async () => {
+    const user = userEvent.setup()
+    const post = vi.fn()
+      .mockResolvedValueOnce({ status: 503, json: async () => { throw new Error('bad JSON') } })
+      .mockResolvedValueOnce({ status: 202, json: async () => ({ code: 'submission_in_progress' }) })
+      .mockResolvedValueOnce({ status: 503, json: async () => ({ code: 'service_not_ready' }) })
+    vi.stubGlobal('fetch', post)
+    render(<App />)
+    await fillContext(user)
+    await user.upload(screen.getByLabelText('Выбрать JPEG'), image('one.jpg'))
+    await user.click(screen.getByRole('button', { name: 'Запустить анализ' }))
+    expect(await screen.findByText(/Ответ сервера не получен/)).toBeTruthy()
+    const saved = sessionStorage.getItem('observation-pending')
+    expect(saved).toBeTruthy()
+    cleanup()
+    render(<App />)
+    await user.click(await screen.findByRole('button', { name: 'Повторить отправку' }))
+    expect(await screen.findByText(/Результат отправки пока неизвестен/)).toBeTruthy()
+    await user.click(screen.getByRole('button', { name: 'Повторить отправку' }))
+    expect(await screen.findByText(/Результат отправки пока неизвестен/)).toBeTruthy()
+    expect(post).toHaveBeenCalledTimes(3)
+    expect(sessionStorage.getItem('observation-pending')).toBe(saved)
+    expect(post.mock.calls.slice(1).every(([, options]) => options.body === post.mock.calls[0][1].body
+      && options.headers['Idempotency-Key'] === post.mock.calls[0][1].headers['Idempotency-Key'])).toBe(true)
+  })
+
+  it('retries a saved request through the API route without changing its body or key', async () => {
+    const request = { endpoint: '/runs/single-image', body: '{"image_base64":"saved"}', key: 'saved-key' }
+    sessionStorage.setItem('observation-pending', JSON.stringify(request))
+    const post = vi.fn().mockResolvedValue({ status: 202, json: async () => ({ code: 'submission_in_progress' }) })
+    vi.stubGlobal('fetch', post)
+    render(<App />)
+    await userEvent.setup().click(await screen.findByRole('button', { name: 'Повторить отправку' }))
+    await waitFor(() => expect(post).toHaveBeenCalledTimes(1))
+    expect(post.mock.calls[0][0]).toBe('/api/runs/single-image')
+    expect(post.mock.calls[0][1].body).toBe(request.body)
+    expect(post.mock.calls[0][1].headers['Idempotency-Key']).toBe(request.key)
   })
 
   it('keeps files offline and explains denied camera access', async () => {
@@ -396,7 +471,7 @@ describe('New Analysis', () => {
     expect(screen.getByRole('heading', { name: 'Анализ выполняется' }).closest('.run-workspace')?.getAttribute('aria-busy')).toBe('true')
     fireEvent.click(screen.getByRole('button', { name: 'Проверяем статус…' }))
     expect(fetchMock).toHaveBeenCalledTimes(3)
-    expect(fetchMock.mock.calls[2][0]).toBe(`/runs/${runId}`)
+    expect(fetchMock.mock.calls[2][0]).toBe(`/api/runs/${runId}`)
     fireEvent.click(screen.getByRole('button', { name: 'Новый анализ' }))
     await act(async () => { resolveLate({ ok: true, json: async () => snapshot('failed') }); await Promise.resolve() })
     expect(fetchMock.mock.calls[2][1].signal.aborted).toBe(true)

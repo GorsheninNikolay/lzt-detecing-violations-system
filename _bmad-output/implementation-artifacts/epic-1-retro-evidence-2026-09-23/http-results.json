@@ -1,0 +1,356 @@
+[
+  {
+    "endpoint": "single-image",
+    "run_id": "7a63f767-1682-40bb-abff-b2ef0ee3911b",
+    "state": "succeeded",
+    "idempotency_reused": true,
+    "verified_inputs": [
+      {
+        "input_id": "2ffecb0a-74a6-4bc0-9d21-5e52940cb2d1",
+        "ordinal": 0,
+        "sha256": "8259713671699f237046cd7cbd19e7df41c84899eab12e6c560de4f90e0dc72d"
+      }
+    ],
+    "run": {
+      "run_id": "7a63f767-1682-40bb-abff-b2ef0ee3911b",
+      "state": "succeeded",
+      "error_code": null,
+      "context": {
+        "period": "2026-09-23T14:30:00+03:00",
+        "scenario": "epic1_retrospective",
+        "observation_area": "isolated_smoke"
+      },
+      "requested_classes": [
+        "excavator",
+        "dump_truck"
+      ],
+      "stages": [
+        {
+          "name": "input_registration",
+          "state": "succeeded",
+          "reason": null
+        },
+        {
+          "name": "frame_usability",
+          "state": "succeeded",
+          "reason": null
+        },
+        {
+          "name": "equipment_observation",
+          "state": "succeeded",
+          "reason": null
+        },
+        {
+          "name": "series_aggregation",
+          "state": "skipped",
+          "reason": "not_applicable"
+        },
+        {
+          "name": "rule_evaluation",
+          "state": "skipped",
+          "reason": "not_applicable"
+        },
+        {
+          "name": "result_projection",
+          "state": "succeeded",
+          "reason": null
+        }
+      ],
+      "inputs": [
+        {
+          "input_id": "2ffecb0a-74a6-4bc0-9d21-5e52940cb2d1",
+          "ordinal": 0,
+          "sha256": "8259713671699f237046cd7cbd19e7df41c84899eab12e6c560de4f90e0dc72d",
+          "size": 2263857,
+          "artifact_id": "5fbc981a-5370-4527-86a6-628afe737828"
+        }
+      ],
+      "observations": [
+        {
+          "class_name": "dump_truck",
+          "state": "detected",
+          "reason": null,
+          "input_sha256": "8259713671699f237046cd7cbd19e7df41c84899eab12e6c560de4f90e0dc72d",
+          "source_artifact_id": "5fbc981a-5370-4527-86a6-628afe737828",
+          "input_id": "2ffecb0a-74a6-4bc0-9d21-5e52940cb2d1",
+          "ordinal": 0,
+          "invocation_id": "db840075-cf95-49cc-aa22-9f1114489472"
+        },
+        {
+          "class_name": "excavator",
+          "state": "detected",
+          "reason": null,
+          "input_sha256": "8259713671699f237046cd7cbd19e7df41c84899eab12e6c560de4f90e0dc72d",
+          "source_artifact_id": "5fbc981a-5370-4527-86a6-628afe737828",
+          "input_id": "2ffecb0a-74a6-4bc0-9d21-5e52940cb2d1",
+          "ordinal": 0,
+          "invocation_id": "db840075-cf95-49cc-aa22-9f1114489472"
+        }
+      ],
+      "native_evidence": {
+        "artifact_id": "44d45e92-cadc-4ee9-8fef-c06ec30bdc0c",
+        "sha256": "56e5961b1c0272e4518a800c8885b5873bd69d084b8f0fe23050c2f304880ffa",
+        "size": 506
+      },
+      "native_evidence_by_frame": [
+        {
+          "artifact_id": "44d45e92-cadc-4ee9-8fef-c06ec30bdc0c",
+          "sha256": "56e5961b1c0272e4518a800c8885b5873bd69d084b8f0fe23050c2f304880ffa",
+          "size": 506,
+          "ordinal": 0,
+          "input_id": "2ffecb0a-74a6-4bc0-9d21-5e52940cb2d1",
+          "invocation_id": "db840075-cf95-49cc-aa22-9f1114489472",
+          "profile_id": "391538ef-38b0-4067-b5d1-57fbd716638e",
+          "profile_revision": 1,
+          "preprocessing_revision": "grounding-dino-processor-v1"
+        }
+      ],
+      "outcome": "observations_only",
+      "result_projection": {
+        "frames": [
+          {
+            "state": "detected",
+            "reason": null,
+            "ordinal": 0,
+            "input_id": "2ffecb0a-74a6-4bc0-9d21-5e52940cb2d1",
+            "class_name": "dump_truck",
+            "invocation_id": "db840075-cf95-49cc-aa22-9f1114489472",
+            "source_artifact_id": "5fbc981a-5370-4527-86a6-628afe737828"
+          },
+          {
+            "state": "detected",
+            "reason": null,
+            "ordinal": 0,
+            "input_id": "2ffecb0a-74a6-4bc0-9d21-5e52940cb2d1",
+            "class_name": "excavator",
+            "invocation_id": "db840075-cf95-49cc-aa22-9f1114489472",
+            "source_artifact_id": "5fbc981a-5370-4527-86a6-628afe737828"
+          }
+        ],
+        "series": {
+          "input_order": [
+            "2ffecb0a-74a6-4bc0-9d21-5e52940cb2d1"
+          ],
+          "usable_count": 1,
+          "usable_input_ids": [
+            "2ffecb0a-74a6-4bc0-9d21-5e52940cb2d1"
+          ],
+          "declared_observation_area": "isolated_smoke",
+          "dump_truck_persistence_text": null,
+          "excavator_supporting_input_ids": [
+            "2ffecb0a-74a6-4bc0-9d21-5e52940cb2d1"
+          ],
+          "dump_truck_persistence_input_ids": []
+        },
+        "outcome": "observations_only"
+      }
+    }
+  },
+  {
+    "endpoint": "series",
+    "run_id": "4ff17e90-4a03-4ed1-9f68-f094667d4d13",
+    "state": "succeeded",
+    "idempotency_reused": true,
+    "verified_inputs": [
+      {
+        "input_id": "4f201fbe-4147-4cde-bda4-5d3c6724306f",
+        "ordinal": 0,
+        "sha256": "8259713671699f237046cd7cbd19e7df41c84899eab12e6c560de4f90e0dc72d"
+      },
+      {
+        "input_id": "b8613984-3eb6-4913-9186-c01f6598e8e8",
+        "ordinal": 1,
+        "sha256": "8259713671699f237046cd7cbd19e7df41c84899eab12e6c560de4f90e0dc72d"
+      }
+    ],
+    "run": {
+      "run_id": "4ff17e90-4a03-4ed1-9f68-f094667d4d13",
+      "state": "succeeded",
+      "error_code": null,
+      "context": {
+        "period": "2026-09-23T14:30:00+03:00",
+        "scenario": "epic1_retrospective",
+        "observation_area": "isolated_smoke"
+      },
+      "requested_classes": [
+        "excavator",
+        "dump_truck"
+      ],
+      "stages": [
+        {
+          "name": "input_registration",
+          "state": "succeeded",
+          "reason": null
+        },
+        {
+          "name": "frame_usability",
+          "state": "succeeded",
+          "reason": null
+        },
+        {
+          "name": "equipment_observation",
+          "state": "succeeded",
+          "reason": null
+        },
+        {
+          "name": "series_aggregation",
+          "state": "succeeded",
+          "reason": null
+        },
+        {
+          "name": "rule_evaluation",
+          "state": "skipped",
+          "reason": "not_applicable"
+        },
+        {
+          "name": "result_projection",
+          "state": "succeeded",
+          "reason": null
+        }
+      ],
+      "inputs": [
+        {
+          "input_id": "4f201fbe-4147-4cde-bda4-5d3c6724306f",
+          "ordinal": 0,
+          "sha256": "8259713671699f237046cd7cbd19e7df41c84899eab12e6c560de4f90e0dc72d",
+          "size": 2263857,
+          "artifact_id": "dfb90bab-2630-440f-8c62-fe8927c0fe6d"
+        },
+        {
+          "input_id": "b8613984-3eb6-4913-9186-c01f6598e8e8",
+          "ordinal": 1,
+          "sha256": "8259713671699f237046cd7cbd19e7df41c84899eab12e6c560de4f90e0dc72d",
+          "size": 2263857,
+          "artifact_id": "f95cf497-77b5-4947-84c5-133b9a4b39d8"
+        }
+      ],
+      "observations": [
+        {
+          "class_name": "dump_truck",
+          "state": "detected",
+          "reason": null,
+          "input_sha256": "8259713671699f237046cd7cbd19e7df41c84899eab12e6c560de4f90e0dc72d",
+          "source_artifact_id": "dfb90bab-2630-440f-8c62-fe8927c0fe6d",
+          "input_id": "4f201fbe-4147-4cde-bda4-5d3c6724306f",
+          "ordinal": 0,
+          "invocation_id": "52cf86f1-9c54-48cd-a706-af7b50466e26"
+        },
+        {
+          "class_name": "excavator",
+          "state": "detected",
+          "reason": null,
+          "input_sha256": "8259713671699f237046cd7cbd19e7df41c84899eab12e6c560de4f90e0dc72d",
+          "source_artifact_id": "dfb90bab-2630-440f-8c62-fe8927c0fe6d",
+          "input_id": "4f201fbe-4147-4cde-bda4-5d3c6724306f",
+          "ordinal": 0,
+          "invocation_id": "52cf86f1-9c54-48cd-a706-af7b50466e26"
+        },
+        {
+          "class_name": "dump_truck",
+          "state": "detected",
+          "reason": null,
+          "input_sha256": "8259713671699f237046cd7cbd19e7df41c84899eab12e6c560de4f90e0dc72d",
+          "source_artifact_id": "f95cf497-77b5-4947-84c5-133b9a4b39d8",
+          "input_id": "b8613984-3eb6-4913-9186-c01f6598e8e8",
+          "ordinal": 1,
+          "invocation_id": "fcd5eb4d-eab6-4bc2-97c6-39fb0c4453c4"
+        },
+        {
+          "class_name": "excavator",
+          "state": "detected",
+          "reason": null,
+          "input_sha256": "8259713671699f237046cd7cbd19e7df41c84899eab12e6c560de4f90e0dc72d",
+          "source_artifact_id": "f95cf497-77b5-4947-84c5-133b9a4b39d8",
+          "input_id": "b8613984-3eb6-4913-9186-c01f6598e8e8",
+          "ordinal": 1,
+          "invocation_id": "fcd5eb4d-eab6-4bc2-97c6-39fb0c4453c4"
+        }
+      ],
+      "native_evidence": null,
+      "native_evidence_by_frame": [
+        {
+          "artifact_id": "166d5338-7f48-4fa1-93e8-b6d9c141bcb8",
+          "sha256": "46b2fc92a1dddf3bdd853d51272f329184bdcdeba99a6111bdf23c2a846c1176",
+          "size": 506,
+          "ordinal": 0,
+          "input_id": "4f201fbe-4147-4cde-bda4-5d3c6724306f",
+          "invocation_id": "52cf86f1-9c54-48cd-a706-af7b50466e26",
+          "profile_id": "391538ef-38b0-4067-b5d1-57fbd716638e",
+          "profile_revision": 1,
+          "preprocessing_revision": "grounding-dino-processor-v1"
+        },
+        {
+          "artifact_id": "264d4dc9-7011-47b9-8c7e-a2b58056d2f1",
+          "sha256": "9faaccd6f065e95a19c0f43891bf270d9e7dd44ebc6c1b929a5b792018c15c57",
+          "size": 505,
+          "ordinal": 1,
+          "input_id": "b8613984-3eb6-4913-9186-c01f6598e8e8",
+          "invocation_id": "fcd5eb4d-eab6-4bc2-97c6-39fb0c4453c4",
+          "profile_id": "391538ef-38b0-4067-b5d1-57fbd716638e",
+          "profile_revision": 1,
+          "preprocessing_revision": "grounding-dino-processor-v1"
+        }
+      ],
+      "outcome": "observations_only",
+      "result_projection": {
+        "frames": [
+          {
+            "state": "detected",
+            "reason": null,
+            "ordinal": 0,
+            "input_id": "4f201fbe-4147-4cde-bda4-5d3c6724306f",
+            "class_name": "dump_truck",
+            "invocation_id": "52cf86f1-9c54-48cd-a706-af7b50466e26",
+            "source_artifact_id": "dfb90bab-2630-440f-8c62-fe8927c0fe6d"
+          },
+          {
+            "state": "detected",
+            "reason": null,
+            "ordinal": 0,
+            "input_id": "4f201fbe-4147-4cde-bda4-5d3c6724306f",
+            "class_name": "excavator",
+            "invocation_id": "52cf86f1-9c54-48cd-a706-af7b50466e26",
+            "source_artifact_id": "dfb90bab-2630-440f-8c62-fe8927c0fe6d"
+          },
+          {
+            "state": "detected",
+            "reason": null,
+            "ordinal": 1,
+            "input_id": "b8613984-3eb6-4913-9186-c01f6598e8e8",
+            "class_name": "dump_truck",
+            "invocation_id": "fcd5eb4d-eab6-4bc2-97c6-39fb0c4453c4",
+            "source_artifact_id": "f95cf497-77b5-4947-84c5-133b9a4b39d8"
+          },
+          {
+            "state": "detected",
+            "reason": null,
+            "ordinal": 1,
+            "input_id": "b8613984-3eb6-4913-9186-c01f6598e8e8",
+            "class_name": "excavator",
+            "invocation_id": "fcd5eb4d-eab6-4bc2-97c6-39fb0c4453c4",
+            "source_artifact_id": "f95cf497-77b5-4947-84c5-133b9a4b39d8"
+          }
+        ],
+        "series": {
+          "input_order": [
+            "4f201fbe-4147-4cde-bda4-5d3c6724306f",
+            "b8613984-3eb6-4913-9186-c01f6598e8e8"
+          ],
+          "usable_count": 2,
+          "usable_input_ids": [
+            "4f201fbe-4147-4cde-bda4-5d3c6724306f",
+            "b8613984-3eb6-4913-9186-c01f6598e8e8"
+          ],
+          "declared_observation_area": "isolated_smoke",
+          "dump_truck_persistence_text": null,
+          "excavator_supporting_input_ids": [
+            "4f201fbe-4147-4cde-bda4-5d3c6724306f",
+            "b8613984-3eb6-4913-9186-c01f6598e8e8"
+          ],
+          "dump_truck_persistence_input_ids": []
+        },
+        "outcome": "observations_only"
+      }
+    }
+  }
+]

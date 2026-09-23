@@ -209,13 +209,34 @@ def test_reconciliation_quarantines_interrupted_states_without_touching_bytes(in
             connection.execute(text("DELETE FROM analysis_runs WHERE id = ANY(:ids)"), {"ids": run_ids})
 
 
+def test_startup_reconciliation_fails_interrupted_submission(integration):
+    _, store, artifacts = integration
+    key, request_hash = uuid.uuid4().hex, uuid.uuid4().hex
+    state, _, intent, _ = store.begin_submission(key, request_hash, "image/jpeg")
+    assert state == "created"
+    try:
+        store.reconcile(artifacts)
+        assert store.begin_submission(key, request_hash, "image/jpeg") == (
+            "failed", None, intent, "submission_interrupted")
+        with store.engine.connect() as connection:
+            assert connection.execute(text("SELECT state FROM publication_intents WHERE id = :id"),
+                                      {"id": intent}).scalar_one() == "quarantined"
+    finally:
+        with store.engine.begin() as connection:
+            connection.execute(text("UPDATE submission_requests SET intent_id = NULL WHERE idempotency_key = :key"),
+                               {"key": key})
+            connection.execute(text("DELETE FROM publication_intents WHERE id = :id"), {"id": intent})
+            connection.execute(text("DELETE FROM submission_requests WHERE idempotency_key = :key"), {"key": key})
+
+
+@pytest.mark.parametrize("runtime", [False, True], ids=["startup", "runtime"])
 @pytest.mark.parametrize("final_state,intent_state", [
     ("missing", "object_published"),
     ("mismatched", "object_published"),
     ("mismatched", "content_verified"),
     ("unattributed", "object_published"),
 ])
-def test_reconciliation_integrity_failure_blocks_gate(integration, monkeypatch, final_state, intent_state):
+def test_reconciliation_integrity_failure_blocks_gate(integration, monkeypatch, final_state, intent_state, runtime):
     config, store, artifacts = integration
     run_id = uuid.uuid4()
     with store.engine.begin() as connection:
@@ -235,7 +256,7 @@ def test_reconciliation_integrity_failure_blocks_gate(integration, monkeypatch, 
         store.publication_object_published(intent)
     try:
         with pytest.raises(ReconciliationGateError, match="reconciliation_integrity_failed"):
-            store.reconcile(artifacts)
+            store.reconcile(artifacts, runtime=runtime)
         with store.engine.connect() as connection:
             assert connection.execute(text("SELECT state FROM publication_intents WHERE id = :id"), {"id": intent}).scalar_one() == "failed_integrity"
             assert connection.execute(text("SELECT count(*) FROM artifact_metadata WHERE intent_id = :id"),
