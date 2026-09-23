@@ -84,7 +84,8 @@ describe('Observation result', () => {
   })
 
   it('renders the persisted rule outcome and human-check boundary', async () => {
-    const rule = { name: 'Проверка вывоза грунта', revision: 'v1', expectation: 'Самосвалы периодически',
+    const rule = { name: 'Проверка вывоза грунта', revision: 'rule-immutable-evidence-v1',
+      expectation: 'Экскаватор работает постоянно, самосвалы появляются периодически.',
       provenance: 'demonstration rule', recommendation: 'Проверить вручную' }
     vi.stubGlobal('fetch', vi.fn(async (url: string) => url === `/api/runs/${runId}`
       ? { ok: true, json: async () => ({ ...completed, intent: 'rule_evaluation', outcome: 'check_requested', rule_snapshot: rule,
@@ -94,6 +95,8 @@ describe('Observation result', () => {
     render(<App />)
     expect(await screen.findByRole('heading', { name: 'Рекомендована проверка человеком' })).toBeTruthy()
     expect(screen.getByText(/Самосвал не обнаружен\./)).toBeTruthy()
+    expect(screen.getByText(/ревизия rule-immutable-evidence-v1/)).toBeTruthy()
+    expect(screen.getByText('Экскаватор работает постоянно, самосвалы появляются периодически.')).toBeTruthy()
     expect(screen.getByText(/Это рекомендация для проверки, а не подтверждение нарушения/)).toBeTruthy()
     expect(screen.getByText(/demonstration rule/)).toBeTruthy()
   })
@@ -294,13 +297,16 @@ describe('New Analysis', () => {
   it('defaults to the server-provided excavation rule and explains an unconfigured stage', async () => {
     const user = userEvent.setup()
     vi.stubGlobal('__ANALYSIS_CHOICES__', [{ id: 'excavation', label: 'Земляные работы', rule: {
-      name: 'Проверка вывоза грунта', revision: 'excavation-haulage-v1',
-      expectation: 'Экскаватор постоянно, самосвал периодически.', provenance: 'demonstration rule', recommendation: 'Проверить вручную.',
+      name: 'Проверка вывоза грунта на этапе земляных работ',
+      revision: 'rule-34a0c9535d378f7482cac065e0d474e7b33a4fb545beee1922b962a837b9d97d',
+      expectation: 'Экскаватор работает постоянно, самосвалы появляются периодически.',
+      provenance: 'demonstration rule', recommendation: 'Проверить организацию вывоза грунта на участке вручную.',
     } }, { id: 'other', label: 'Другой этап', rule: null }])
     render(<App />)
     expect((screen.getByRole('radio', { name: 'Проверить правило этапа' }) as HTMLInputElement).checked).toBe(true)
-    expect(screen.getByText('Проверка вывоза грунта')).toBeTruthy()
-    expect(screen.getByText('excavation-haulage-v1')).toBeTruthy()
+    expect(screen.getByText('Проверка вывоза грунта на этапе земляных работ')).toBeTruthy()
+    expect(screen.getByText('rule-34a0c9535d378f7482cac065e0d474e7b33a4fb545beee1922b962a837b9d97d')).toBeTruthy()
+    expect(screen.getByText('Экскаватор работает постоянно, самосвалы появляются периодически.')).toBeTruthy()
     expect(screen.getByText('demonstration rule')).toBeTruthy()
     expect(screen.getByText(/Зона: не указана/)).toBeTruthy()
     await user.selectOptions(screen.getByLabelText('Этап'), 'other')

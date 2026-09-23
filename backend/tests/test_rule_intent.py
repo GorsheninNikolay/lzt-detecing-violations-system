@@ -1,16 +1,18 @@
 import base64
 import asyncio
+import json
 import uuid
 from types import SimpleNamespace
 
 import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import text
+from sqlalchemy.exc import DBAPIError
 
 from app.adapters.postgres import PostgresStore
 from app.application import executor, submission
 from app.application.submission import SubmissionError, validate_images
-from app.domain.rule import RULE, RULE_POLICY, evaluate_rule
+from app.domain.rule import RULE, RULE_POLICY, evaluate_rule, revisioned_snapshot
 from app.main import create_app
 from test_single_image import jpeg
 from test_startup import database, integration
@@ -21,6 +23,25 @@ CONTEXT = {"scenario": "excavation", "observation_area": "north", "period": "202
 
 def request(intent="rule_evaluation", stage="excavation"):
     return {"intent": intent, "stage": stage, **CONTEXT}
+
+
+def test_policy_and_rule_revisions_identify_canonical_content():
+    assert (revisioned_snapshot("test", {"z": {"b": 2, "a": 1}, "a": [1, 2]})["revision"] ==
+            revisioned_snapshot("test", {"a": [1, 2], "z": {"a": 1, "b": 2}})["revision"])
+    assert revisioned_snapshot("rule", RULE)["revision"] == RULE["revision"]
+    assert revisioned_snapshot("policy", RULE_POLICY)["revision"] == RULE_POLICY["revision"]
+    assert revisioned_snapshot("rule", {**RULE, "expectation": "changed"})["revision"] != RULE["revision"]
+    assert revisioned_snapshot("policy", {**RULE_POLICY, "minimum_usable_same_area_frames": 4})["revision"] != RULE_POLICY["revision"]
+    assert RULE["expectation"] == "Экскаватор работает постоянно, самосвалы появляются периодически."
+    assert RULE["provenance"] == "demonstration rule"
+    assert RULE_POLICY["minimum_usable_same_area_frames"] == 3
+    assert RULE_POLICY["supported_media_types"] == ["image/jpeg"]
+    assert RULE_POLICY["frame_order"] == "upload_order"
+    assert RULE_POLICY["area_scope"] == "one_declared_observation_area"
+    assert all(RULE_POLICY[name] is None for name in (
+        "subjective_resolution_threshold", "visibility_threshold", "object_size_threshold",
+        "image_quality_threshold", "cadence_threshold", "duration_threshold", "miss_rate_threshold",
+        "false_detection_threshold", "stability_threshold"))
 
 
 def test_intent_is_part_of_request_identity_and_rule_scope():
@@ -60,6 +81,23 @@ def test_rule_uses_normalized_frame_states(states, usable, outcome):
     assert result["outcome"] == outcome
     assert result["rule"]["revision"] == RULE["revision"]
     assert result["supporting_input_ids"] == (["0", "1", "2"] if outcome == 'check_requested' else [])
+    if outcome == "insufficient_data" and any(state == "insufficient_data"
+                                              for pair in states for state in pair):
+        assert "Наблюдатель не смог оценить" in result["reason"]
+        assert result["recommendation"] is None
+
+
+def test_stricter_policy_revision_uses_its_bound_minimum_in_the_reason():
+    policy = revisioned_snapshot("policy", {**RULE_POLICY, "minimum_usable_same_area_frames": 4})
+    frames = [{"input_id": str(index), "class_name": name, "state": state}
+              for index in range(3)
+              for name, state in zip(("excavator", "dump_truck"), ("detected", "not_detected_in_frame"))]
+    result = evaluate_rule(frames, ["0", "1", "2"], policy, RULE, CONTEXT)
+    assert policy["revision"] != RULE_POLICY["revision"]
+    assert result["policy"]["revision"] == policy["revision"]
+    assert result["outcome"] == "insufficient_data"
+    assert "минимум 4 пригодных кадров" in result["reason"]
+    assert result["recommendation"] is None
 
 
 def test_choices_are_served_as_authoritative_api_contract():
@@ -105,11 +143,50 @@ def test_rule_intent_survives_publication_execution_and_readback(integration, mo
         connection.execute(text("INSERT INTO observer_profiles (id, status, profile_hash, snapshot) VALUES (:id, 'draft', :hash, '{}'::jsonb)"),
                            {"id": parent, "hash": uuid.uuid4().hex})
         connection.execute(text("""INSERT INTO observer_profiles (id, parent_id, status, profile_hash, snapshot, audit_hash)
-            VALUES (:id, :parent, 'admitted', :hash, '{}'::jsonb, :audit)"""),
-            {"id": profile, "parent": parent, "hash": uuid.uuid4().hex, "audit": uuid.uuid4().hex})
+            VALUES (:id, :parent, 'admitted', :hash, CAST(:snapshot AS jsonb), :audit)"""),
+            {"id": profile, "parent": parent, "hash": uuid.uuid4().hex,
+             "snapshot": json.dumps(snapshot), "audit": uuid.uuid4().hex})
         connection.execute(text("""INSERT INTO profile_authorizations
             (profile_id, revision, state, reason, audit_hash, interactive_retry_allowed)
             SELECT :id, 1, 'enabled', 'test', audit_hash, false FROM observer_profiles WHERE id = :id"""), {"id": profile})
+
+    with pytest.raises(DBAPIError, match="analysis_run_rule_binding_incomplete"):
+        with store.engine.begin() as connection:
+            connection.execute(text("""INSERT INTO analysis_runs (id, state, purpose, analysis_intent, stage_key)
+                VALUES (:id, 'queued', 'ordinary', 'rule_evaluation', 'excavation')"""), {"id": uuid.uuid4()})
+
+    def insert_binding(policy, bound_snapshot=snapshot):
+        run_id = uuid.uuid4()
+        with store.engine.begin() as connection:
+            connection.execute(text("""INSERT INTO analysis_runs
+                (id, state, purpose, profile_id, authorization_revision, binding_kind, profile_snapshot,
+                 request_context, policy_snapshot, rule_snapshot, analysis_intent, stage_key,
+                 taxonomy_snapshot, requested_classes)
+                VALUES (:id, 'queued', 'ordinary', :profile, 1, 'admitted_profile',
+                    CAST(:profile_snapshot AS jsonb), CAST(:context AS jsonb), CAST(:policy AS jsonb),
+                    CAST(:rule AS jsonb), 'rule_evaluation', 'excavation',
+                    CAST(:taxonomy AS jsonb), CAST(:classes AS jsonb))"""), {
+                        "id": run_id, "profile": profile,
+                        "profile_snapshot": json.dumps(bound_snapshot),
+                        "context": json.dumps(CONTEXT),
+                        "policy": json.dumps({"intent": "rule_evaluation", **policy}),
+                        "rule": json.dumps(RULE),
+                        "taxonomy": json.dumps({"portable_classes": ["excavator", "dump_truck"],
+                                               "revision": "presence-only-v1"}),
+                        "classes": json.dumps(["excavator", "dump_truck"]),
+                    })
+        return run_id
+
+    stricter_policy = revisioned_snapshot("policy", {**RULE_POLICY, "minimum_usable_same_area_frames": 4})
+    stricter_run = insert_binding(stricter_policy)
+    with store.engine.begin() as connection:
+        connection.execute(text("DELETE FROM analysis_runs WHERE id = :run"), {"run": stricter_run})
+    with pytest.raises(DBAPIError, match="analysis_run_rule_binding_incomplete"):
+        insert_binding(revisioned_snapshot("policy", {**RULE_POLICY, "minimum_usable_same_area_frames": 2}))
+    with pytest.raises(DBAPIError, match="analysis_run_rule_binding_incomplete"):
+        insert_binding(revisioned_snapshot("policy", {**RULE_POLICY, "admission": "all_images"}))
+    with pytest.raises(DBAPIError, match="analysis_run_rule_binding_incomplete"):
+        insert_binding(RULE_POLICY, {**snapshot, "runtime": {"batch_timeout_seconds": 1}})
 
     detected_dump = False
 
@@ -138,6 +215,16 @@ def test_rule_intent_survives_publication_execution_and_readback(integration, mo
         queued = store.read_ordinary(run_id)
         assert queued["intent"] == "rule_evaluation"
         assert queued["rule_snapshot"]["revision"] == RULE["revision"]
+        assert queued["policy_snapshot"] == {"intent": "rule_evaluation", **RULE_POLICY}
+        assert queued["rule_snapshot"] == RULE
+        assert queued["taxonomy_snapshot"] == {"portable_classes": ["excavator", "dump_truck"], "revision": "presence-only-v1"}
+        assert queued["profile_id"] == str(profile)
+        assert queued["authorization_revision"] == 1
+        assert queued["binding_kind"] == "admitted_profile"
+        assert queued["profile_snapshot"] == snapshot
+        assert queued["context"] == CONTEXT
+        assert queued["requested_classes"] == ["excavator", "dump_truck"]
+        assert [item["ordinal"] for item in queued["inputs"]] == list(range(count))
         await loop._execute(store.claim_ordinary(profile, 1, 30), 1)
         done = store.read_ordinary(run_id)
         assert done["state"] == "succeeded" and done["outcome"] == expected, done["error_code"]
@@ -146,8 +233,48 @@ def test_rule_intent_survives_publication_execution_and_readback(integration, mo
         if expected == "no_check":
             assert done["result_projection"]["outcome"] == "no_check"
             assert done["result_projection"]["recommendation"] is None
+        return run_id
 
     asyncio.run(run_case(1, "insufficient_data"))
     asyncio.run(run_case(2, "insufficient_data"))
-    asyncio.run(run_case(3, "check_requested"))
+    run_id = asyncio.run(run_case(3, "check_requested"))
     asyncio.run(run_case(3, "no_check", dump=True))
+
+    updates = [
+        ("request_context", json.dumps({**CONTEXT, "scenario": "changed"}), "jsonb"),
+        ("profile_id", str(uuid.uuid4()), "uuid"),
+        ("authorization_revision", 2, None),
+        ("binding_kind", "changed", None),
+        ("profile_snapshot", json.dumps({**snapshot, "changed": True}), "jsonb"),
+        ("policy_snapshot", json.dumps({**RULE_POLICY, "minimum_usable_same_area_frames": 4}), "jsonb"),
+        ("rule_snapshot", json.dumps({**RULE, "expectation": "changed"}), "jsonb"),
+        ("analysis_intent", "observation_only", None),
+        ("stage_key", "other", None),
+        ("taxonomy_snapshot", json.dumps({"portable_classes": ["excavator"], "revision": "changed"}), "jsonb"),
+        ("requested_classes", json.dumps(["excavator"]), "jsonb"),
+    ]
+    for column, value, type_ in updates:
+        cast = f"CAST(:value AS {type_})" if type_ else ":value"
+        with pytest.raises(DBAPIError, match="analysis_run_binding_immutable"):
+            with store.engine.begin() as connection:
+                connection.execute(text(f"UPDATE analysis_runs SET {column} = {cast} WHERE id = :run"),
+                                   {"value": value, "run": run_id})
+    manifest_before = store.read_ordinary(run_id)["inputs"]
+    manifest_mutations = [
+        "UPDATE run_inputs SET ordinal = ordinal + 10 WHERE run_id = :run AND ordinal = 0",
+        "DELETE FROM run_inputs WHERE run_id = :run AND ordinal = 0",
+        """INSERT INTO run_inputs (run_id, ordinal, sha256, size, context, artifact_id)
+            VALUES (:run, 99, :hash, 1, CAST(:context AS jsonb), :artifact)""",
+    ]
+    for mutation in manifest_mutations:
+        with pytest.raises(DBAPIError, match="accepted_run_manifest_immutable"):
+            with store.engine.begin() as connection:
+                connection.execute(text(mutation), {
+                    "run": run_id, "hash": "b" * 64,
+                    "context": json.dumps(CONTEXT), "artifact": uuid.uuid4(),
+                })
+    retained = store.read_ordinary(run_id)
+    assert retained["inputs"] == manifest_before
+    assert retained["context"] == CONTEXT
+    assert retained["policy_snapshot"] == {"intent": "rule_evaluation", **RULE_POLICY}
+    assert retained["rule_snapshot"] == RULE

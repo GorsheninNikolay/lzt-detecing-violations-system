@@ -782,6 +782,7 @@ class PostgresStore:
     def read_ordinary(self, run_id: uuid.UUID) -> dict | None:
         with self.engine.connect().execution_options(isolation_level="REPEATABLE READ") as connection:
             row = connection.execute(text("""SELECT id, state, error_code, request_context, requested_classes,
+                profile_id, authorization_revision, binding_kind, profile_snapshot, taxonomy_snapshot,
                 analysis_intent, stage_key, policy_snapshot, rule_snapshot
                 FROM analysis_runs WHERE id = :id AND purpose = 'ordinary'"""), {"id": run_id}).one_or_none()
             if not row:
@@ -801,6 +802,10 @@ class PostgresStore:
                 WHERE i.run_id = :id ORDER BY r.ordinal"""), {"id": run_id}).mappings().all()
             return {"run_id": str(row.id), "state": row.state, "error_code": row.error_code,
                     "context": row.request_context, "requested_classes": row.requested_classes,
+                    "profile_id": str(row.profile_id) if row.profile_id else None,
+                    "authorization_revision": row.authorization_revision,
+                    "binding_kind": row.binding_kind, "profile_snapshot": row.profile_snapshot,
+                    "taxonomy_snapshot": row.taxonomy_snapshot,
                     "intent": row.analysis_intent or "observation_only", "stage": row.stage_key,
                     "policy_snapshot": row.policy_snapshot, "rule_snapshot": row.rule_snapshot,
                     "stages": [dict(item) for item in stages],
