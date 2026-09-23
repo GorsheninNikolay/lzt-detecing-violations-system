@@ -68,6 +68,7 @@ def test_rule_requires_both_informative_classes(requested):
 
 @pytest.mark.parametrize("states,usable,outcome", [
     ([('detected', 'not_detected_in_frame')], 1, 'insufficient_data'),
+    ([('detected', 'not_detected_in_frame')] * 2, 2, 'insufficient_data'),
     ([('detected', 'not_detected_in_frame')] * 3, 3, 'check_requested'),
     ([('detected', 'not_detected_in_frame')] * 2 + [('detected', 'detected')], 3, 'no_check'),
     ([('not_detected_in_frame', 'detected')] * 3, 3, 'insufficient_data'),
@@ -97,6 +98,25 @@ def test_positive_development_fixture_is_separate_and_requests_no_check():
     assert result["outcome"] == "no_check"
     assert result["supporting_input_ids"] == ["frame-0", "frame-2"]
     assert result["recommendation"] is None
+
+
+def test_persistent_non_detection_fixture_is_separate_and_requests_a_check():
+    fixture = json.loads((Path(__file__).parent / "fixtures/persistent_non_detection.json").read_text())
+    held_out = json.loads((Path(__file__).parent.parent / "admission/exclusions/held_out_evaluation.json").read_text())
+    assert fixture["source_group"].startswith("synthetic-development-")
+    assert fixture["source_group"] not in held_out["reserved_source_groups"]
+    assert all(item.get("source_group") != fixture["source_group"] for item in held_out["fixtures"])
+    assert fixture["context"] == CONTEXT
+    result = evaluate_rule(fixture["observations"], fixture["usable_input_ids"], RULE_POLICY, RULE, fixture["context"])
+    assert result == {
+        "outcome": "check_requested",
+        "reason": ("Есть повод проверить возможную задержку вывоза грунта: "
+                   "экскаватор обнаружен хотя бы в одном пригодном кадре, самосвал не обнаружен ни в одном пригодном кадре."),
+        "rule": RULE, "policy": RULE_POLICY, "context": CONTEXT,
+        "supporting_input_ids": fixture["usable_input_ids"],
+        "uncertainty": "Необнаружение в кадре не доказывает отсутствие техники на всей площадке.",
+        "recommendation": RULE["recommendation"],
+    }
 
 
 def test_stricter_policy_revision_uses_its_bound_minimum_in_the_reason():
@@ -207,7 +227,7 @@ def test_rule_intent_survives_publication_execution_and_readback(integration, mo
         nonlocal observed_index
         index = observed_index
         observed_index += 1
-        excavator_seen = not detected_dump or index == 0
+        excavator_seen = index == 0
         dump_seen = detected_dump and index == 2
         detections = []
         if excavator_seen:
@@ -247,11 +267,48 @@ def test_rule_intent_survives_publication_execution_and_readback(integration, mo
         assert queued["context"] == CONTEXT
         assert queued["requested_classes"] == ["excavator", "dump_truck"]
         assert [item["ordinal"] for item in queued["inputs"]] == list(range(count))
+        with store.engine.connect() as connection:
+            assert connection.execute(text("SELECT context FROM run_inputs WHERE run_id = :run ORDER BY ordinal"),
+                                      {"run": run_id}).scalars().all() == [CONTEXT] * count
         await loop._execute(store.claim_ordinary(profile, 1, 30), 1)
         done = store.read_ordinary(run_id)
         assert done["state"] == "succeeded" and done["outcome"] == expected, done["error_code"]
         assert done["stages"][4]["state"] == "succeeded"
         assert bool(done["result_projection"]["recommendation"]) == (expected == "check_requested")
+        if expected == "check_requested":
+            projection = done["result_projection"]
+            input_ids = [item["input_id"] for item in done["inputs"]]
+            assert projection["outcome"] == "check_requested"
+            assert projection["supporting_input_ids"] == input_ids
+            assert projection["series"]["usable_input_ids"] == input_ids
+            assert projection["series"]["input_order"] == input_ids
+            assert projection["series"]["declared_observation_area"] == CONTEXT["observation_area"]
+            assert projection["series"]["excavator_supporting_input_ids"] == input_ids[:1]
+            assert projection["series"]["dump_truck_persistence_input_ids"] == input_ids
+            assert projection["context"] == CONTEXT
+            assert projection["rule"] == queued["rule_snapshot"] == RULE
+            assert projection["rule"]["expectation"] == RULE["expectation"]
+            assert projection["rule"]["provenance"] == "demonstration rule"
+            assert projection["policy"] == queued["policy_snapshot"]
+            assert projection["reason"] == ("Есть повод проверить возможную задержку вывоза грунта: "
+                                            "экскаватор обнаружен хотя бы в одном пригодном кадре, самосвал не обнаружен ни в одном пригодном кадре.")
+            assert projection["uncertainty"] == "Необнаружение в кадре не доказывает отсутствие техники на всей площадке."
+            assert projection["recommendation"] == RULE["recommendation"]
+            assert projection["frames"] == [{key: item[key] for key in ("input_id", "ordinal", "class_name", "state", "reason", "source_artifact_id", "invocation_id")}
+                                            for item in done["observations"]]
+            assert [(item["input_id"], item["class_name"], item["state"]) for item in projection["frames"]] == [
+                (input_id, class_name, state) for input_id in input_ids for class_name, state in
+                (("dump_truck", "not_detected_in_frame"),
+                 ("excavator", "detected" if input_id == input_ids[0] else "not_detected_in_frame"))
+            ]
+            assert all(frame["source_artifact_id"] == next(item["artifact_id"] for item in done["inputs"]
+                                                            if item["input_id"] == frame["input_id"])
+                       for frame in projection["frames"])
+            with store.engine.connect() as connection:
+                assert connection.execute(text("SELECT count(*) FROM result_projections WHERE run_id = :run"),
+                                          {"run": run_id}).scalar_one() == 1
+                assert connection.execute(text("SELECT count(*) FROM result_projections WHERE run_id = :run AND outcome = 'check_requested'"),
+                                          {"run": run_id}).scalar_one() == 1
         if expected == "no_check":
             projection = done["result_projection"]
             assert projection["outcome"] == "no_check"

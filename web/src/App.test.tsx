@@ -87,18 +87,36 @@ describe('Observation result', () => {
     const rule = { name: 'Проверка вывоза грунта', revision: 'rule-immutable-evidence-v1',
       expectation: 'Экскаватор работает постоянно, самосвалы появляются периодически.',
       provenance: 'demonstration rule', recommendation: 'Проверить вручную' }
+    const checkInputs = [...inputs, { input_id: 'input-2', ordinal: 2, sha256: 'third', artifact_id: 'image-2' }]
+    const checkObservations = [...observations, ...['excavator', 'dump_truck'].map(class_name => ({
+      input_id: 'input-2', ordinal: 2, class_name, state: 'not_detected_in_frame',
+      reason: null, source_artifact_id: 'image-2',
+    }))]
+    const checkSeries = { ...completed.result_projection.series, usable_count: 3,
+      usable_input_ids: checkInputs.map(input => input.input_id),
+      input_order: checkInputs.map(input => input.input_id),
+      dump_truck_persistence_input_ids: checkInputs.map(input => input.input_id) }
     vi.stubGlobal('fetch', vi.fn(async (url: string) => url === `/api/runs/${runId}`
       ? { ok: true, json: async () => ({ ...completed, intent: 'rule_evaluation', outcome: 'check_requested', rule_snapshot: rule,
-        result_projection: { ...completed.result_projection, outcome: 'check_requested', reason: 'Самосвал не обнаружен.',
-          uncertainty: 'Необнаружение в кадре не доказывает отсутствие на площадке.', recommendation: rule.recommendation } }) }
+        inputs: checkInputs, observations: checkObservations,
+        result_projection: { ...completed.result_projection, outcome: 'check_requested', context: completed.context,
+          series: checkSeries, rule, supporting_input_ids: checkInputs.map(input => input.input_id),
+          reason: 'Есть повод проверить возможную задержку вывоза грунта: экскаватор обнаружен хотя бы в одном пригодном кадре, самосвал не обнаружен ни в одном пригодном кадре.',
+          uncertainty: 'Необнаружение в кадре не доказывает отсутствие на площадке.',
+          recommendation: rule.recommendation } }) }
       : { ok: true, blob: async () => new Blob(['jpeg']) }))
     render(<App />)
     expect(await screen.findByRole('heading', { name: 'Рекомендована проверка человеком' })).toBeTruthy()
-    expect(screen.getByText(/Самосвал не обнаружен\./)).toBeTruthy()
-    expect(screen.getByText(/ревизия rule-immutable-evidence-v1/)).toBeTruthy()
-    expect(screen.getByText('Экскаватор работает постоянно, самосвалы появляются периодически.')).toBeTruthy()
-    expect(screen.getByText(/Это рекомендация для проверки, а не подтверждение нарушения/)).toBeTruthy()
-    expect(screen.getByText(/demonstration rule/)).toBeTruthy()
+    const panel = screen.getByRole('region', { name: 'Запрос проверки вывоза грунта' })
+    expect(within(panel).getByText(/Основание: Есть повод проверить возможную задержку вывоза грунта/)).toBeTruthy()
+    expect(within(panel).getByText('Подтверждающие входные ID: input-0, input-1, input-2.')).toBeTruthy()
+    expect(within(panel).getByText(/Период: 2026-09-23T12:00:00\+03:00\. Заявленная зона: north_gate/)).toBeTruthy()
+    expect(within(panel).getByText(/ревизия rule-immutable-evidence-v1/)).toBeTruthy()
+    expect(within(panel).getByText('Ожидание: Экскаватор работает постоянно, самосвалы появляются периодически.')).toBeTruthy()
+    expect(within(panel).getByText('Неопределённость: Необнаружение в кадре не доказывает отсутствие на площадке.')).toBeTruthy()
+    expect(within(panel).getByText('Рекомендуемая проверка человеком: Проверить вручную')).toBeTruthy()
+    expect(within(panel).getByText('Это рекомендация для проверки, а не подтверждение нарушения.')).toBeTruthy()
+    expect(within(panel).getByText(/demonstration rule/)).toBeTruthy()
   })
 
   it('shows positive evidence as a bounded no-check result', async () => {

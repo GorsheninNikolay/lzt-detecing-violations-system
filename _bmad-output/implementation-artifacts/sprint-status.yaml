@@ -26,7 +26,7 @@ development_status:
   2-1-choose-an-applicable-analysis-intent: done
   2-2-apply-immutable-evidence-and-rule-revisions: done
   2-3-produce-the-positive-no-check-result: done
-  2-4-request-a-check-only-for-persistent-non-detection: backlog
+  2-4-request-a-check-only-for-persistent-non-detection: done
   2-5-inspect-evidence-and-rule-provenance: backlog
   2-6-run-included-demonstration-cases: backlog
   2-7-cover-insufficient-and-out-of-scope-journeys: backlog

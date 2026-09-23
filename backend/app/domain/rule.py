@@ -59,7 +59,8 @@ def evaluate_rule(frames: list[dict], usable_ids: list[str], policy: dict, rule:
         outcome, reason = "no_check", "Самосвал обнаружен в пригодной серии; запрос проверки не сформирован."
     elif (all(states[input_id, dump_truck] == "not_detected_in_frame" for input_id in usable_ids)
           and any(states[input_id, excavator] == "detected" for input_id in usable_ids)):
-        outcome, reason = "check_requested", "Экскаватор обнаружен, самосвал не обнаружен ни в одном пригодном кадре."
+        outcome, reason = "check_requested", ("Есть повод проверить возможную задержку вывоза грунта: "
+            "экскаватор обнаружен хотя бы в одном пригодном кадре, самосвал не обнаружен ни в одном пригодном кадре.")
     else:
         outcome, reason = "insufficient_data", "Наблюдения не подтверждают работу экскаватора для оценки вывоза грунта."
     supporting_ids = []
