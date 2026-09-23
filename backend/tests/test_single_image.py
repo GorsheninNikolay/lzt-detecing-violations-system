@@ -240,7 +240,7 @@ def test_http_submission_and_guarded_execution(isolated_admission_database, inte
                 connection.execute(text("""INSERT INTO submission_requests (idempotency_key, request_hash, state, intent_id)
                     VALUES (:key, 'interrupted', 'publishing', :intent)"""),
                     {"key": interrupted_key, "intent": interrupted})
-            store.reconcile()
+            store.reconcile(artifacts)
             with store.engine.connect() as connection:
                 assert connection.execute(text("SELECT state FROM publication_intents WHERE id = :id"),
                                           {"id": interrupted}).scalar_one() == "quarantined"

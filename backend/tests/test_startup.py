@@ -1,10 +1,12 @@
 import asyncio
+import hashlib
 import http.client
 import os
 import threading
 import uuid
 from contextlib import contextmanager
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from types import SimpleNamespace
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -41,6 +43,20 @@ def test_live_while_readiness_pending():
             assert response.json() == {"ready": False, "code": "startup_pending"}
 
     asyncio.run(check())
+
+
+@pytest.mark.parametrize("code", ["NoSuchKey", "404", "NotFound"])
+def test_reconciliation_inspector_distinguishes_missing_object(code):
+    artifact = object.__new__(ArtifactStore)
+    artifact.bucket = "test"
+    error = ClientError({"Error": {"Code": code}, "ResponseMetadata": {"HTTPStatusCode": 404}}, "GetObject")
+    artifact.client = SimpleNamespace(
+        get_object=lambda **_: (_ for _ in ()).throw(error), head_bucket=lambda **_: {})
+    assert artifact.inspect_reconciliation("tmp/missing") == ("missing", None)
+    artifact.client.head_bucket = lambda **_: (_ for _ in ()).throw(error)
+    if code != "NoSuchKey":
+        with pytest.raises(ArtifactGateError, match="artifact_read_unavailable"):
+            artifact.inspect_reconciliation("tmp/missing")
 
 
 @pytest.fixture(scope="module")
@@ -133,30 +149,244 @@ def test_reconciliation_lock_fences_pass(database):
             transaction.rollback()
 
 
-def test_reconciliation_rejects_unhandled_intents(database):
-    store = database
-    intent_id = uuid.uuid4()
+def test_reconciliation_quarantines_interrupted_states_without_touching_bytes(integration):
+    config, store, artifacts = integration
+    run_ids = [uuid.uuid4() for _ in range(3)]
+    with store.engine.begin() as connection:
+        for run_id in run_ids:
+            connection.execute(text("INSERT INTO analysis_runs (id, state) VALUES (:id, 'failed')"), {"id": run_id})
+    intents = []
+    keys = []
+    try:
+        for index, run_id in enumerate(run_ids):
+            intent = store.create_publication_intent(run_id, "application/json", uuid.uuid4().hex)
+            payload = f"interrupted-{intent}".encode()
+            temporary, digest, size = artifacts.upload_temporary(intent, payload, "application/json")
+            keys.append(temporary)
+            if index:
+                store.publication_content_verified(intent, digest, size, f"sha256/{digest}")
+            if index == 2:
+                final = artifacts.publish_final(intent, payload, "application/json", digest, size)
+                keys.append(final)
+                store.publication_object_published(intent)
+            intents.append(intent)
+        original = {key: artifacts.client.get_object(Bucket=config.s3_bucket, Key=key)["Body"].read() for key in keys}
+        store.reconcile(artifacts)
+        store.reconcile(artifacts)
+        with store.engine.connect() as connection:
+            states = connection.execute(text("SELECT state FROM publication_intents WHERE id = ANY(:ids)"), {"ids": intents}).scalars().all()
+            last = connection.execute(text("SELECT intent_count, status FROM reconciliation_runs ORDER BY id DESC LIMIT 2")).all()
+        assert states == ["quarantined"] * 3
+        assert last[0] == (0, "succeeded")
+        assert last[1].status == "succeeded" and last[1].intent_count >= 3
+        assert {key: artifacts.client.get_object(Bucket=config.s3_bucket, Key=key)["Body"].read() for key in keys} == original
+    finally:
+        for key in keys:
+            artifacts.client.delete_object(Bucket=config.s3_bucket, Key=key)
+        with store.engine.begin() as connection:
+            connection.execute(text("DELETE FROM publication_intents WHERE id = ANY(:ids)"), {"ids": intents})
+            connection.execute(text("DELETE FROM analysis_runs WHERE id = ANY(:ids)"), {"ids": run_ids})
+
+
+@pytest.mark.parametrize("final_state,intent_state", [
+    ("missing", "object_published"),
+    ("mismatched", "object_published"),
+    ("mismatched", "content_verified"),
+])
+def test_reconciliation_integrity_failure_blocks_gate(integration, monkeypatch, final_state, intent_state):
+    config, store, artifacts = integration
     run_id = uuid.uuid4()
     with store.engine.begin() as connection:
-        connection.execute(text("INSERT INTO analysis_runs (id, state) VALUES (:id, 'running')"), {"id": run_id})
-        connection.execute(text("INSERT INTO publication_intents (id, run_id, idempotency_key, media_type, state) VALUES (:id, :run, :key, 'application/json', 'pending_upload')"), {"id": intent_id, "run": run_id, "key": str(intent_id)})
+        connection.execute(text("INSERT INTO analysis_runs (id, state) VALUES (:id, 'failed')"), {"id": run_id})
+    intent = store.create_publication_intent(run_id, "application/json", uuid.uuid4().hex)
+    payload = uuid.uuid4().bytes
+    temporary, digest, size = artifacts.upload_temporary(intent, payload, "application/json")
+    final = f"sha256/{digest}"
+    store.publication_content_verified(intent, digest, size, final)
+    if final_state == "mismatched":
+        artifacts.client.put_object(Bucket=config.s3_bucket, Key=final, Body=b"wrong",
+                                    Metadata={"publication_intent_id": str(intent)})
+    if intent_state == "object_published":
+        store.publication_object_published(intent)
     try:
-        with pytest.raises(ReconciliationGateError, match="reconciliation_pending_intents"):
-            store.reconcile()
+        with pytest.raises(ReconciliationGateError, match="reconciliation_integrity_failed"):
+            store.reconcile(artifacts)
         with store.engine.connect() as connection:
-            evidence = connection.execute(text("SELECT intent_count FROM reconciliation_runs WHERE status = 'failed' AND error_code = 'reconciliation_pending_intents' ORDER BY id DESC LIMIT 1")).scalar_one()
-        assert evidence == 1
+            assert connection.execute(text("SELECT state FROM publication_intents WHERE id = :id"), {"id": intent}).scalar_one() == "failed_integrity"
+            assert connection.execute(text("SELECT count(*) FROM artifact_metadata WHERE intent_id = :id"),
+                                      {"id": intent}).scalar_one() == 0
+            assert connection.execute(text("SELECT status, error_code FROM reconciliation_runs ORDER BY id DESC LIMIT 1")).one() == ("failed", "reconciliation_integrity_failed")
+        set_service_env(monkeypatch, config)
+        assert_service_gate("reconciliation_integrity_failed")
+        with store.engine.connect() as connection:
+            assert connection.execute(text("SELECT status, error_code FROM reconciliation_runs ORDER BY id DESC LIMIT 1")).one() == ("failed", "reconciliation_integrity_failed")
+    finally:
+        for key in (temporary, final):
+            artifacts.client.delete_object(Bucket=config.s3_bucket, Key=key)
+        with store.engine.begin() as connection:
+            connection.execute(text("DELETE FROM publication_intents WHERE id = :id"), {"id": intent})
+            connection.execute(text("DELETE FROM analysis_runs WHERE id = :id"), {"id": run_id})
+
+
+def test_reconciliation_rejects_wrong_temporary_creator(integration, monkeypatch):
+    config, store, artifacts = integration
+    run_id = uuid.uuid4()
+    with store.engine.begin() as connection:
+        connection.execute(text("INSERT INTO analysis_runs (id, state) VALUES (:id, 'failed')"), {"id": run_id})
+    intent = store.create_publication_intent(run_id, "application/json", uuid.uuid4().hex)
+    payload = uuid.uuid4().bytes
+    digest = hashlib.sha256(payload).hexdigest()
+    temporary = f"tmp/{intent}"
+    artifacts.client.put_object(Bucket=config.s3_bucket, Key=temporary, Body=payload,
+                                Metadata={"publication_intent_id": str(uuid.uuid4())})
+    store.publication_content_verified(intent, digest, len(payload), f"sha256/{digest}")
+    try:
+        with pytest.raises(ReconciliationGateError, match="reconciliation_integrity_failed"):
+            store.reconcile(artifacts)
+        set_service_env(monkeypatch, config)
+        assert_service_gate("reconciliation_integrity_failed")
+        with store.engine.connect() as connection:
+            assert connection.execute(text("SELECT state FROM publication_intents WHERE id = :id"),
+                                      {"id": intent}).scalar_one() == "failed_integrity"
+            assert connection.execute(text("SELECT status, error_code FROM reconciliation_runs ORDER BY id DESC LIMIT 1")).one() == ("failed", "reconciliation_integrity_failed")
+    finally:
+        artifacts.client.delete_object(Bucket=config.s3_bucket, Key=temporary)
+        with store.engine.begin() as connection:
+            connection.execute(text("DELETE FROM publication_intents WHERE id = :id"), {"id": intent})
+            connection.execute(text("DELETE FROM analysis_runs WHERE id = :id"), {"id": run_id})
+
+
+def test_reconciliation_s3_outage_blocks_readiness(integration, monkeypatch):
+    config, store, _ = integration
+    run_id = uuid.uuid4()
+    with store.engine.begin() as connection:
+        connection.execute(text("INSERT INTO analysis_runs (id, state) VALUES (:id, 'failed')"), {"id": run_id})
+    intent = store.create_publication_intent(run_id, "application/json", uuid.uuid4().hex)
+    try:
+        set_service_env(monkeypatch, config)
+        monkeypatch.setattr(ArtifactStore, "inspect_reconciliation",
+                            lambda *_args, **_kwargs: (_ for _ in ()).throw(ArtifactGateError("artifact_read_unavailable")))
+        assert_service_gate("reconciliation_artifact_unavailable")
+        with store.engine.connect() as connection:
+            assert connection.execute(text("SELECT state FROM publication_intents WHERE id = :id"), {"id": intent}).scalar_one() == "pending_upload"
+            assert connection.execute(text("SELECT status, error_code FROM reconciliation_runs ORDER BY id DESC LIMIT 1")).one() == ("failed", "reconciliation_artifact_unavailable")
     finally:
         with store.engine.begin() as connection:
-            connection.execute(text("DELETE FROM publication_intents WHERE id = :id"), {"id": intent_id})
+            connection.execute(text("DELETE FROM publication_intents WHERE id = :id"), {"id": intent})
             connection.execute(text("DELETE FROM analysis_runs WHERE id = :id"), {"id": run_id})
+
+
+def test_duplicate_content_keeps_first_creator(integration):
+    config, store, artifacts = integration
+    run_ids = [uuid.uuid4(), uuid.uuid4()]
+    with store.engine.begin() as connection:
+        for run_id in run_ids:
+            connection.execute(text("INSERT INTO analysis_runs (id, state) VALUES (:id, 'failed')"), {"id": run_id})
+    intents = []
+    payload = uuid.uuid4().bytes
+    digest = hashlib.sha256(payload).hexdigest()
+    final = f"sha256/{digest}"
+    try:
+        for run_id in run_ids:
+            intent = store.create_publication_intent(run_id, "application/octet-stream", uuid.uuid4().hex)
+            artifacts.upload_temporary(intent, payload, "application/octet-stream")
+            store.publication_content_verified(intent, digest, len(payload), final)
+            assert artifacts.publish_final(intent, payload, "application/octet-stream", digest, len(payload)) == final
+            store.publication_object_published(intent)
+            intents.append(intent)
+        before = artifacts.client.head_object(Bucket=config.s3_bucket, Key=final)["Metadata"]
+        assert before["publication_intent_id"] == str(intents[0])
+        store.reconcile(artifacts)
+        after = artifacts.client.head_object(Bucket=config.s3_bucket, Key=final)["Metadata"]
+        assert after == before
+        with store.engine.connect() as connection:
+            assert connection.execute(text("SELECT count(*) FROM artifact_metadata WHERE intent_id = ANY(:ids)"),
+                                      {"ids": intents}).scalar_one() == 0
+    finally:
+        for intent in intents:
+            artifacts.client.delete_object(Bucket=config.s3_bucket, Key=f"tmp/{intent}")
+        artifacts.client.delete_object(Bucket=config.s3_bucket, Key=final)
+        with store.engine.begin() as connection:
+            connection.execute(text("DELETE FROM publication_intents WHERE id = ANY(:ids)"), {"ids": intents})
+            connection.execute(text("DELETE FROM analysis_runs WHERE id = ANY(:ids)"), {"ids": run_ids})
+
+
+def test_reconciliation_attaches_verified_deduplicated_reference(integration):
+    config, store, artifacts = integration
+    creator_run, attached_run = uuid.uuid4(), uuid.uuid4()
+    with store.engine.begin() as connection:
+        for run_id in (creator_run, attached_run):
+            connection.execute(text("INSERT INTO analysis_runs (id, state) VALUES (:id, 'failed')"), {"id": run_id})
+    payload = uuid.uuid4().bytes
+    digest = hashlib.sha256(payload).hexdigest()
+    final = f"sha256/{digest}"
+    creator = store.create_publication_intent(creator_run, "application/octet-stream", uuid.uuid4().hex)
+    later = store.create_publication_intent(attached_run, "application/octet-stream", uuid.uuid4().hex)
+    artifact_id = uuid.uuid4()
+    try:
+        for intent in (creator, later):
+            artifacts.upload_temporary(intent, payload, "application/octet-stream")
+            store.publication_content_verified(intent, digest, len(payload), final)
+            artifacts.publish_final(intent, payload, "application/octet-stream", digest, len(payload))
+            store.publication_object_published(intent)
+        with store.engine.begin() as connection:
+            connection.execute(text("""INSERT INTO artifact_metadata
+                (id, run_id, intent_id, key, sha256, size, media_type)
+                VALUES (:id, :run, :intent, :key, :hash, :size, 'application/octet-stream')"""),
+                {"id": artifact_id, "run": attached_run, "intent": later, "key": final,
+                 "hash": digest, "size": len(payload)})
+        store.reconcile(artifacts)
+        with store.engine.connect() as connection:
+            states = dict(connection.execute(text("SELECT id, state FROM publication_intents WHERE id IN (:creator, :later)"),
+                                             {"creator": creator, "later": later}).all())
+        assert states == {creator: "quarantined", later: "referenced"}
+        assert artifacts.client.head_object(Bucket=config.s3_bucket, Key=final)["Metadata"]["publication_intent_id"] == str(creator)
+    finally:
+        for intent in (creator, later):
+            artifacts.client.delete_object(Bucket=config.s3_bucket, Key=f"tmp/{intent}")
+        artifacts.client.delete_object(Bucket=config.s3_bucket, Key=final)
+        with store.engine.begin() as connection:
+            connection.execute(text("DELETE FROM artifact_metadata WHERE id = :id"), {"id": artifact_id})
+            connection.execute(text("DELETE FROM publication_intents WHERE id IN (:creator, :later)"),
+                               {"creator": creator, "later": later})
+            connection.execute(text("DELETE FROM analysis_runs WHERE id IN (:creator, :later)"),
+                               {"creator": creator_run, "later": attached_run})
+
+
+def test_reconciliation_preserves_live_owner_before_recovery(integration):
+    _, store, artifacts = integration
+    live, expired = uuid.uuid4(), uuid.uuid4()
+    with store.engine.begin() as connection:
+        connection.execute(text("""INSERT INTO analysis_runs (id, state, lease_owner, lease_expires_at)
+            VALUES (:live, 'running', 'live-owner', clock_timestamp() + interval '1 hour'),
+                   (:expired, 'running', 'expired-owner', clock_timestamp() - interval '1 hour')"""),
+            {"live": live, "expired": expired})
+    live_intent = store.create_publication_intent(live, "application/json", uuid.uuid4().hex)
+    expired_intent = store.create_publication_intent(expired, "application/json", uuid.uuid4().hex)
+    try:
+        store.reconcile(artifacts)
+        store.recover()
+        with store.engine.connect() as connection:
+            runs = {row.id: (row.state, row.lease_owner) for row in connection.execute(text(
+                "SELECT id, state, lease_owner FROM analysis_runs WHERE id IN (:live, :expired)"),
+                {"live": live, "expired": expired})}
+            intents = dict(connection.execute(text("SELECT id, state FROM publication_intents WHERE id IN (:live, :expired)"),
+                                              {"live": live_intent, "expired": expired_intent}).all())
+        assert runs == {live: ("running", "live-owner"), expired: ("failed", None)}
+        assert intents == {live_intent: "pending_upload", expired_intent: "quarantined"}
+    finally:
+        with store.engine.begin() as connection:
+            connection.execute(text("DELETE FROM publication_intents WHERE id IN (:live, :expired)"),
+                               {"live": live_intent, "expired": expired_intent})
+            connection.execute(text("DELETE FROM analysis_runs WHERE id IN (:live, :expired)"),
+                               {"live": live, "expired": expired})
 
 
 def test_guarded_recovery(database):
     store = database
-    active, expired, unknown = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+    queued, active, expired, unknown = (uuid.uuid4() for _ in range(4))
     with store.engine.begin() as connection:
-        connection.execute(text("INSERT INTO analysis_runs (id, state, lease_owner, lease_expires_at) VALUES (:active, 'running', 'owner', clock_timestamp() + interval '1 hour'), (:expired, 'running', 'owner', clock_timestamp() - interval '1 hour'), (:unknown, 'running', 'owner', NULL)"), {"active": active, "expired": expired, "unknown": unknown})
+        connection.execute(text("INSERT INTO analysis_runs (id, state, lease_owner, lease_expires_at) VALUES (:queued, 'queued', NULL, NULL), (:active, 'running', 'owner', clock_timestamp() + interval '1 hour'), (:expired, 'running', 'owner', clock_timestamp() - interval '1 hour'), (:unknown, 'running', 'owner', NULL)"), {"queued": queued, "active": active, "expired": expired, "unknown": unknown})
         connection.execute(text("INSERT INTO analysis_stages (run_id, ordinal, state) VALUES (:expired, 0, 'running'), (:expired, 1, 'pending')"), {"expired": expired})
     try:
         with pytest.raises(RecoveryGateError, match="recovery_unknown_ownership"):
@@ -171,14 +401,17 @@ def test_guarded_recovery(database):
             finally:
                 transaction.rollback()
         with store.engine.connect() as connection:
-            rows = dict(connection.execute(text("SELECT id, state FROM analysis_runs WHERE id IN (:active, :expired)"), {"active": active, "expired": expired}).all())
+            rows = {row.id: (row.state, row.lease_owner) for row in connection.execute(
+                text("SELECT id, state, lease_owner FROM analysis_runs WHERE id IN (:queued, :active, :expired)"),
+                {"queued": queued, "active": active, "expired": expired})}
             stages = connection.execute(text("SELECT state, reason FROM analysis_stages WHERE run_id = :expired ORDER BY ordinal"), {"expired": expired}).all()
-        assert rows == {active: "running", expired: "failed"}
+        assert rows == {queued: ("queued", None), active: ("running", "owner"), expired: ("failed", None)}
         assert stages == [("failed", "executor_interrupted"), ("skipped", "dependency_failed")]
     finally:
         with store.engine.begin() as connection:
             connection.execute(text("DELETE FROM analysis_stages WHERE run_id = :expired"), {"expired": expired})
-            connection.execute(text("DELETE FROM analysis_runs WHERE id IN (:active, :expired, :unknown)"), {"active": active, "expired": expired, "unknown": unknown})
+            connection.execute(text("DELETE FROM analysis_runs WHERE id IN (:queued, :active, :expired, :unknown)"),
+                               {"queued": queued, "active": active, "expired": expired, "unknown": unknown})
 
 
 def test_artifact_probe_success_and_missing_bucket(integration):

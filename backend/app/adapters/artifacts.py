@@ -88,6 +88,45 @@ class ArtifactStore:
                         raise ArtifactGateError("artifact_integrity_failed") from None
             raise ArtifactGateError("artifact_read_unavailable") from None
 
+    def inspect_reconciliation(self, key: str, digest: str | None = None, size: int | None = None,
+                               creator: uuid.UUID | None = None) -> tuple[str, str | None]:
+        try:
+            response = self.client.get_object(Bucket=self.bucket, Key=key)
+        except Exception as exc:
+            code = getattr(exc, "response", {}).get("Error", {}).get("Code")
+            if code == "NoSuchKey":
+                return "missing", None
+            if code in {"404", "NotFound"}:
+                try:
+                    self.client.head_bucket(Bucket=self.bucket)
+                except Exception:
+                    raise ArtifactGateError("artifact_read_unavailable") from None
+                return "missing", None
+            raise ArtifactGateError("artifact_read_unavailable") from None
+        recorded_creator = response.get("Metadata", {}).get("publication_intent_id")
+        try:
+            if digest is not None and key.startswith("sha256/"):
+                uuid.UUID(recorded_creator)
+        except (TypeError, ValueError):
+            raise ArtifactGateError("artifact_integrity_failed") from None
+        measured = hashlib.sha256()
+        length = 0
+        try:
+            if digest is not None:
+                while chunk := response["Body"].read(1024 * 1024):
+                    measured.update(chunk)
+                    length += len(chunk)
+        except Exception:
+            raise ArtifactGateError("artifact_read_unavailable") from None
+        finally:
+            response["Body"].close()
+        if ((digest is not None and (key not in {f"sha256/{digest}", f"tmp/{creator}"}
+                                     or measured.hexdigest() != digest))
+                or (size is not None and (response["ContentLength"] != size or length != size))
+                or (creator is not None and recorded_creator != str(creator))):
+            raise ArtifactGateError("artifact_integrity_failed")
+        return "verified", recorded_creator
+
     def probe(self) -> None:
         key = f"health/{secrets.token_hex(24)}"
         payload = secrets.token_bytes(32)

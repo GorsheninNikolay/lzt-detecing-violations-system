@@ -115,14 +115,14 @@ def test_verified_artifact_read_distinguishes_outage_from_corruption():
 
 
 def test_interrupted_series_reconciliation_reaches_readiness(isolated_admission_database, integration):
-    config, _, _ = integration
+    config, _, artifacts = integration
     store = PostgresStore(isolated_admission_database)
     key = uuid.uuid4().hex
     _, _, first, _ = store.begin_submission(key, uuid.uuid4().hex, "image/jpeg")
     second, third = store.create_submission_intent(key), store.create_submission_intent(key)
     store.fail_submission(key, "submission_interrupted")
     try:
-        store.reconcile()
+        store.reconcile(artifacts)
         with store.engine.connect() as connection:
             rows = connection.execute(text("SELECT id, state FROM publication_intents WHERE id IN (:a, :b, :c)"),
                 {"a": first, "b": second, "c": third}).all()

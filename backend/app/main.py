@@ -48,8 +48,9 @@ async def lifespan(app: FastAPI):
         for code, gate in (
             ("database_gate_failed", lambda: store.check_head_and_smoke(migrations)),
             ("artifact_gate_failed", artifacts.probe),
+            ("reconciliation_gate_failed", lambda: store.reconcile(artifacts)),
             ("recovery_gate_failed", store.recover),
-            ("reconciliation_gate_failed", store.reconcile),
+            ("reconciliation_gate_failed", lambda: store.reconcile(artifacts)),
         ):
             try:
                 await asyncio.to_thread(gate)

@@ -10,6 +10,7 @@ from pathlib import Path
 from app.domain.observations import CLASSES, STAGES, normalized_states
 from app.profiles import grounding_dino
 from app.profiles.grounding_dino import canonical_bytes, digest
+from app.adapters.artifacts import ArtifactGateError, ArtifactStore
 
 
 class DatabaseGateError(RuntimeError):
@@ -59,28 +60,79 @@ class PostgresStore:
         except Exception:
             raise DatabaseGateError("database_smoke_failed") from None
 
-    def reconcile(self) -> None:
+    def reconcile(self, artifacts: ArtifactStore | None = None) -> None:
         observed_count = 0
         try:
             with self.engine.begin() as connection:
                 locked = connection.execute(text("SELECT pg_try_advisory_xact_lock(:id)"), {"id": LOCK_ID}).scalar_one()
                 if not locked:
                     raise ReconciliationGateError("reconciliation_lock_unavailable")
-                connection.execute(text("""UPDATE submission_requests SET state = 'failed', error_code = 'submission_interrupted'
-                    WHERE state = 'publishing'"""))
-                rows = connection.execute(text("""SELECT i.id, i.state, r.state AS run_state, s.state AS submission_state
-                    FROM publication_intents i LEFT JOIN analysis_runs r ON r.id = i.run_id
-                    LEFT JOIN submission_requests s ON s.intent_id = i.id OR s.idempotency_key = i.submission_key
+                integrity_failed = bool(connection.execute(text(
+                    "SELECT 1 FROM publication_intents WHERE state = 'failed_integrity' LIMIT 1")).first())
+                rows = connection.execute(text("""SELECT i.id, i.state, i.run_id, i.sha256, i.size, i.final_key,
+                    i.media_type
+                    FROM publication_intents i
                     WHERE i.state NOT IN ('referenced', 'quarantined', 'failed_integrity') FOR UPDATE OF i""")).all()
                 observed_count = len(rows)
+                def inspect_final(row):
+                    status, creator = artifacts.inspect_reconciliation(row.final_key, row.sha256, row.size)
+                    if status == "verified" and not connection.execute(text("""SELECT 1 FROM publication_intents
+                        WHERE id = :creator AND sha256 = :hash AND size = :size AND final_key = :key"""),
+                        {"creator": uuid.UUID(creator), "hash": row.sha256, "size": row.size,
+                         "key": row.final_key}).first():
+                        raise ArtifactGateError("artifact_integrity_failed")
+                    return status
+
                 for row in rows:
-                    if row.run_state == "failed" or row.submission_state == "failed":
-                        connection.execute(text("UPDATE publication_intents SET state = 'quarantined' WHERE id = :id"), {"id": row.id})
-                if any(row.run_state != "failed" and row.submission_state != "failed" for row in rows):
-                    raise ReconciliationGateError("reconciliation_pending_intents")
-                connection.execute(text("INSERT INTO reconciliation_runs (started_at, completed_at, intent_count, status) VALUES (clock_timestamp(), clock_timestamp(), :count, 'succeeded')"), {"count": observed_count})
+                    if row.run_id is not None:
+                        run = connection.execute(text("""SELECT state, lease_expires_at > clock_timestamp() AS lease_live
+                            FROM analysis_runs WHERE id = :id FOR UPDATE NOWAIT"""), {"id": row.run_id}).one()
+                        if run.state == "running" and run.lease_live:
+                            continue
+                    if artifacts is None:
+                        raise ReconciliationGateError("reconciliation_inspector_missing")
+                    try:
+                        if row.state == "pending_upload":
+                            artifacts.inspect_reconciliation(f"tmp/{row.id}", creator=row.id)
+                        elif row.state == "content_verified":
+                            if row.sha256 is None or row.size is None or row.final_key != f"sha256/{row.sha256}":
+                                raise ArtifactGateError("artifact_integrity_failed")
+                            artifacts.inspect_reconciliation(f"tmp/{row.id}", row.sha256, row.size, row.id)
+                            inspect_final(row)
+                        elif row.state == "object_published":
+                            if row.sha256 is None or row.size is None or row.final_key != f"sha256/{row.sha256}":
+                                raise ArtifactGateError("artifact_integrity_failed")
+                            if inspect_final(row) == "missing":
+                                raise ArtifactGateError("artifact_integrity_failed")
+                        else:
+                            raise ReconciliationGateError("reconciliation_unknown_state")
+                    except ArtifactGateError as exc:
+                        if str(exc) != "artifact_integrity_failed":
+                            raise ReconciliationGateError("reconciliation_artifact_unavailable") from None
+                        connection.execute(text("""UPDATE publication_intents SET state = 'failed_integrity',
+                            error_code = 'artifact_integrity_failed' WHERE id = :id"""), {"id": row.id})
+                        integrity_failed = True
+                        continue
+                    reference = None
+                    if row.state == "object_published" and row.run_id is not None:
+                        reference = connection.execute(text("""SELECT 1 FROM artifact_metadata
+                            WHERE intent_id = :id AND run_id = :run AND key = :key AND sha256 = :hash
+                              AND size = :size AND media_type = :media"""),
+                            {"id": row.id, "run": row.run_id, "key": row.final_key, "hash": row.sha256,
+                             "size": row.size, "media": row.media_type}).first()
+                    connection.execute(text("UPDATE publication_intents SET state = :state WHERE id = :id"),
+                                       {"id": row.id, "state": "referenced" if reference else "quarantined"})
+                connection.execute(text("""UPDATE submission_requests SET state = 'failed', error_code = 'submission_interrupted'
+                    WHERE state = 'publishing'"""))
+                connection.execute(text("""INSERT INTO reconciliation_runs (started_at, completed_at, intent_count, status, error_code)
+                    VALUES (clock_timestamp(), clock_timestamp(), :count, :status, :error)"""),
+                    {"count": observed_count, "status": "failed" if integrity_failed else "succeeded",
+                     "error": "reconciliation_integrity_failed" if integrity_failed else None})
+            if integrity_failed:
+                raise ReconciliationGateError("reconciliation_integrity_failed")
         except ReconciliationGateError as exc:
-            self._record_reconciliation_failure(str(exc), observed_count)
+            if str(exc) != "reconciliation_integrity_failed":
+                self._record_reconciliation_failure(str(exc), observed_count)
             raise
         except Exception:
             self._record_reconciliation_failure("reconciliation_gate_failed", observed_count)
@@ -97,13 +149,17 @@ class PostgresStore:
         try:
             with self.engine.begin() as connection:
                 connection.execute(text("SET LOCAL lock_timeout = '1s'"))
-                rows = connection.execute(text("SELECT id, lease_expires_at, clock_timestamp() AS db_now FROM analysis_runs WHERE state = 'running' AND (lease_expires_at IS NULL OR lease_expires_at <= clock_timestamp()) FOR UPDATE NOWAIT")).all()
-                for run_id, expiry, db_now in rows:
-                    if expiry is None:
+                rows = connection.execute(text("SELECT id, lease_owner, lease_expires_at, clock_timestamp() AS db_now FROM analysis_runs WHERE state = 'running' AND (lease_expires_at IS NULL OR lease_expires_at <= clock_timestamp()) FOR UPDATE NOWAIT")).all()
+                for run_id, owner, expiry, db_now in rows:
+                    if expiry is None or owner is None:
                         raise RecoveryGateError("recovery_unknown_ownership")
                     if expiry > db_now:
                         continue
-                    updated = connection.execute(text("UPDATE analysis_runs SET state = 'failed', error_code = 'executor_interrupted', lease_owner = NULL, lease_expires_at = NULL WHERE id = :id AND state = 'running' AND lease_expires_at <= clock_timestamp()"), {"id": run_id})
+                    updated = connection.execute(text("""UPDATE analysis_runs SET state = 'failed', error_code = 'executor_interrupted',
+                        lease_owner = NULL, lease_expires_at = NULL WHERE id = :id AND state = 'running'
+                        AND lease_owner = :owner AND lease_expires_at = :expiry
+                        AND lease_expires_at <= clock_timestamp()"""),
+                        {"id": run_id, "owner": owner, "expiry": expiry})
                     if updated.rowcount != 1:
                         raise RecoveryGateError("recovery_lease_changed")
                     connection.execute(text("UPDATE observer_invocations SET state = 'failed' WHERE run_id = :id AND state = 'reserved'"), {"id": run_id})
