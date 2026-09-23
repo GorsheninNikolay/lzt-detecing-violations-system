@@ -115,9 +115,15 @@ class PostgresStore:
                         continue
                     reference = None
                     if row.state == "object_published" and row.run_id is not None:
-                        reference = connection.execute(text("""SELECT 1 FROM artifact_metadata
-                            WHERE intent_id = :id AND run_id = :run AND key = :key AND sha256 = :hash
-                              AND size = :size AND media_type = :media"""),
+                        reference = connection.execute(text("""SELECT 1 FROM artifact_metadata a
+                            WHERE a.intent_id = :id AND a.run_id = :run AND a.key = :key AND a.sha256 = :hash
+                              AND a.size = :size AND a.media_type = :media
+                              AND (EXISTS (SELECT 1 FROM run_inputs i WHERE i.run_id = a.run_id AND i.artifact_id = a.id)
+                                OR EXISTS (SELECT 1 FROM observer_invocations v
+                                   WHERE v.run_id = a.run_id AND v.native_artifact_id = a.id)
+                                OR EXISTS (SELECT 1 FROM result_projections p WHERE p.run_id = a.run_id
+                                   AND p.snapshot->'evidence' @> jsonb_build_array(jsonb_build_object(
+                                     'key', a.key, 'sha256', a.sha256, 'size', a.size))))"""),
                             {"id": row.id, "run": row.run_id, "key": row.final_key, "hash": row.sha256,
                              "size": row.size, "media": row.media_type}).first()
                     connection.execute(text("UPDATE publication_intents SET state = :state WHERE id = :id"),
@@ -145,7 +151,7 @@ class PostgresStore:
         except Exception:
             pass
 
-    def recover(self) -> None:
+    def recover(self) -> int:
         try:
             with self.engine.begin() as connection:
                 connection.execute(text("SET LOCAL lock_timeout = '1s'"))
@@ -165,6 +171,7 @@ class PostgresStore:
                     connection.execute(text("UPDATE observer_invocations SET state = 'failed' WHERE run_id = :id AND state = 'reserved'"), {"id": run_id})
                     connection.execute(text("UPDATE analysis_stages SET state = 'failed', reason = 'executor_interrupted' WHERE run_id = :id AND state = 'running'"), {"id": run_id})
                     connection.execute(text("UPDATE analysis_stages SET state = 'skipped', reason = 'dependency_failed' WHERE run_id = :id AND state = 'pending'"), {"id": run_id})
+                return len(rows)
         except RecoveryGateError:
             raise
         except Exception:

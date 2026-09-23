@@ -178,12 +178,15 @@ class ClaimLoop:
             while ready.is_set():
                 if self.store:
                     await asyncio.to_thread(self.store.fail_unauthorized_queued)
+                    if await asyncio.to_thread(self.store.recover):
+                        await asyncio.to_thread(self.store.reconcile, self.artifacts)
                 if self.runtime_binding and self.artifacts and self.snapshot_dir:
                     profile_id, revision = self.runtime_binding
                     work = await asyncio.to_thread(self.store.claim_ordinary, profile_id, revision, 30)
                     if work:
                         await self._execute(work, revision)
-                        await asyncio.to_thread(self.store.recover)
+                        if await asyncio.to_thread(self.store.recover):
+                            await asyncio.to_thread(self.store.reconcile, self.artifacts)
                         continue
                 await asyncio.sleep(1)
         except Exception:

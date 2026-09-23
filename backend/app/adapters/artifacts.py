@@ -103,19 +103,21 @@ class ArtifactStore:
                     raise ArtifactGateError("artifact_read_unavailable") from None
                 return "missing", None
             raise ArtifactGateError("artifact_read_unavailable") from None
-        recorded_creator = response.get("Metadata", {}).get("publication_intent_id")
-        try:
-            if digest is not None and key.startswith("sha256/"):
-                uuid.UUID(recorded_creator)
-        except (TypeError, ValueError):
-            raise ArtifactGateError("artifact_integrity_failed") from None
         measured = hashlib.sha256()
         length = 0
         try:
+            recorded_creator = response.get("Metadata", {}).get("publication_intent_id")
+            if digest is not None and key.startswith("sha256/"):
+                try:
+                    uuid.UUID(recorded_creator)
+                except (TypeError, ValueError):
+                    raise ArtifactGateError("artifact_integrity_failed") from None
             if digest is not None:
                 while chunk := response["Body"].read(1024 * 1024):
                     measured.update(chunk)
                     length += len(chunk)
+        except ArtifactGateError:
+            raise
         except Exception:
             raise ArtifactGateError("artifact_read_unavailable") from None
         finally:

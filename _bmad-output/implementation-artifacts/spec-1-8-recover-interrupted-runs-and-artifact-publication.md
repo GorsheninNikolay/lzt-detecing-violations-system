@@ -5,7 +5,7 @@ created: '2026-09-23'
 status: 'done'
 baseline_revision: '7800047b60fe47a21a1dc3b3c4006d10ef75bf46'
 review_loop_iteration: 0
-followup_review_recommended: true
+followup_review_recommended: false
 context: []
 warnings: ['oversized']
 deferred:
@@ -15,6 +15,16 @@ deferred:
       PostgreSQL lease races and startup gates passed against local PostgreSQL/S3, but a killed-process test would establish the complete restart behavior and observed UI state.
     location: >-
       backend/app/main.py:45
+    severity: medium (unverified)
+    resolved: true
+    resolution_evidence: |-
+      test_process_death_during_reserved_provider_call kills a child process after a durable invocation reservation and verifies startup readiness, failed run state, retained invocation, and no result projection against isolated PostgreSQL/S3. It uses a held synthetic provider call rather than executing the model.
+  - summary: >-
+      A large backlog or delayed S3 read may prolong the reconciliation transaction.
+    evidence: |-
+      Reconciliation intentionally holds the advisory lock and row locks while verifying existing bytes. The test suite covers small backlogs; a delayed-read and large-backlog measurement would establish whether startup or publication latency is materially affected.
+    location: >-
+      backend/app/adapters/postgres.py:63
     severity: medium (unverified)
 ---
 
@@ -97,6 +107,23 @@ deferred:
   - `[false]` `[reject]` Former-owner completion after expiry was untested — `test_expired_lease_fences_completion_during_recovery` exercises concurrent completion, expired ownership, rejection, and retained rows.
   - `[maybe-false]` `[defer]` A process-level restart with an in-flight provider call was not exercised — the PostgreSQL concurrency and startup contracts passed, but a killed-process test would establish the full restart behavior.
 
+### 2026-09-23 — Follow-up review pass
+- verdicts: 13 findings — high 0, medium 10, low 0, false 2, maybe-false 1
+- findings:
+  - `[medium]` `[patch]` An idle claim loop did not recover a lease that expired after startup — the loop now runs guarded recovery while idle and reconciles if it terminalized work; an integration test exercises the transition.
+  - `[medium]` `[patch]` Invalid final creator metadata leaked an S3 response body — validation now runs inside the body-closing `finally`, with a direct close assertion.
+  - `[maybe-false]` `[defer]` A large backlog or delayed S3 read could prolong PostgreSQL locks — measure a delayed read and realistic backlog before changing the transaction boundary; the delivered single-instance startup has no concurrent publisher.
+  - `[medium]` `[patch]` Matching artifact metadata alone could promote an orphan reference — reconciliation now requires an input, invocation, or admission projection binding; tests cover both a bound and orphan row.
+  - `[false]` `[reject]` Unordered intent-state results made the quarantine assertion flaky — every selected state in that assertion must equal `quarantined`, so row order cannot change the result.
+  - `[medium]` `[patch]` A valid but unrelated final creator UUID was untested — an integration case now checks the recorded creator lookup and closed readiness gate.
+  - `[medium]` `[patch]` Missing key versus missing bucket had only mocked coverage — an integration case now exercises both with MinIO.
+  - `[medium]` `[patch]` A process-level restart case was absent — a child process is killed after committing an invocation reservation, then startup and retained evidence are checked through PostgreSQL and HTTP.
+  - `[medium]` `[patch]` Edge review independently found the S3 body leak — the same `finally` fix closes the response on creator validation failure.
+  - `[medium]` `[patch]` The second startup reconciliation pass lacked a lease-expiry-window test — a controlled expiry between passes now verifies quarantine before readiness.
+  - `[medium]` `[patch]` Final-object creator-row validation lacked an assertion — the unrelated-UUID integration case covers it.
+  - `[medium]` `[patch]` Adapter tests alone did not cover process death — the killed-child test now exercises the startup lifecycle and HTTP result surface using a synthetic held provider call.
+  - `[false]` `[reject]` The attachment test did not create a new reference during reconciliation — that is deliberate: the owning transaction must have committed a bound reference; an unbound published intent is quarantined rather than promoted.
+
 ## Design Notes
 
 `content_verified` records a verified temporary upload and intended final key, not proof that a final object was safely published. Reconciliation must quarantine this stranded state even if matching bytes happen to exist at the final key. `object_published` only proves final publication; referencing still requires the owning run or submission transaction to be valid.
@@ -119,3 +146,13 @@ Files changed: `backend/app/adapters/artifacts.py` adds bounded read-only object
 Review: one pass triaged 15 findings: 10 medium patches, 4 false findings rejected with reasons in the triage log, and one unverified process-level restart scenario deferred. Follow-up review recommended: true because multiple medium corrections were made; a real killed-process restart with an in-flight provider call is the specific remaining risk.
 
 Verification: focused PostgreSQL/S3 tests passed 37/37; the complete backend suite passed 56/56 against isolated local PostgreSQL and MinIO; `git diff --check` passed. A process-level restart and rendered browser behavior were not run.
+
+### Follow-up result — 2026-09-23
+
+Status: done. Idle recovery now settles leases that expire after startup, and reconciliation accepts published references only when they are bound to a run input, invocation, or admission projection. S3 inspection closes response bodies on invalid creator metadata. The existing startup gates remain in place.
+
+Files changed in this pass: `backend/app/application/executor.py` runs guarded idle recovery and post-recovery reconciliation; `backend/app/adapters/postgres.py` returns recovery count and checks the reference binding; `backend/app/adapters/artifacts.py` closes invalid-creator responses; `backend/tests/test_startup.py` adds process-death, lease-window, binding, creator, and real S3 error cases; `sprint-status.yaml` retains the verified `done` state with a fresh update time.
+
+Review: the follow-up pass triaged 13 findings: 10 medium patches, 2 false findings rejected in the log, and one unverified backlog-latency item deferred. Follow-up review recommended: false under the follow-up rule; no high finding was patched. The earlier process-level restart gap is resolved by a killed-child test at the durable invocation boundary; actual model execution and rendered browser behavior were not exercised in that test.
+
+Verification: `backend/tests/test_startup.py` passed 37/37; the complete backend suite passed 62/62 against isolated local PostgreSQL and MinIO. The S3 backlog-latency item remains unmeasured.
