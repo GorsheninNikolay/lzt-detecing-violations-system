@@ -43,7 +43,11 @@ uv run pytest
 
 Prepare the pinned model snapshot as described below before running the full suite. On later runs, repeat the commands from `cd backend`. The suite fails if its PostgreSQL or S3 configuration is missing, the test database is unmigrated, the model snapshot is absent, or the test database/bucket matches the application target. The real CPU admission test creates and drops its own PostgreSQL database; its published bytes remain in the isolated test bucket.
 
-The directory boundaries are `backend/app/domain` for evidence contracts, `application` for orchestration, `ports` for external contracts, `adapters` for PostgreSQL and S3, `profiles` for observer revisions, `migrations` for schema, `web` for the future client, `evaluation` for separate fixtures, and `infra` for local dependencies.
+The directory boundaries are `backend/app/domain` for evidence contracts, `application` for orchestration, `ports` for external contracts, `adapters` for PostgreSQL and S3, `profiles` for observer revisions, `migrations` for schema, `web` for the responsive client, `evaluation` for separate fixtures, and `infra` for local dependencies.
+
+## Responsive web client
+
+After starting the ready backend with an admitted observer profile, run `cd web && npm ci && npm run dev` and open `http://127.0.0.1:5173`. The development server proxies `/runs` to the local API. The Russian New Analysis page accepts a single JPEG or an ordered series of 2–8 JPEGs, preserves duplicate frames and local order, and submits `observation_only` with scenario, area, and timezone-aware period. It routes to `/runs/{run_id}` only when the API returns an ID. See [web/README.md](web/README.md) for validation, retry, and route limits.
 
 ## Initial local observer admission
 
