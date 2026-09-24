@@ -141,7 +141,7 @@ function ObservationResult({ run, runId }: { run: RunSnapshot; runId: string }) 
   const observations = complete ? projection.frames ?? [] : run.observations ?? []
   const frames = makeResultFrames(observations, inputs, complete ? projection.series?.usable_input_ids : undefined, complete)
   const outcome = complete ? projection.outcome : null
-  const outcomeLabel: Record<string, string> = { observations_only: 'Только наблюдения', insufficient_data: 'Недостаточно данных для проверки правила', not_analyzed: 'Правило не анализировалось', no_check: 'Проверка не запрошена', check_requested: 'Рекомендована проверка человеком' }
+  const outcomeLabel: Record<string, string> = { observations_only: 'Только наблюдения', insufficient_data: 'Недостаточно данных', not_analyzed: 'Не анализировалось', no_check: 'Проверка не запрошена', check_requested: 'Рекомендована проверка человеком' }
   if (!complete && !observations.length) return null
   const series = projection?.series
   const projectionContext = projection?.context

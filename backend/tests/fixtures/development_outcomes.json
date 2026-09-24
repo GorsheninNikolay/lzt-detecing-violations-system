@@ -1,0 +1,58 @@
+{
+  "schema_revision": "development-outcomes-v1",
+  "provenance": "synthetic normalized observations; no source image bytes",
+  "exclusion_tier": "development_acceptance",
+  "cases": [
+    {
+      "source_group": "synthetic-development-observations-only",
+      "intent": "observation_only",
+      "expected_outcome": "observations_only",
+      "usable_input_ids": [],
+      "observations": [
+        {"input_id": "frame-0", "class_name": "excavator", "state": "insufficient_data"},
+        {"input_id": "frame-0", "class_name": "dump_truck", "state": "insufficient_data"}
+      ]
+    },
+    {
+      "source_group": "synthetic-development-positive-no-check",
+      "intent": "rule_evaluation",
+      "expected_outcome": "no_check",
+      "fixture": "positive_no_check.json"
+    },
+    {
+      "source_group": "synthetic-development-persistent-non-detection",
+      "intent": "rule_evaluation",
+      "expected_outcome": "check_requested",
+      "fixture": "persistent_non_detection.json"
+    },
+    {
+      "source_group": "synthetic-development-short-series",
+      "intent": "rule_evaluation",
+      "expected_outcome": "insufficient_data",
+      "usable_input_ids": ["frame-0", "frame-1"],
+      "observations": [
+        {"input_id": "frame-0", "class_name": "excavator", "state": "detected"},
+        {"input_id": "frame-0", "class_name": "dump_truck", "state": "not_detected_in_frame"},
+        {"input_id": "frame-1", "class_name": "excavator", "state": "detected"},
+        {"input_id": "frame-1", "class_name": "dump_truck", "state": "not_detected_in_frame"}
+      ]
+    },
+    {
+      "source_group": "synthetic-development-unsupported-class",
+      "intent": "rule_evaluation",
+      "expected_outcome": "not_analyzed",
+      "usable_input_ids": ["frame-0", "frame-1", "frame-2"],
+      "observations": [
+        {"input_id": "frame-0", "class_name": "excavator", "state": "detected"},
+        {"input_id": "frame-0", "class_name": "dump_truck", "state": "not_detected_in_frame"},
+        {"input_id": "frame-0", "class_name": "crane", "state": "not_analyzed"},
+        {"input_id": "frame-1", "class_name": "excavator", "state": "detected"},
+        {"input_id": "frame-1", "class_name": "dump_truck", "state": "not_detected_in_frame"},
+        {"input_id": "frame-1", "class_name": "crane", "state": "not_analyzed"},
+        {"input_id": "frame-2", "class_name": "excavator", "state": "detected"},
+        {"input_id": "frame-2", "class_name": "dump_truck", "state": "not_detected_in_frame"},
+        {"input_id": "frame-2", "class_name": "crane", "state": "not_analyzed"}
+      ]
+    }
+  ]
+}

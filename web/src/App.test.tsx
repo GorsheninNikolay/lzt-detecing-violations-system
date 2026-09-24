@@ -16,7 +16,7 @@ describe('Observation result', () => {
   const inputs = [0, 1].map(ordinal => ({ input_id: `input-${ordinal}`, ordinal, sha256: `hash-${ordinal}`, artifact_id: `image-${ordinal}` }))
   const observations = inputs.flatMap(input => ['excavator', 'dump_truck'].map(class_name => ({
     input_id: input.input_id, ordinal: input.ordinal, class_name,
-    state: class_name === 'excavator' && input.ordinal === 0 ? 'detected' : 'not_detected_in_frame', reason: null,
+    state: class_name === 'excavator' && input.ordinal === 0 ? 'detected' : 'not_detected_in_frame', reason: null as string | null,
     source_artifact_id: input.artifact_id,
   })))
   const projectionFrames = (rows: typeof observations = observations, frameInputs: typeof inputs = inputs) => rows.map(item => ({ ...item,
@@ -129,6 +129,68 @@ describe('Observation result', () => {
     render(<App />)
     expect(await screen.findByRole('heading', { name: 'Данные серии' })).toBeTruthy()
     expect(screen.getByText('Сводные данные серии недоступны для этого анализа.')).toBeTruthy()
+  })
+
+  it.each([
+    ['insufficient_data', 'Недостаточно данных', 'Для проверки правила нужны минимум 3 пригодных кадра одной зоны.', observations],
+    ['not_analyzed', 'Не анализировалось', 'Запрошенный класс техники не анализировался; проверка правила недоступна.',
+      [...observations, ...inputs.map(input => ({ input_id: input.input_id, ordinal: input.ordinal,
+        class_name: 'crane', state: 'not_analyzed', reason: 'unsupported_class', source_artifact_id: input.artifact_id }))]],
+  ])('renders successful %s with source history and no check request', async (outcome, label, reason, rows) => {
+    const run = { ...completed, intent: 'rule_evaluation', outcome,
+      result_projection: { ...completed.result_projection, outcome, frames: projectionFrames(rows), reason,
+        supporting_input_ids: [], recommendation: null } }
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => url === `/api/runs/${runId}`
+      ? { ok: true, json: async () => run }
+      : { ok: true, blob: async () => new Blob(['jpeg']) }))
+    const view = render(<App />)
+    expect(await screen.findByRole('heading', { name: label })).toBeTruthy()
+    expect(view.container.querySelector('.rule-provenance')?.textContent).toContain(reason)
+    expect(screen.getByText(/Порядок: Кадр 1 \(input-0\) → Кадр 2 \(input-1\)/)).toBeTruthy()
+    expect(view.container.querySelectorAll('.source-thumbnail')).toHaveLength(2)
+    expect(screen.queryByRole('region', { name: 'Проверка человеком' })).toBeNull()
+    if (outcome === 'not_analyzed') {
+      const unsupported = [...view.container.querySelectorAll<HTMLElement>('.observation-row')]
+        .filter(row => row.textContent?.includes('crane: Не анализировалось'))
+      expect(unsupported).toHaveLength(2)
+      expect(unsupported[0].textContent).toContain('Класс не поддерживается профилем распознавания.')
+      expect(unsupported[0].textContent).toContain('input-0')
+    }
+  })
+
+  it('keeps observation-only outcome when a class cannot be assessed', async () => {
+    const affected = observations.map(item => item.input_id === 'input-0'
+      ? { ...item, state: 'insufficient_data', reason: 'frame_unassessable' } : item)
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => url === `/api/runs/${runId}`
+      ? { ok: true, json: async () => ({ ...completed, result_projection: {
+        ...completed.result_projection, frames: projectionFrames(affected) } }) }
+      : { ok: true, blob: async () => new Blob(['jpeg']) }))
+    const view = render(<App />)
+    expect(await screen.findByRole('heading', { name: 'Только наблюдения' })).toBeTruthy()
+    const affectedRow = view.container.querySelector('.observation-row')!
+    expect(affectedRow.textContent).toContain('Недостаточно данных')
+    expect(affectedRow.textContent).toContain('Кадр непригоден для распознавания.')
+    expect(affectedRow.textContent).toContain('input-0')
+    expect(screen.queryByRole('region', { name: 'Проверка человеком' })).toBeNull()
+  })
+
+  it('names the limiting input in a successful rule result', async () => {
+    const affected = observations.map(item => item.input_id === 'input-0'
+      ? { ...item, state: 'insufficient_data', reason: 'frame_unassessable' } : item)
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => url === `/api/runs/${runId}`
+      ? { ok: true, json: async () => ({ ...completed, intent: 'rule_evaluation',
+        result_projection: { ...completed.result_projection, outcome: 'insufficient_data',
+          frames: projectionFrames(affected), series: { ...completed.result_projection.series,
+            usable_count: 1, usable_input_ids: ['input-1'] },
+          reason: 'Наблюдатель не смог оценить обязательный класс в кадре input-0.',
+          supporting_input_ids: [], recommendation: null } }) }
+      : { ok: true, blob: async () => new Blob(['jpeg']) }))
+    const view = render(<App />)
+    expect(await screen.findByRole('heading', { name: 'Недостаточно данных' })).toBeTruthy()
+    expect(view.container.querySelector('.rule-provenance')?.textContent).toContain('input-0')
+    expect(view.container.querySelector('.observation-row')?.textContent).toContain('Кадр непригоден для распознавания.')
+    expect(screen.getByText(/Порядок: Кадр 1 \(input-0\) → Кадр 2 \(input-1\)/)).toBeTruthy()
+    expect(screen.queryByRole('region', { name: 'Проверка человеком' })).toBeNull()
   })
 
   it('renders successful observations, rule and outcome only from the projection', async () => {

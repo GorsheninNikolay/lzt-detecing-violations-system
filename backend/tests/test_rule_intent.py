@@ -115,6 +115,8 @@ def test_rule_requires_both_informative_classes(requested):
     ([('not_detected_in_frame', 'detected')] * 3, 3, 'insufficient_data'),
     ([('not_detected_in_frame', 'not_detected_in_frame')] * 3, 3, 'insufficient_data'),
     ([('detected', 'not_analyzed')] * 3, 3, 'not_analyzed'),
+    ([('detected', 'not_analyzed')] * 2, 2, 'not_analyzed'),
+    ([('insufficient_data', 'not_analyzed')] * 3, 3, 'not_analyzed'),
     ([('detected', 'insufficient_data')] * 3, 3, 'insufficient_data'),
 ])
 def test_rule_uses_normalized_frame_states(states, usable, outcome):
@@ -128,6 +130,30 @@ def test_rule_uses_normalized_frame_states(states, usable, outcome):
                                               for pair in states for state in pair):
         assert "Наблюдатель не смог оценить" in result["reason"]
         assert result["recommendation"] is None
+
+
+def test_development_fixtures_cover_distinct_outcomes_without_held_out_sources():
+    fixture_dir = Path(__file__).parent / "fixtures"
+    manifest = json.loads((fixture_dir / "development_outcomes.json").read_text())
+    held_out = json.loads((PROJECT_ROOT / "backend/admission/exclusions/held_out_evaluation.json").read_text())
+    assert manifest["provenance"] == "synthetic normalized observations; no source image bytes"
+    assert manifest["exclusion_tier"] == "development_acceptance" != held_out["tier"]
+    groups = [case["source_group"] for case in manifest["cases"]]
+    assert len(groups) == len(set(groups)) == 5
+    assert not set(groups) & set(held_out["reserved_source_groups"])
+    assert not set(groups) & {item["source_group"] for item in held_out["fixtures"]}
+    assert {case["expected_outcome"] for case in manifest["cases"]} == {
+        "observations_only", "no_check", "check_requested", "insufficient_data", "not_analyzed"}
+    for case in manifest["cases"]:
+        fixture = json.loads((fixture_dir / case["fixture"]).read_text()) if "fixture" in case else case
+        assert case["source_group"] == fixture["source_group"]
+        if case["intent"] == "observation_only":
+            assert case["expected_outcome"] == "observations_only"
+            assert any(item["state"] == "insufficient_data" for item in fixture["observations"])
+            continue
+        result = evaluate_rule(fixture["observations"], fixture["usable_input_ids"], RULE_POLICY, RULE, CONTEXT)
+        assert result["outcome"] == case["expected_outcome"]
+        assert bool(result["recommendation"]) == (case["expected_outcome"] == "check_requested")
 
 
 def test_positive_development_fixture_is_separate_and_requests_no_check():
@@ -287,7 +313,8 @@ def test_rule_intent_survives_publication_execution_and_readback(integration, mo
     loop = executor.ClaimLoop()
     loop.store, loop.artifacts, loop.snapshot_dir = store, artifacts, "unused"
 
-    async def run_case(count, expected, dump=False, demo=None):
+    async def run_case(count, expected, dump=False, demo=None, requested=None, unassessable=False,
+                       intent="rule_evaluation"):
         nonlocal detected_dump, observed_index, active_demo
         detected_dump = dump
         active_demo = demo
@@ -295,24 +322,28 @@ def test_rule_intent_survives_publication_execution_and_readback(integration, mo
         images = ([(PROJECT_ROOT / "web/public" / frame["path"].lstrip("/")).read_bytes()
                    for frame in demo["frames"]] if demo else
                   [jpeg((10 + index, 20, 30)) for index in range(count)])
+        monkeypatch.setattr(executor, "_unassessable", lambda image: unassessable and image == images[0])
         context = ({"scenario": demo["scenario"], "observation_area": demo["observationArea"],
                     "period": demo["period"] + ":00+03:00"} if demo else CONTEXT)
-        body = {**request(), **context, **({"image_base64": base64.b64encode(images[0]).decode()} if count == 1
+        body = {**request(intent=intent), **context,
+                **({"requested_classes": requested} if requested else {}),
+                **({"image_base64": base64.b64encode(images[0]).decode()} if count == 1
                                else {"images_base64": [base64.b64encode(image).decode() for image in images]})}
         submit = submission.submit if count == 1 else submission.submit_series
         _, run_id = submit(store, artifacts, uuid.uuid4().hex, body, profile, 1, snapshot)
         queued = store.read_ordinary(run_id)
-        assert queued["intent"] == "rule_evaluation"
-        assert queued["rule_snapshot"]["revision"] == RULE["revision"]
-        assert queued["policy_snapshot"] == {"intent": "rule_evaluation", **RULE_POLICY}
-        assert queued["rule_snapshot"] == RULE
+        assert queued["intent"] == intent
+        if intent == "rule_evaluation":
+            assert queued["rule_snapshot"]["revision"] == RULE["revision"]
+            assert queued["policy_snapshot"] == {"intent": "rule_evaluation", **RULE_POLICY}
+            assert queued["rule_snapshot"] == RULE
         assert queued["taxonomy_snapshot"] == {"portable_classes": ["excavator", "dump_truck"], "revision": "presence-only-v1"}
         assert queued["profile_id"] == str(profile)
         assert queued["authorization_revision"] == 1
         assert queued["binding_kind"] == "admitted_profile"
         assert queued["profile_snapshot"] == snapshot
         assert queued["context"] == context
-        assert queued["requested_classes"] == ["excavator", "dump_truck"]
+        assert queued["requested_classes"] == (requested or ["excavator", "dump_truck"])
         assert [item["ordinal"] for item in queued["inputs"]] == list(range(count))
         if demo:
             assert [item["sha256"] for item in queued["inputs"]] == [frame["sha256"] for frame in demo["frames"]]
@@ -322,8 +353,27 @@ def test_rule_intent_survives_publication_execution_and_readback(integration, mo
         await loop._execute(store.claim_ordinary(profile, 1, 30), 1)
         done = store.read_ordinary(run_id)
         assert done["state"] == "succeeded" and done["outcome"] == expected, done["error_code"]
-        assert done["stages"][4]["state"] == "succeeded"
-        assert bool(done["result_projection"]["recommendation"]) == (expected == "check_requested")
+        assert done["stages"][4]["state"] == ("succeeded" if intent == "rule_evaluation" else "skipped")
+        assert bool(done["result_projection"].get("recommendation")) == (expected == "check_requested")
+        assert done["result_projection"]["series"]["input_order"] == [item["input_id"] for item in done["inputs"]]
+        if expected in ("insufficient_data", "not_analyzed", "observations_only"):
+            if intent == "rule_evaluation":
+                assert done["result_projection"]["supporting_input_ids"] == []
+            assert done["result_projection"]["frames"] == [
+                {key: item[key] for key in ("input_id", "ordinal", "class_name", "state", "reason", "source_artifact_id", "invocation_id")}
+                for item in done["observations"]]
+            if unassessable:
+                affected = [item for item in done["result_projection"]["frames"] if item["input_id"] == done["inputs"][0]["input_id"]]
+                assert all(item["state"] == "insufficient_data" and item["reason"] == "frame_unassessable" for item in affected)
+                if intent == "rule_evaluation":
+                    assert done["inputs"][0]["input_id"] in done["result_projection"]["reason"]
+            if requested:
+                unsupported = [item for item in done["result_projection"]["frames"] if item["class_name"] == "crane"]
+                assert len(unsupported) == count
+                assert all(item["state"] == "not_analyzed" and item["reason"] == "unsupported_class" and
+                           item["source_artifact_id"] == done["inputs"][item["ordinal"]]["artifact_id"] for item in unsupported)
+                if intent == "rule_evaluation":
+                    assert all(item["input_id"] in done["result_projection"]["reason"] for item in unsupported)
         if expected == "check_requested":
             projection = done["result_projection"]
             input_ids = [item["input_id"] for item in done["inputs"]]
@@ -382,6 +432,11 @@ def test_rule_intent_survives_publication_execution_and_readback(integration, mo
 
     asyncio.run(run_case(1, "insufficient_data"))
     asyncio.run(run_case(2, "insufficient_data"))
+    asyncio.run(run_case(3, "insufficient_data", unassessable=True))
+    asyncio.run(run_case(1, "observations_only", unassessable=True, intent="observation_only"))
+    asyncio.run(run_case(2, "not_analyzed", requested=["excavator", "dump_truck", "crane"]))
+    asyncio.run(run_case(3, "not_analyzed", requested=["excavator", "dump_truck", "crane"]))
+    asyncio.run(run_case(3, "observations_only", requested=["excavator", "dump_truck", "crane"], intent="observation_only"))
     run_id = asyncio.run(run_case(3, "check_requested"))
     asyncio.run(run_case(3, "no_check", dump=True))
     for demo in DEMO_CASES:

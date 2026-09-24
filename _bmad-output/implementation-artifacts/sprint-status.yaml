@@ -4,7 +4,7 @@
 # Retrospective: optional, done
 # Action item: open, in-progress, done
 generated: 09-22-2026 21:57
-last_updated: 09-23-2026 21:42
+last_updated: 09-24-2026 12:23
 project: lzt-detecing-violations-system
 project_key: NOKEY
 tracking_system: file-system
@@ -22,14 +22,14 @@ development_status:
   1-8-recover-interrupted-runs-and-artifact-publication: done
   epic-1-retrospective: done
 
-  epic-2: in-progress
+  epic-2: done
   2-1-choose-an-applicable-analysis-intent: done
   2-2-apply-immutable-evidence-and-rule-revisions: done
   2-3-produce-the-positive-no-check-result: done
   2-4-request-a-check-only-for-persistent-non-detection: done
   2-5-inspect-evidence-and-rule-provenance: done
   2-6-run-included-demonstration-cases: done
-  2-7-cover-insufficient-and-out-of-scope-journeys: backlog
+  2-7-cover-insufficient-and-out-of-scope-journeys: done
   epic-2-retrospective: optional
 
   epic-3: backlog

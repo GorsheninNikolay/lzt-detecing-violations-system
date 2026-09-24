@@ -45,15 +45,22 @@ def evaluate_rule(frames: list[dict], usable_ids: list[str], policy: dict, rule:
                   context: dict) -> dict:
     states = {(str(item["input_id"]), item["class_name"]): item["state"] for item in frames}
     excavator, dump_truck = rule["required_activity_class"], rule["periodic_arrival_class"]
-    if any(item["state"] == "insufficient_data" and item["class_name"] in policy["classes"]
-           for item in frames):
-        outcome, reason = "insufficient_data", "Наблюдатель не смог оценить один из обязательных классов техники."
+    unassessable_ids = list(dict.fromkeys(str(item["input_id"]) for item in frames
+        if item["state"] == "insufficient_data" and item["class_name"] in policy["classes"]))
+    unsupported_ids = list(dict.fromkeys(str(item["input_id"]) for item in frames
+        if item["state"] == "not_analyzed"))
+    missing_required = any((input_id, name) not in states
+                           for input_id in usable_ids for name in policy["classes"])
+    if unsupported_ids or missing_required:
+        outcome, reason = "not_analyzed", ("Запрошенный класс техники не анализировался; проверка правила недоступна. "
+            f"Затронутые кадры: {', '.join(unsupported_ids)}." if unsupported_ids else
+            "Один из обязательных классов техники не анализировался; проверка правила недоступна.")
+    elif unassessable_ids:
+        outcome, reason = "insufficient_data", ("Наблюдатель не смог оценить один из обязательных классов техники "
+            f"в кадрах: {', '.join(unassessable_ids)}.")
     elif len(usable_ids) < policy["minimum_usable_same_area_frames"]:
         minimum = policy["minimum_usable_same_area_frames"]
         outcome, reason = "insufficient_data", f"Для проверки правила нужны минимум {minimum} пригодных кадров одной зоны."
-    elif any((input_id, name) not in states or states[input_id, name] == "not_analyzed"
-             for input_id in usable_ids for name in policy["classes"]):
-        outcome, reason = "not_analyzed", "Один из обязательных классов техники не анализировался."
     elif (any(states[input_id, excavator] == "detected" for input_id in usable_ids)
           and any(states[input_id, dump_truck] == "detected" for input_id in usable_ids)):
         outcome, reason = "no_check", "Самосвал обнаружен в пригодной серии; запрос проверки не сформирован."
