@@ -1,7 +1,77 @@
 {
   "schema_revision": "exclusion-inventory-v1",
   "tier": "development_acceptance",
-  "reserved_source_groups": [],
-  "fixtures": [],
-  "note": "No fixtures assigned in this tier at Story 1.2 admission; update before assigning any source group."
+  "reserved_source_groups": [
+    "organizer-archive-site-85-94",
+    "organizer-archive-site-22-26"
+  ],
+  "fixtures": [
+    {
+      "source_group": "organizer-archive-site-85-94",
+      "source_site_camera_time_sequence_group": "organizer-archive-site-85-94",
+      "image": {
+        "sha256": "a0b8d744d9aeef74a88230ac28a5a69137c2d26085a3862e30598de4699880ce"
+      },
+      "derived_image": {
+        "sha256": "057ae16749a6a50c522b750ae9cf02bc3a168a89e26d3a263ffb2d9ce394de0c"
+      },
+      "source_member": "Строительная_техника/Screenshot_87.png"
+    },
+    {
+      "source_group": "organizer-archive-site-85-94",
+      "source_site_camera_time_sequence_group": "organizer-archive-site-85-94",
+      "image": {
+        "sha256": "bfbb99aff81bb774b2d22c7531714f6027293a2bff131d21e4a9afcb9aad5e1f"
+      },
+      "derived_image": {
+        "sha256": "64bd60a1370e356c675a0343beeb9c05945b52dc39feeef1d41811a05508db06"
+      },
+      "source_member": "Строительная_техника/Screenshot_89.png"
+    },
+    {
+      "source_group": "organizer-archive-site-85-94",
+      "source_site_camera_time_sequence_group": "organizer-archive-site-85-94",
+      "image": {
+        "sha256": "dc7b133138670798d99e98c930f92ba845081769fa927930371d6bcd9bb33703"
+      },
+      "derived_image": {
+        "sha256": "f33bde68126bc3a2deddc019dee369846176ae748788864cafbbede9ab3418a2"
+      },
+      "source_member": "Строительная_техника/Screenshot_90.png"
+    },
+    {
+      "source_group": "organizer-archive-site-22-26",
+      "source_site_camera_time_sequence_group": "organizer-archive-site-22-26",
+      "image": {
+        "sha256": "f03313fd866605aed702c598c0fa534f385eb4db615fc1d4c93964b1ce90e81b"
+      },
+      "derived_image": {
+        "sha256": "2dadb850e7a78cca8691763df50d1096d441b7837b1334a26e95d612123aaf9a"
+      },
+      "source_member": "Строительная_техника/Screenshot_23.png"
+    },
+    {
+      "source_group": "organizer-archive-site-22-26",
+      "source_site_camera_time_sequence_group": "organizer-archive-site-22-26",
+      "image": {
+        "sha256": "409b0df5a36aea6015bb9f703c73928863d96ad9f31d4f06db7919fb454b5305"
+      },
+      "derived_image": {
+        "sha256": "14dc6b81d967bf2200118fb0ec1a3e6f1b03447b8a03a97854f8b4409ec4578d"
+      },
+      "source_member": "Строительная_техника/Screenshot_25.png"
+    },
+    {
+      "source_group": "organizer-archive-site-22-26",
+      "source_site_camera_time_sequence_group": "organizer-archive-site-22-26",
+      "image": {
+        "sha256": "9f208089c6e3e9d6576036bfd9eff91b5685ea4a1ec85837144a606ee96c447b"
+      },
+      "derived_image": {
+        "sha256": "ef01fff0f4d191ab175e1278537d908cc61fe8d2b5eb32edb727ed860d35ea14"
+      },
+      "source_member": "Строительная_техника/Screenshot_26.png"
+    }
+  ],
+  "note": "Included demonstration cases are development examples and excluded from held-out evaluation."
 }

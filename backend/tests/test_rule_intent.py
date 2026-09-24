@@ -1,7 +1,9 @@
 import base64
 import asyncio
 import json
+import hashlib
 import uuid
+import zipfile
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -20,6 +22,45 @@ from test_startup import database, integration
 
 
 CONTEXT = {"scenario": "excavation", "observation_area": "north", "period": "2026-09-23T12:00:00+03:00"}
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+DEMO_CASES = json.loads((PROJECT_ROOT / "web/src/demoCases.json").read_text())["cases"]
+
+
+def test_included_demo_assets_remain_excluded_from_held_out():
+    from PIL import Image
+
+    development = json.loads((PROJECT_ROOT / "backend/admission/exclusions/development_acceptance.json").read_text())
+    held_out = json.loads((PROJECT_ROOT / "backend/admission/exclusions/held_out_evaluation.json").read_text())
+    assert {case["sourceGroup"] for case in DEMO_CASES} == set(development["reserved_source_groups"])
+    assert len(DEMO_CASES) == 2
+    for case in DEMO_CASES:
+        assert case["ruleRevision"] == RULE["revision"]
+        assert case["sourceGroup"] not in held_out["reserved_source_groups"]
+        assert len(case["frames"]) == 3
+        for frame in case["frames"]:
+            derived_path = PROJECT_ROOT / "web/public" / frame["path"].lstrip("/")
+            derived = derived_path.read_bytes()
+            assert hashlib.sha256(derived).hexdigest() == frame["sha256"]
+            assert any(item["source_group"] == case["sourceGroup"] and
+                       item["image"]["sha256"] == frame["originalSha256"] and
+                       item["derived_image"]["sha256"] == frame["sha256"]
+                       for item in development["fixtures"])
+            assert all(item.get("image", {}).get("sha256") not in
+                       (frame["originalSha256"], frame["sha256"]) for item in held_out["fixtures"])
+            with Image.open(derived_path) as image:
+                assert image.format == "JPEG" and image.width * image.height <= 40_000_000
+            assert len(derived) <= 16_000_000
+
+
+def test_included_demo_original_hashes_match_local_archive():
+    archive_path = PROJECT_ROOT / "artifacts/dataset/Строительная_техника.zip"
+    if not archive_path.exists():
+        pytest.skip("Organizer archive is local and is not part of the repository")
+    with zipfile.ZipFile(archive_path) as archive:
+        for case in DEMO_CASES:
+            assert case["sourceArchive"] == "artifacts/dataset/Строительная_техника.zip"
+            for frame in case["frames"]:
+                assert hashlib.sha256(archive.read(frame["sourceMember"])).hexdigest() == frame["originalSha256"]
 
 
 def request(intent="rule_evaluation", stage="excavation"):
@@ -221,14 +262,15 @@ def test_rule_intent_survives_publication_execution_and_readback(integration, mo
         insert_binding(RULE_POLICY, {**snapshot, "runtime": {"batch_timeout_seconds": 1}})
 
     detected_dump = False
+    active_demo = None
     observed_index = 0
 
     def observed(*_):
         nonlocal observed_index
         index = observed_index
         observed_index += 1
-        excavator_seen = index == 0
-        dump_seen = detected_dump and index == 2
+        excavator_seen = index == 0 or bool(active_demo)
+        dump_seen = index in (0, 1) if active_demo and active_demo["id"] == "truck" else detected_dump and index == 2
         detections = []
         if excavator_seen:
             detections.append({"label": "an excavator", "score": 0.8, "box": [1, 2, 3, 4]})
@@ -245,12 +287,17 @@ def test_rule_intent_survives_publication_execution_and_readback(integration, mo
     loop = executor.ClaimLoop()
     loop.store, loop.artifacts, loop.snapshot_dir = store, artifacts, "unused"
 
-    async def run_case(count, expected, dump=False):
-        nonlocal detected_dump, observed_index
+    async def run_case(count, expected, dump=False, demo=None):
+        nonlocal detected_dump, observed_index, active_demo
         detected_dump = dump
+        active_demo = demo
         observed_index = 0
-        images = [jpeg((10 + index, 20, 30)) for index in range(count)]
-        body = {**request(), **({"image_base64": base64.b64encode(images[0]).decode()} if count == 1
+        images = ([(PROJECT_ROOT / "web/public" / frame["path"].lstrip("/")).read_bytes()
+                   for frame in demo["frames"]] if demo else
+                  [jpeg((10 + index, 20, 30)) for index in range(count)])
+        context = ({"scenario": demo["scenario"], "observation_area": demo["observationArea"],
+                    "period": demo["period"] + ":00+03:00"} if demo else CONTEXT)
+        body = {**request(), **context, **({"image_base64": base64.b64encode(images[0]).decode()} if count == 1
                                else {"images_base64": [base64.b64encode(image).decode() for image in images]})}
         submit = submission.submit if count == 1 else submission.submit_series
         _, run_id = submit(store, artifacts, uuid.uuid4().hex, body, profile, 1, snapshot)
@@ -264,12 +311,14 @@ def test_rule_intent_survives_publication_execution_and_readback(integration, mo
         assert queued["authorization_revision"] == 1
         assert queued["binding_kind"] == "admitted_profile"
         assert queued["profile_snapshot"] == snapshot
-        assert queued["context"] == CONTEXT
+        assert queued["context"] == context
         assert queued["requested_classes"] == ["excavator", "dump_truck"]
         assert [item["ordinal"] for item in queued["inputs"]] == list(range(count))
+        if demo:
+            assert [item["sha256"] for item in queued["inputs"]] == [frame["sha256"] for frame in demo["frames"]]
         with store.engine.connect() as connection:
             assert connection.execute(text("SELECT context FROM run_inputs WHERE run_id = :run ORDER BY ordinal"),
-                                      {"run": run_id}).scalars().all() == [CONTEXT] * count
+                                      {"run": run_id}).scalars().all() == [context] * count
         await loop._execute(store.claim_ordinary(profile, 1, 30), 1)
         done = store.read_ordinary(run_id)
         assert done["state"] == "succeeded" and done["outcome"] == expected, done["error_code"]
@@ -282,10 +331,10 @@ def test_rule_intent_survives_publication_execution_and_readback(integration, mo
             assert projection["supporting_input_ids"] == input_ids
             assert projection["series"]["usable_input_ids"] == input_ids
             assert projection["series"]["input_order"] == input_ids
-            assert projection["series"]["declared_observation_area"] == CONTEXT["observation_area"]
-            assert projection["series"]["excavator_supporting_input_ids"] == input_ids[:1]
+            assert projection["series"]["declared_observation_area"] == context["observation_area"]
+            assert projection["series"]["excavator_supporting_input_ids"] == (input_ids if demo else input_ids[:1])
             assert projection["series"]["dump_truck_persistence_input_ids"] == input_ids
-            assert projection["context"] == CONTEXT
+            assert projection["context"] == context
             assert projection["rule"] == queued["rule_snapshot"] == RULE
             assert projection["rule"]["expectation"] == RULE["expectation"]
             assert projection["rule"]["provenance"] == "demonstration rule"
@@ -299,7 +348,7 @@ def test_rule_intent_survives_publication_execution_and_readback(integration, mo
             assert [(item["input_id"], item["class_name"], item["state"]) for item in projection["frames"]] == [
                 (input_id, class_name, state) for input_id in input_ids for class_name, state in
                 (("dump_truck", "not_detected_in_frame"),
-                 ("excavator", "detected" if input_id == input_ids[0] else "not_detected_in_frame"))
+                 ("excavator", "detected" if demo or input_id == input_ids[0] else "not_detected_in_frame"))
             ]
             assert all(frame["source_artifact_id"] == next(item["artifact_id"] for item in done["inputs"]
                                                             if item["input_id"] == frame["input_id"])
@@ -315,9 +364,10 @@ def test_rule_intent_survives_publication_execution_and_readback(integration, mo
             assert projection["recommendation"] is None
             assert projection["rule"]["revision"] == queued["rule_snapshot"]["revision"]
             assert projection["policy"]["revision"] == queued["policy_snapshot"]["revision"]
-            assert projection["context"] == CONTEXT
+            assert projection["context"] == context
             assert projection["series"]["usable_input_ids"] == [item["input_id"] for item in done["inputs"]]
-            assert projection["supporting_input_ids"] == [done["inputs"][0]["input_id"], done["inputs"][2]["input_id"]]
+            assert projection["supporting_input_ids"] == ([item["input_id"] for item in done["inputs"]] if demo else
+                                                        [done["inputs"][0]["input_id"], done["inputs"][2]["input_id"]])
             assert projection["frames"] == [{key: item[key] for key in ("input_id", "ordinal", "class_name", "state", "reason", "source_artifact_id", "invocation_id")}
                                             for item in done["observations"]]
             assert all(frame["source_artifact_id"] == next(item["artifact_id"] for item in done["inputs"]
@@ -334,6 +384,8 @@ def test_rule_intent_survives_publication_execution_and_readback(integration, mo
     asyncio.run(run_case(2, "insufficient_data"))
     run_id = asyncio.run(run_case(3, "check_requested"))
     asyncio.run(run_case(3, "no_check", dump=True))
+    for demo in DEMO_CASES:
+        asyncio.run(run_case(3, demo["expectedOutcome"], demo=demo))
 
     updates = [
         ("request_context", json.dumps({**CONTEXT, "scenario": "changed"}), "jsonb"),

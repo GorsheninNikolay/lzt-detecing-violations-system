@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from 'react'
+import demoCases from './demoCases.json'
 
 type Frame = { id: string; file: File }
+type DemoCase = (typeof demoCases.cases)[number]
 type Pending = { endpoint: string; body: string; key: string }
 type Errors = Partial<Record<'scenario' | 'observation_area' | 'period' | 'images' | 'submit', string>>
 type Stage = { name: string; state: string; reason?: string | null; timestamp?: string | null }
@@ -386,6 +388,11 @@ export default function App() {
   const [area, setArea] = useState('')
   const [period, setPeriod] = useState(localPeriod)
   const [frames, setFrames] = useState<Frame[]>([])
+  const [demoLoading, setDemoLoading] = useState(false)
+  const [demoError, setDemoError] = useState('')
+  const [selectedDemo, setSelectedDemo] = useState<DemoCase | null>(null)
+  const demoGeneration = useRef(0)
+  const demoLoadingRef = useRef(false)
   const framesRef = useRef<Frame[]>([])
   const validationQueue = useRef<Promise<void>>(Promise.resolve())
   const [validating, setValidating] = useState(false)
@@ -535,10 +542,64 @@ export default function App() {
   function updateFrames(next: Frame[]) {
     framesRef.current = next
     setFrames(next)
+    setSelectedDemo(null)
+  }
+
+  async function loadDemo(caseId: string) {
+    const selected = demoCases.cases.find(item => item.id === caseId)
+    if (!selected || pending || sending || recovering || busy.current || demoLoadingRef.current) return
+    const rule = choices.find(item => item.id === selected.stage)?.rule
+    if (!rule || rule.revision !== selected.ruleRevision) {
+      setDemoError('Демонстрационный пример недоступен: текущая ревизия правила изменилась или правило не загружено.')
+      return
+    }
+    const generation = ++demoGeneration.current
+    demoLoadingRef.current = true
+    setDemoLoading(true)
+    setDemoError('')
+    const controller = new AbortController()
+    let timeout: ReturnType<typeof setTimeout> | undefined
+    try {
+      await validationQueue.current
+      const loaded = await Promise.race([Promise.all(selected.frames.map(async frame => {
+        const response = await fetch(frame.path, { signal: controller.signal })
+        if (!response.ok) throw new Error('asset_unavailable')
+        const file = new File([await response.blob()], frame.path.split('/').pop()!, { type: 'image/jpeg' })
+        if (await validateImage(file)) throw new Error('asset_invalid')
+        const hash = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', await readFile(file))))
+          .map(byte => byte.toString(16).padStart(2, '0')).join('')
+        if (hash !== frame.sha256) throw new Error('asset_integrity')
+        return { id: crypto.randomUUID(), file }
+      })), new Promise<never>((_, reject) => {
+        timeout = setTimeout(() => { controller.abort(); reject(new Error('demo_timeout')) }, 10000)
+      })])
+      if (!mounted.current || routeRef.current || generation !== demoGeneration.current || busy.current) return
+      closeCamera()
+      updateFrames(loaded)
+      setStage(selected.stage)
+      setIntent(selected.intent)
+      observationPreferred.current = false
+      setScenario(selected.scenario)
+      setArea(selected.observationArea)
+      setPeriod(selected.period)
+      setSelectedDemo(selected)
+      setRemoved(null)
+      setErrors({})
+      setNotice(`Загружен демонстрационный пример: ${selected.label}. Три кадра можно изменить перед отправкой.`)
+    } catch {
+      if (mounted.current && generation === demoGeneration.current) setDemoError('Не удалось загрузить и проверить все кадры примера. Текущая форма сохранена; повторите выбор.')
+    } finally {
+      controller.abort()
+      clearTimeout(timeout)
+      if (generation === demoGeneration.current) {
+        demoLoadingRef.current = false
+        if (mounted.current) setDemoLoading(false)
+      }
+    }
   }
 
   async function addFiles(files: FileList | File[]) {
-    if (pending || sending || busy.current) return
+    if (pending || sending || busy.current || demoLoadingRef.current) return
     const batch = Array.from(files)
     setValidating(true)
     const task = validationQueue.current.then(async () => {
@@ -593,14 +654,16 @@ export default function App() {
   }
 
   async function openCamera() {
+    if (demoLoadingRef.current) return
     if (!navigator.mediaDevices?.getUserMedia) {
       setErrors(current => ({ ...current, images: 'Камера недоступна. Выберите изображения из файлов.' }))
       return
     }
     const generation = ++cameraGeneration.current
+    const presetGeneration = demoGeneration.current
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: false })
-      if (!mounted.current || generation !== cameraGeneration.current || routeRef.current) {
+      if (!mounted.current || generation !== cameraGeneration.current || presetGeneration !== demoGeneration.current || demoLoadingRef.current || routeRef.current) {
         stream.getTracks().forEach(track => track.stop())
         return
       }
@@ -636,8 +699,9 @@ export default function App() {
     if (!context) { setErrors(current => ({ ...current, images: 'Не удалось получить снимок. Повторите попытку.' })); return }
     context.drawImage(video, 0, 0)
     const generation = cameraGeneration.current
+    const presetGeneration = demoGeneration.current
     canvas.toBlob(blob => {
-      if (!mounted.current || generation !== cameraGeneration.current || routeRef.current) return
+      if (!mounted.current || generation !== cameraGeneration.current || presetGeneration !== demoGeneration.current || demoLoadingRef.current || routeRef.current) return
       if (!blob) { setErrors(current => ({ ...current, images: 'Не удалось получить снимок. Повторите попытку.' })); return }
       void addFiles([new File([blob], `camera-${Date.now()}.jpg`, { type: 'image/jpeg' })])
       closeCamera()
@@ -711,7 +775,7 @@ export default function App() {
 
   async function submit(event: FormEvent) {
     event.preventDefault()
-    if (busy.current || offline || recovering) return
+    if (busy.current || offline || recovering || demoLoading) return
     if (pending) { await send(pending); return }
     busy.current = true
     await validationQueue.current
@@ -747,11 +811,20 @@ export default function App() {
     <main id="main" className="page">
       {route ? <section className="run-workspace" aria-labelledby="run-heading" aria-busy={runReading}><div className="panel run-header"><p className="eyebrow">Анализ</p><h1 ref={pageHeading} tabIndex={-1} id="run-heading">{runMissing ? 'Анализ не найден' : runSnapshot ? RUN_HEADINGS[runSnapshot.state] ?? 'Статус анализа неизвестен' : runChecked ? 'Статус анализа неизвестен' : 'Проверяем анализ…'}</h1><p>Номер анализа: <code>{route}</code></p>{runSnapshot && <p>Состояние сервера: <strong>{RUN_STATES[runSnapshot.state] ?? 'Состояние доступно на сервере'}</strong></p>}{runError && <div className="attention"><p>{runError}</p><button type="button" className="secondary" disabled={runReading} onClick={() => { if (!runReading) { setRunReading(true); setRunReadAttempt(value => value + 1) } }}>{runReading ? 'Проверяем статус…' : 'Проверить статус'}</button></div>}<p role="status" className="sr-only">{runError || runAnnouncement}</p><button type="button" className="secondary" onClick={() => navigate('/')}>Новый анализ</button></div>{runSnapshot && <section className="panel pipeline" aria-labelledby="pipeline-heading"><h2 id="pipeline-heading">Этапы анализа</h2><ol className="pipeline-stages">{runSnapshot.stages.map(stage => <li key={stage.name} className={`pipeline-stage stage-${stage.state}`}><h3>{STAGE_LABELS[stage.name] ?? 'Этап анализа'}</h3><p>{STAGE_STATES[stage.state] ?? 'Состояние доступно на сервере'}</p>{stage.reason && <><p className="stage-reason">{STAGE_REASONS[stage.reason] ?? 'Причина не описана для пользователя.'}</p>{!STAGE_REASONS[stage.reason] && <details><summary>Техническая причина</summary><code>{stage.reason}</code></details>}</>}{stage.timestamp && <time dateTime={stage.timestamp}>{stage.timestamp}</time>}</li>)}</ol></section>}{runSnapshot && <ObservationResult run={runSnapshot} runId={route} />}</section> : <>
         <div className="page-intro"><p className="eyebrow">Новый анализ</p><h1 ref={pageHeading} tabIndex={-1}>Наблюдение за техникой</h1><p>Добавьте снимки и контекст наблюдения. Выберите распознавание техники или проверку демонстрационного правила этапа.</p></div>
+        <section className="panel" aria-labelledby="demo-heading" aria-busy={demoLoading}>
+          <h2 id="demo-heading">Включённые примеры</h2>
+          <p>Загрузите три кадра в редактируемую форму. Это примеры разработки из архива организаторов, не оценка готовности распознавания.</p>
+          <div className="upload-actions">{demoCases.cases.map(item => <button key={item.id} type="button" className="secondary" disabled={!!pending || recovering || sending || validating || demoLoading || choicesLoading} onClick={() => void loadDemo(item.id)}>{item.label}</button>)}</div>
+          {demoLoading && <p role="status">Загружаем и проверяем кадры примера…</p>}
+          {demoError && <p role="alert" className="error">{demoError}</p>}
+          {pending && <p>Пока предыдущая отправка требует восстановления, загрузка примера недоступна. Сохранённые данные и ключ отправки не изменены.</p>}
+          {selectedDemo && <div className="rule-context"><p>Источник: архив организаторов, группа <code>{selectedDemo.sourceGroup}</code>; порядок кадров соответствует архиву.</p><p>Отмеченная на кадрах дата: {selectedDemo.frames.map(frame => frame.displayedDate ?? 'не указана').join(', ')}. В исходном примере время 12:00 условное; проверьте период перед отправкой.</p><p>Зона наблюдения заявлена для этой серии; изображения не подтверждают её границы или отсутствие техники на всей площадке.</p></div>}
+        </section>
         <form onSubmit={submit} noValidate aria-busy={sending}>
-          <div className="form-grid"><section className="panel" aria-labelledby="context-heading"><h2 id="context-heading">Контекст наблюдения</h2><fieldset disabled={!!pending || sending || validating || choicesLoading}><div className="field"><label htmlFor="stage">Этап</label><select id="stage" value={stage} onChange={event => { const selected = event.target.value; setStage(selected); setIntent(choices.find(item => item.id === selected)?.rule && !observationPreferred.current ? 'rule_evaluation' : 'observation_only') }}>{choices.map(choice => <option key={choice.id} value={choice.id}>{choice.label}</option>)}</select></div><fieldset className="intent-selector"><legend>Цель анализа</legend><label><input type="radio" name="intent" value="rule_evaluation" checked={intent === 'rule_evaluation'} disabled={!choices.find(item => item.id === stage)?.rule} onChange={() => { observationPreferred.current = false; setIntent('rule_evaluation') }} /> Проверить правило этапа</label><label><input type="radio" name="intent" value="observation_only" checked={intent === 'observation_only'} onChange={() => { observationPreferred.current = true; setIntent('observation_only') }} /> Только распознать технику</label></fieldset>{choices.length > 0 && !choices.find(item => item.id === stage)?.rule && <p className="hint">Для этого этапа правило не настроено в прототипе</p>}{!choicesLoading && !choices.length && <p className="error">Не удалось загрузить настройки этапов. <button type="button" className="secondary" onClick={() => setChoicesAttempt(value => value + 1)}>Повторить загрузку настроек</button></p>}{intent === 'rule_evaluation' && choices.find(item => item.id === stage)?.rule && <div className="rule-context"><p><strong>Правило:</strong> {choices.find(item => item.id === stage)?.rule?.name}</p><p><strong>Ревизия:</strong> {choices.find(item => item.id === stage)?.rule?.revision}</p><p><strong>Ожидание:</strong> {choices.find(item => item.id === stage)?.rule?.expectation}</p><p><strong>Происхождение:</strong> {choices.find(item => item.id === stage)?.rule?.provenance}</p></div>}<div className="field"><label htmlFor="scenario">Сценарий</label><input id="scenario" value={scenario} onChange={event => setScenario(event.target.value)} aria-invalid={!!errors.scenario} aria-describedby={errors.scenario ? 'scenario-error' : undefined} maxLength={256} /><p className="hint">Например, наблюдение за земляными работами.</p>{errors.scenario && <p id="scenario-error" className="error">{errors.scenario}</p>}</div><div className="field"><label htmlFor="area">Зона наблюдения</label><input id="area" value={area} onChange={event => setArea(event.target.value)} aria-invalid={!!errors.observation_area} aria-describedby={errors.observation_area ? 'area-error' : undefined} maxLength={256} /><p className="hint">Укажите конкретный участок, к которому относятся кадры.</p>{errors.observation_area && <p id="area-error" className="error">{errors.observation_area}</p>}</div><div className="field"><label htmlFor="period">Дата и время наблюдения</label><input id="period" type="datetime-local" value={period} onChange={event => setPeriod(event.target.value)} aria-invalid={!!errors.period} aria-describedby={errors.period ? 'period-error' : undefined} />{errors.period && <p id="period-error" className="error">{errors.period}</p>}</div></fieldset><p className="context-summary">Зона: {area || 'не указана'}. Период: {period || 'не указан'}.</p></section>
-          <section className="panel" aria-labelledby="images-heading"><h2 id="images-heading">Кадры наблюдения</h2><p className="muted">Выберите один JPEG или серию из 2–8 JPEG. Каждый файл — до 16 МБ и 40 миллионов пикселей. Порядок кадров влияет на анализ.</p>{intent === 'rule_evaluation' && frames.length > 0 && frames.length < 3 && <p className="attention">Для проверки правила нужны минимум три пригодных кадра одной зоны. Можно отправить меньше; достаточность определит сервер после анализа.</p>}<div className="upload-actions"><label className="file-button secondary" htmlFor="images">Выбрать JPEG</label><input id="images" type="file" accept="image/jpeg,.jpg,.jpeg" multiple onChange={onFiles} disabled={!!pending || sending || validating} aria-invalid={!!errors.images} aria-describedby={errors.images ? 'images-error' : undefined} /><button className="secondary" type="button" onClick={openCamera} disabled={!!pending || sending || validating || cameraOpen || cameraDenied}>Снять камерой</button></div>{errors.images && <p id="images-error" className="error" role="alert">{errors.images}</p>}{cameraOpen && <div className="camera"><video ref={cameraVideo} autoPlay playsInline muted aria-label="Изображение с камеры" /><div className="upload-actions"><button type="button" onClick={capture}>Сделать снимок</button><button className="secondary" type="button" onClick={closeCamera}>Закрыть камеру</button></div></div>}
-          <h3>Порядок кадров</h3>{frames.length ? <ol className="manifest">{frames.map((frame, index) => <li key={frame.id} className="frame"><div><strong>Кадр {index + 1}</strong><span className="file-name">{frame.file.name}</span><small>{(frame.file.size / 1_000_000).toFixed(1)} МБ</small></div><div className="frame-actions"><button type="button" className="secondary" onClick={() => move(index, -1)} disabled={index === 0 || !!pending || sending || validating} aria-label={`Выше: ${frame.file.name}, кадр ${index + 1}`}>Выше</button><button type="button" className="secondary" onClick={() => move(index, 1)} disabled={index === frames.length - 1 || !!pending || sending || validating} aria-label={`Ниже: ${frame.file.name}, кадр ${index + 1}`}>Ниже</button><button type="button" className="secondary" onClick={() => remove(index)} disabled={!!pending || sending || validating} aria-label={`Удалить: ${frame.file.name}, кадр ${index + 1}`}>Удалить</button></div></li>)}</ol> : <p className="empty">Кадры ещё не выбраны.</p>}{removed && <div className="undo"><span>{removed.frame.file.name} удалён.</span><button className="secondary" type="button" onClick={restore} disabled={!!pending || sending || validating || frames.length >= MAX_FRAMES}>Вернуть</button></div>}<p role="status" className="sr-only">{notice}</p></section></div>
-          <section className="submit-panel"><div ref={summary} tabIndex={-1} className="error-summary" role={Object.values(errors).some(Boolean) ? 'alert' : undefined}>{Object.values(errors).some(Boolean) && <><strong>Проверьте данные</strong><ul>{Object.entries(errors).filter(([, message]) => message).map(([key, message]) => <li key={key}><a href={`#${key === 'observation_area' ? 'area' : key === 'images' ? 'images-heading' : key === 'submit' ? 'submit-action' : key}`}>{message}</a></li>)}</ul></>}</div>{offline && <p className="offline" role="status">Нет соединения. Изображения останутся на этом устройстве до обновления страницы.</p>}{pending && <p className="attention">Результат предыдущей отправки неизвестен. Повторный запрос использует те же данные и ключ.</p>}<button id="submit-action" className="primary" type="submit" disabled={sending || offline || recovering || (!pending && (choicesLoading || !choices.length))}>{sending ? 'Создаём анализ…' : pending ? 'Повторить отправку' : 'Запустить анализ'}</button></section>
+          <div className="form-grid"><section className="panel" aria-labelledby="context-heading"><h2 id="context-heading">Контекст наблюдения</h2><fieldset disabled={!!pending || sending || validating || choicesLoading || demoLoading}><div className="field"><label htmlFor="stage">Этап</label><select id="stage" value={stage} onChange={event => { const selected = event.target.value; setStage(selected); setIntent(choices.find(item => item.id === selected)?.rule && !observationPreferred.current ? 'rule_evaluation' : 'observation_only') }}>{choices.map(choice => <option key={choice.id} value={choice.id}>{choice.label}</option>)}</select></div><fieldset className="intent-selector"><legend>Цель анализа</legend><label><input type="radio" name="intent" value="rule_evaluation" checked={intent === 'rule_evaluation'} disabled={!choices.find(item => item.id === stage)?.rule} onChange={() => { observationPreferred.current = false; setIntent('rule_evaluation') }} /> Проверить правило этапа</label><label><input type="radio" name="intent" value="observation_only" checked={intent === 'observation_only'} onChange={() => { observationPreferred.current = true; setIntent('observation_only') }} /> Только распознать технику</label></fieldset>{choices.length > 0 && !choices.find(item => item.id === stage)?.rule && <p className="hint">Для этого этапа правило не настроено в прототипе</p>}{!choicesLoading && !choices.length && <p className="error">Не удалось загрузить настройки этапов. <button type="button" className="secondary" onClick={() => setChoicesAttempt(value => value + 1)}>Повторить загрузку настроек</button></p>}{intent === 'rule_evaluation' && choices.find(item => item.id === stage)?.rule && <div className="rule-context"><p><strong>Правило:</strong> {choices.find(item => item.id === stage)?.rule?.name}</p><p><strong>Ревизия:</strong> {choices.find(item => item.id === stage)?.rule?.revision}</p><p><strong>Ожидание:</strong> {choices.find(item => item.id === stage)?.rule?.expectation}</p><p><strong>Происхождение:</strong> {choices.find(item => item.id === stage)?.rule?.provenance}</p></div>}<div className="field"><label htmlFor="scenario">Сценарий</label><input id="scenario" value={scenario} onChange={event => setScenario(event.target.value)} aria-invalid={!!errors.scenario} aria-describedby={errors.scenario ? 'scenario-error' : undefined} maxLength={256} /><p className="hint">Например, наблюдение за земляными работами.</p>{errors.scenario && <p id="scenario-error" className="error">{errors.scenario}</p>}</div><div className="field"><label htmlFor="area">Зона наблюдения</label><input id="area" value={area} onChange={event => setArea(event.target.value)} aria-invalid={!!errors.observation_area} aria-describedby={errors.observation_area ? 'area-error' : undefined} maxLength={256} /><p className="hint">Укажите конкретный участок, к которому относятся кадры.</p>{errors.observation_area && <p id="area-error" className="error">{errors.observation_area}</p>}</div><div className="field"><label htmlFor="period">Дата и время наблюдения</label><input id="period" type="datetime-local" value={period} onChange={event => setPeriod(event.target.value)} aria-invalid={!!errors.period} aria-describedby={errors.period ? 'period-error' : undefined} />{errors.period && <p id="period-error" className="error">{errors.period}</p>}</div></fieldset><p className="context-summary">Зона: {area || 'не указана'}. Период: {period || 'не указан'}.</p></section>
+          <section className="panel" aria-labelledby="images-heading"><h2 id="images-heading">Кадры наблюдения</h2><p className="muted">Выберите один JPEG или серию из 2–8 JPEG. Каждый файл — до 16 МБ и 40 миллионов пикселей. Порядок кадров влияет на анализ.</p>{intent === 'rule_evaluation' && frames.length > 0 && frames.length < 3 && <p className="attention">Для проверки правила нужны минимум три пригодных кадра одной зоны. Можно отправить меньше; достаточность определит сервер после анализа.</p>}<div className="upload-actions"><label className="file-button secondary" htmlFor="images">Выбрать JPEG</label><input id="images" type="file" accept="image/jpeg,.jpg,.jpeg" multiple onChange={onFiles} disabled={!!pending || sending || validating || demoLoading} aria-invalid={!!errors.images} aria-describedby={errors.images ? 'images-error' : undefined} /><button className="secondary" type="button" onClick={openCamera} disabled={!!pending || sending || validating || demoLoading || cameraOpen || cameraDenied}>Снять камерой</button></div>{errors.images && <p id="images-error" className="error" role="alert">{errors.images}</p>}{cameraOpen && <div className="camera"><video ref={cameraVideo} autoPlay playsInline muted aria-label="Изображение с камеры" /><div className="upload-actions"><button type="button" onClick={capture}>Сделать снимок</button><button className="secondary" type="button" onClick={closeCamera}>Закрыть камеру</button></div></div>}
+          <h3>Порядок кадров</h3>{frames.length ? <ol className="manifest">{frames.map((frame, index) => <li key={frame.id} className="frame"><div><strong>Кадр {index + 1}</strong><span className="file-name">{frame.file.name}</span><small>{(frame.file.size / 1_000_000).toFixed(1)} МБ</small></div><div className="frame-actions"><button type="button" className="secondary" onClick={() => move(index, -1)} disabled={index === 0 || !!pending || sending || validating || demoLoading} aria-label={`Выше: ${frame.file.name}, кадр ${index + 1}`}>Выше</button><button type="button" className="secondary" onClick={() => move(index, 1)} disabled={index === frames.length - 1 || !!pending || sending || validating || demoLoading} aria-label={`Ниже: ${frame.file.name}, кадр ${index + 1}`}>Ниже</button><button type="button" className="secondary" onClick={() => remove(index)} disabled={!!pending || sending || validating || demoLoading} aria-label={`Удалить: ${frame.file.name}, кадр ${index + 1}`}>Удалить</button></div></li>)}</ol> : <p className="empty">Кадры ещё не выбраны.</p>}{removed && <div className="undo"><span>{removed.frame.file.name} удалён.</span><button className="secondary" type="button" onClick={restore} disabled={!!pending || sending || validating || demoLoading || frames.length >= MAX_FRAMES}>Вернуть</button></div>}<p role="status" className="sr-only">{notice}</p></section></div>
+          <section className="submit-panel"><div ref={summary} tabIndex={-1} className="error-summary" role={Object.values(errors).some(Boolean) ? 'alert' : undefined}>{Object.values(errors).some(Boolean) && <><strong>Проверьте данные</strong><ul>{Object.entries(errors).filter(([, message]) => message).map(([key, message]) => <li key={key}><a href={`#${key === 'observation_area' ? 'area' : key === 'images' ? 'images-heading' : key === 'submit' ? 'submit-action' : key}`}>{message}</a></li>)}</ul></>}</div>{offline && <p className="offline" role="status">Нет соединения. Изображения останутся на этом устройстве до обновления страницы.</p>}{pending && <p className="attention">Результат предыдущей отправки неизвестен. Повторный запрос использует те же данные и ключ.</p>}<button id="submit-action" className="primary" type="submit" disabled={sending || offline || recovering || demoLoading || (!pending && (choicesLoading || !choices.length))}>{sending ? 'Создаём анализ…' : pending ? 'Повторить отправку' : 'Запустить анализ'}</button></section>
         </form>
       </>}
     </main>

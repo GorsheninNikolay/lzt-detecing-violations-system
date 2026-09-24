@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import App from './App'
+import demoCases from './demoCases.json'
 
 const jpeg = new Uint8Array([0xff, 0xd8, 0xff, 0xd9])
 const image = (name: string, marker = 0) => new File([jpeg, new Uint8Array([marker])], name, { type: 'image/jpeg' })
@@ -368,7 +369,12 @@ beforeEach(() => {
   sessionStorage.clear()
   Object.defineProperty(navigator, 'onLine', { configurable: true, value: true })
   vi.stubGlobal('createImageBitmap', vi.fn(async () => ({ width: 2, height: 2, close: vi.fn() })))
-  vi.stubGlobal('crypto', { randomUUID: vi.fn().mockReturnValueOnce('frame-1').mockReturnValueOnce('frame-2').mockReturnValueOnce('frame-3').mockReturnValue('key-1') })
+  vi.stubGlobal('crypto', { randomUUID: vi.fn().mockReturnValueOnce('frame-1').mockReturnValueOnce('frame-2').mockReturnValueOnce('frame-3').mockReturnValue('key-1'), subtle: {
+    digest: vi.fn(async (_algorithm: string, bytes: ArrayBuffer) => {
+      const hash = demoCases.cases.flatMap(item => item.frames)[new Uint8Array(bytes)[4]]?.sha256 ?? '00'.repeat(32)
+      return Uint8Array.from(hash.match(/../g)!.map(part => parseInt(part, 16))).buffer
+    }),
+  } })
 })
 afterEach(() => { vi.useRealTimers(); cleanup(); vi.unstubAllGlobals(); vi.restoreAllMocks() })
 
@@ -432,6 +438,129 @@ describe('New Analysis', () => {
     name: 'Проверка вывоза грунта', revision: 'v1', expectation: 'Самосвалы периодически',
     provenance: 'demonstration rule', recommendation: 'Проверить вручную',
   } }, { id: 'other', label: 'Другой этап', rule: null }] }
+
+  for (const demo of demoCases.cases) {
+    it(`loads ${demo.id} as an editable ordinary series in source order`, async () => {
+      const user = userEvent.setup()
+      vi.stubGlobal('__ANALYSIS_CHOICES__', [{ id: 'excavation', label: 'Земляные работы', rule: {
+        ...configuredChoices.stages[0].rule, revision: demo.ruleRevision,
+      } }])
+      const bytes = demo.frames.map(frame => new Uint8Array([...jpeg, demoCases.cases.flatMap(item => item.frames).findIndex(item => item.path === frame.path)]))
+      const fetchMock = vi.fn(async (url: string, _options?: RequestInit) => url.startsWith('/demo/')
+        ? { ok: true, blob: async () => new Blob([bytes[demo.frames.findIndex(frame => frame.path === url)]]) }
+        : { status: 202, json: async () => ({ run_id: '12345678-1234-1234-1234-123456789abc' }) })
+      vi.stubGlobal('fetch', fetchMock)
+      render(<App />)
+      await user.type(screen.getByLabelText('Сценарий'), 'Исходный черновик')
+      await user.upload(screen.getByLabelText('Выбрать JPEG'), image('mine.jpg'))
+      await user.click(screen.getByRole('button', { name: demo.label }))
+      expect(await screen.findByText('Screenshot_' + demo.frames[2].sourceMember.match(/\d+/)![0] + '.jpg')).toBeTruthy()
+      expect(screen.queryByText('mine.jpg')).toBeNull()
+      expect((screen.getByLabelText('Сценарий') as HTMLInputElement).value).toBe(demo.scenario)
+      expect((screen.getByLabelText('Зона наблюдения') as HTMLInputElement).value).toBe(demo.observationArea)
+      expect((screen.getByLabelText('Дата и время наблюдения') as HTMLInputElement).value).toBe(demo.period)
+      expect((screen.getByRole('radio', { name: 'Проверить правило этапа' }) as HTMLInputElement).checked).toBe(true)
+      expect(screen.getByText(demo.ruleRevision)).toBeTruthy()
+      expect(screen.getByText(/В исходном примере время 12:00 условное/)).toBeTruthy()
+      expect(screen.getByText(/порядок кадров соответствует архиву/)).toBeTruthy()
+      await user.click(screen.getByRole('button', { name: `Выше: Screenshot_${demo.frames[1].sourceMember.match(/\d+/)![0]}.jpg, кадр 2` }))
+      expect(screen.queryByText(/порядок кадров соответствует архиву/)).toBeNull()
+      await user.click(screen.getByRole('button', { name: `Ниже: Screenshot_${demo.frames[1].sourceMember.match(/\d+/)![0]}.jpg, кадр 1` }))
+      await user.type(screen.getByLabelText('Сценарий'), ' — уточнено')
+      await user.click(screen.getByRole('button', { name: 'Запустить анализ' }))
+      await waitFor(() => expect(fetchMock.mock.calls.some(call => call[0] === '/api/runs/series')).toBe(true))
+      const request = JSON.parse(fetchMock.mock.calls.find(call => call[0] === '/api/runs/series')![1]!.body as string)
+      expect(request).toMatchObject({ intent: 'rule_evaluation', stage: 'excavation', scenario: demo.scenario + ' — уточнено', observation_area: demo.observationArea })
+      expect(request.images_base64).toEqual(bytes.map(item => btoa(String.fromCharCode(...item))))
+    })
+  }
+
+  it('preserves an edited form if any demo asset fails', async () => {
+    const user = userEvent.setup()
+    const demo = demoCases.cases[0]
+    vi.stubGlobal('__ANALYSIS_CHOICES__', [{ id: 'excavation', label: 'Земляные работы', rule: {
+      ...configuredChoices.stages[0].rule, revision: demo.ruleRevision,
+    } }])
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => url === demo.frames[1].path ? { ok: false } : {
+      ok: true, blob: async () => new Blob([new Uint8Array([...jpeg, demoCases.cases.flatMap(item => item.frames).findIndex(item => item.path === url)])]),
+    }))
+    render(<App />)
+    await user.type(screen.getByLabelText('Сценарий'), 'Мой сценарий')
+    await user.upload(screen.getByLabelText('Выбрать JPEG'), image('mine.jpg'))
+    await user.click(screen.getByRole('button', { name: demo.label }))
+    expect(await screen.findByText(/Текущая форма сохранена/)).toBeTruthy()
+    expect((screen.getByLabelText('Сценарий') as HTMLInputElement).value).toBe('Мой сценарий')
+    expect(screen.getByText('mine.jpg')).toBeTruthy()
+  })
+
+  it('releases a stalled demo load without replacing the draft', async () => {
+    const user = userEvent.setup()
+    const demo = demoCases.cases[0]
+    vi.stubGlobal('__ANALYSIS_CHOICES__', [{ id: 'excavation', label: 'Земляные работы', rule: {
+      ...configuredChoices.stages[0].rule, revision: demo.ruleRevision,
+    } }])
+    const fetchMock = vi.fn((_url: string, _options?: RequestInit) => new Promise<Response>(() => {}))
+    vi.stubGlobal('fetch', fetchMock)
+    render(<App />)
+    await user.type(screen.getByLabelText('Сценарий'), 'Мой сценарий')
+    await user.upload(screen.getByLabelText('Выбрать JPEG'), image('mine.jpg'))
+    vi.useFakeTimers()
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: demo.label })); await Promise.resolve() })
+    expect(screen.getByRole('button', { name: demo.label })).toHaveProperty('disabled', true)
+    await act(async () => { await vi.advanceTimersByTimeAsync(10000) })
+    expect(screen.getByText(/Текущая форма сохранена/)).toBeTruthy()
+    expect(screen.getByRole('button', { name: demo.label })).toHaveProperty('disabled', false)
+    expect((screen.getByLabelText('Сценарий') as HTMLInputElement).value).toBe('Мой сценарий')
+    expect(screen.getByText('mine.jpg')).toBeTruthy()
+    expect(fetchMock.mock.calls.every(call => call[1]?.signal?.aborted)).toBe(true)
+  })
+
+  it('ignores a camera capture callback started before a demo selection', async () => {
+    const user = userEvent.setup()
+    const demo = demoCases.cases[0]
+    vi.stubGlobal('__ANALYSIS_CHOICES__', [{ id: 'excavation', label: 'Земляные работы', rule: {
+      ...configuredChoices.stages[0].rule, revision: demo.ruleRevision,
+    } }])
+    const stop = vi.fn()
+    Object.defineProperty(navigator, 'mediaDevices', { configurable: true,
+      value: { getUserMedia: vi.fn(async () => ({ getTracks: () => [{ stop }] })) } })
+    let finishCapture!: (blob: Blob | null) => void
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({ drawImage: vi.fn() } as unknown as CanvasRenderingContext2D)
+    vi.spyOn(HTMLCanvasElement.prototype, 'toBlob').mockImplementation(callback => { finishCapture = callback })
+    const bytes = demo.frames.map(frame => new Uint8Array([...jpeg, demoCases.cases.flatMap(item => item.frames).findIndex(item => item.path === frame.path)]))
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => ({ ok: true,
+      blob: async () => new Blob([bytes[demo.frames.findIndex(frame => frame.path === url)]]),
+    })))
+    render(<App />)
+    await user.click(screen.getByRole('button', { name: 'Снять камерой' }))
+    const video = await screen.findByLabelText('Изображение с камеры')
+    Object.defineProperty(video, 'videoWidth', { configurable: true, value: 2 })
+    Object.defineProperty(video, 'videoHeight', { configurable: true, value: 2 })
+    await user.click(screen.getByRole('button', { name: 'Сделать снимок' }))
+    await user.click(screen.getByRole('button', { name: demo.label }))
+    expect(await screen.findByText('Screenshot_90.jpg')).toBeTruthy()
+    await act(async () => finishCapture(new Blob([jpeg], { type: 'image/jpeg' })))
+    expect(screen.queryByText(/camera-\d+\.jpg/)).toBeNull()
+    expect(screen.getAllByRole('listitem').filter(row => row.classList.contains('frame'))).toHaveLength(3)
+    expect(stop).toHaveBeenCalled()
+  })
+
+  it('refuses a changed rule and leaves an uncertain pending body untouched', async () => {
+    const user = userEvent.setup()
+    vi.stubGlobal('__ANALYSIS_CHOICES__', configuredChoices.stages)
+    render(<App />)
+    await user.type(screen.getByLabelText('Сценарий'), 'Мой сценарий')
+    await user.click(screen.getByRole('button', { name: demoCases.cases[0].label }))
+    expect(screen.getByRole('alert').textContent).toContain('текущая ревизия правила изменилась')
+    expect((screen.getByLabelText('Сценарий') as HTMLInputElement).value).toBe('Мой сценарий')
+    cleanup()
+    const saved = { endpoint: '/api/runs/series', body: '{"original":true}', key: 'original-key' }
+    sessionStorage.setItem('observation-pending', JSON.stringify(saved))
+    render(<App />)
+    await screen.findByText(/загрузка примера недоступна/)
+    expect(screen.getByRole('button', { name: demoCases.cases[0].label })).toHaveProperty('disabled', true)
+    expect(sessionStorage.getItem('observation-pending')).toBe(JSON.stringify(saved))
+  })
 
   it('loads live choices and defaults to an enabled rule submission', async () => {
     vi.stubGlobal('__ANALYSIS_CHOICES__', undefined)
