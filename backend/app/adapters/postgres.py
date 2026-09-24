@@ -719,7 +719,9 @@ class PostgresStore:
             usable = connection.execute(text("""SELECT i.input_id FROM run_inputs i JOIN observer_invocations v
                 ON v.run_id = i.run_id AND v.input_id = i.input_id AND v.state = 'completed'
                 WHERE i.run_id = :run ORDER BY i.ordinal"""), {"run": run_id}).scalars().all()
-            usable_ids = [str(item) for item in usable]
+            unassessable_ids = {str(item["input_id"]) for item in evidence
+                                if item["state"] == "insufficient_data"}
+            usable_ids = [str(item) for item in usable if str(item) not in unassessable_ids]
             excavator_ids = [str(item["input_id"]) for item in evidence
                              if item["class_name"] == "excavator" and item["state"] == "detected"]
             dump_truck_ids = [str(item["input_id"]) for item in evidence

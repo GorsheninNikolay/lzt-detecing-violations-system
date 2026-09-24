@@ -68,12 +68,9 @@ def _observe_bounded(snapshot_dir: str, hashes: dict, image: bytes, seconds: flo
         output.close()
 
 
-def _unassessable(image: bytes) -> bool:
+def _decode_image(image: bytes) -> None:
     with Image.open(io.BytesIO(image)) as source:
-        rgb = source.convert("RGB")
-        if min(rgb.size) < 64:
-            return True
-        return all(high - low < 5 for low, high in rgb.getextrema())
+        source.load()
 
 
 def _validate_result(result: dict) -> None:
@@ -148,18 +145,17 @@ class ClaimLoop:
                 remaining_batch()
                 return result
 
-            assessable_frames = []
             single_image = None
             for frame in work["frames"]:
                 image = await run_step(self.artifacts.read_verified, frame["key"], frame["sha256"], frame["size"])
-                assessable_frames.append(not await run_step(_unassessable, image))
+                await run_step(_decode_image, image)
                 if len(work["frames"]) == 1:
                     single_image = image
                 del image
             supported = bool(set(work["requested_classes"]) & set(CLASSES))
-            for frame, assessable in zip(work["frames"], assessable_frames):
+            for frame in work["frames"]:
                 invocation = await run_step(self.store.reserve_ordinary, run_id, owner, revision,
-                    frame["sha256"], assessable and supported, frame["input_id"])
+                    frame["sha256"], supported, frame["input_id"])
                 if invocation is None:
                     states = {name: "insufficient_data" for name in CLASSES}
                     result, native_intent = None, None

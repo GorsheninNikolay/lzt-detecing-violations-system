@@ -233,8 +233,10 @@ def test_http_submission_and_guarded_execution(isolated_admission_database, inte
     app.state.claim_loop = loop
     image = jpeg((12, 120, 220))
     body = request_body(image, ["excavator", "dump_truck", "tower_crane"])
+    observed_images = []
 
-    def observed(*_):
+    def observed(_snapshot_dir, _hashes, image_bytes, _seconds):
+        observed_images.append(image_bytes)
         return {"states": {"excavator": "detected", "dump_truck": "not_detected_in_frame"},
                 "returned_model_identity": f"checkpoint-sha256:{'a' * 64}", "actual_device": "cpu",
                 "latency_ms": 1.0, "peak_memory_bytes": 1024,
@@ -271,6 +273,7 @@ def test_http_submission_and_guarded_execution(isolated_admission_database, inte
             await loop._execute(work, 1)
             done = (await client.get(f"/runs/{run}")).json()
             assert done["state"] == "succeeded" and done["outcome"] == "observations_only"
+            assert observed_images == [image]
             assert len(done["stages"]) == 6 and done["native_evidence"]["sha256"]
             assert {item["class_name"]: item["state"] for item in done["observations"]} == {
                 "excavator": "detected", "dump_truck": "not_detected_in_frame", "tower_crane": "not_analyzed"}
@@ -279,21 +282,32 @@ def test_http_submission_and_guarded_execution(isolated_admission_database, inte
                 assert connection.execute(text("SELECT count(*) FROM run_inputs WHERE run_id = :run"), {"run": run}).scalar_one() == 1
                 assert connection.execute(text("SELECT count(*) FROM observer_invocations WHERE run_id = :run"), {"run": run}).scalar_one() == 1
                 assert connection.execute(text("SELECT count(*) FROM result_projections WHERE run_id = :run"), {"run": run}).scalar_one() == 1
+            black_image = jpeg((0, 0, 0))
             black = await client.post("/runs/single-image", headers={"Idempotency-Key": uuid.uuid4().hex},
-                                      json=request_body(jpeg((0, 0, 0))))
+                                      json=request_body(black_image))
             black_run = uuid.UUID(black.json()["run_id"])
             await loop._execute(store.claim_ordinary(profile, 1, 30), 1)
-            insufficient = (await client.get(f"/runs/{black_run}")).json()
-            assert insufficient["state"] == "succeeded" and all(
-                item["state"] == "insufficient_data" and item["reason"] for item in insufficient["observations"])
-            assert insufficient["outcome"] == "observations_only"
+            low_range = (await client.get(f"/runs/{black_run}")).json()
+            assert low_range["state"] == "succeeded" and low_range["outcome"] == "observations_only"
+            assert observed_images[-1] == black_image
+            assert {item["class_name"]: item["state"] for item in low_range["observations"]} == {
+                "excavator": "detected", "dump_truck": "not_detected_in_frame"}
+            assert all(item["reason"] is None for item in low_range["observations"])
+            with store.engine.connect() as connection:
+                invocation = connection.execute(text("""SELECT v.input_sha256, i.sha256
+                    FROM observer_invocations v JOIN run_inputs i
+                    ON i.run_id = v.run_id AND i.input_id = v.input_id WHERE v.run_id = :run"""),
+                    {"run": black_run}).one()
+            assert invocation.input_sha256 == invocation.sha256
             unsupported = await client.post("/runs/single-image", headers={"Idempotency-Key": uuid.uuid4().hex},
                                             json=request_body(jpeg((33, 111, 222)), ["tower_crane"]))
             unsupported_run = uuid.UUID(unsupported.json()["run_id"])
+            observed_count = len(observed_images)
             await loop._execute(store.claim_ordinary(profile, 1, 30), 1)
             unsupported_state = (await client.get(f"/runs/{unsupported_run}")).json()
             assert unsupported_state["state"] == "succeeded" and unsupported_state["outcome"] == "observations_only"
             assert unsupported_state["observations"][0]["state"] == "not_analyzed"
+            assert len(observed_images) == observed_count
             with store.engine.connect() as connection:
                 assert connection.execute(text("SELECT count(*) FROM observer_invocations WHERE run_id = :run"),
                                           {"run": unsupported_run}).scalar_one() == 0
@@ -306,13 +320,13 @@ def test_http_submission_and_guarded_execution(isolated_admission_database, inte
             assert failure["error_code"] == "observer_execution_failed" and "provider_secret" not in str(failure)
             malformed = await client.post("/runs/single-image", headers={"Idempotency-Key": uuid.uuid4().hex}, json=body)
             malformed_run = uuid.UUID(malformed.json()["run_id"])
-            monkeypatch.setattr(executor, "_observe_bounded", lambda *_: observed() | {"states": {"excavator": "unknown"}})
+            monkeypatch.setattr(executor, "_observe_bounded", lambda *args: observed(*args) | {"states": {"excavator": "unknown"}})
             await loop._execute(store.claim_ordinary(profile, 1, 30), 1)
             malformed_state = (await client.get(f"/runs/{malformed_run}")).json()
             assert malformed_state["state"] == "failed" and malformed_state["outcome"] is None
             contradictory = await client.post("/runs/single-image", headers={"Idempotency-Key": uuid.uuid4().hex}, json=body)
             contradictory_run = uuid.UUID(contradictory.json()["run_id"])
-            monkeypatch.setattr(executor, "_observe_bounded", lambda *_: observed() | {
+            monkeypatch.setattr(executor, "_observe_bounded", lambda *args: observed(*args) | {
                 "states": {"excavator": "not_detected_in_frame", "dump_truck": "not_detected_in_frame"}})
             await loop._execute(store.claim_ordinary(profile, 1, 30), 1)
             contradictory_state = (await client.get(f"/runs/{contradictory_run}")).json()

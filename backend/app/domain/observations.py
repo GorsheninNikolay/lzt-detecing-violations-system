@@ -77,7 +77,7 @@ def validate_manifest(path: Path, exclusion_inventories: list[Path]) -> tuple[di
 
 
 def normalized_states(native_states: dict) -> dict[str, str]:
-    if set(native_states) != set(CLASSES) or any(value not in ("detected", "not_detected_in_frame") for value in native_states.values()):
+    if set(native_states) != set(CLASSES) or any(value not in ("detected", "not_detected_in_frame", "insufficient_data") for value in native_states.values()):
         raise ValueError("observation_normalization_failed")
     return {name: native_states[name] for name in CLASSES}
 

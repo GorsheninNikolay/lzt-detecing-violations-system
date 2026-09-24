@@ -1,5 +1,6 @@
 import asyncio
 import base64
+import io
 import threading
 import uuid
 from types import SimpleNamespace
@@ -10,6 +11,7 @@ from alembic import command
 from alembic.config import Config as AlembicConfig
 from botocore.exceptions import ClientError
 from httpx import ASGITransport, AsyncClient
+from PIL import Image, ImageDraw
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import make_url
 from sqlalchemy.exc import IntegrityError
@@ -213,6 +215,14 @@ def body(*images):
             "images_base64": [base64.b64encode(image).decode() for image in images]}
 
 
+def jpeg_with_size(width, height, color):
+    image = Image.new("RGB", (width, height), color)
+    ImageDraw.Draw(image).rectangle((0, 0, 8, 8), fill=(220, 240, 250))
+    output = io.BytesIO()
+    image.save(output, format="JPEG")
+    return output.getvalue()
+
+
 def test_ordered_series_http_postgres_s3(isolated_admission_database, integration, monkeypatch):
     config, _, _ = integration
     config = Config(isolated_admission_database, config.s3_endpoint, config.s3_bucket,
@@ -245,19 +255,25 @@ def test_ordered_series_http_postgres_s3(isolated_admission_database, integratio
     loop.store, loop.artifacts, loop.snapshot_dir = store, artifacts, "unused"
     loop.runtime_binding = profile, 1
     app.state.claim_loop = loop
-    first, second, black = jpeg((12, 120, 220)), jpeg((33, 111, 222)), jpeg((0, 0, 0))
+    first, second, low_range = jpeg((12, 120, 220)), jpeg((33, 111, 222)), jpeg((0, 0, 0))
+    small = jpeg_with_size(32, 48, (20, 40, 60))
     calls = 0
+    observed_images = []
 
-    def observed(*_):
+    def observed(*args):
         nonlocal calls
+        image_bytes = args[2]
+        observed_images.append(image_bytes)
         calls += 1
+        with Image.open(io.BytesIO(image_bytes)) as image:
+            image_size = list(image.size)
         return {"states": {"excavator": "detected" if calls % 2 else "not_detected_in_frame",
                            "dump_truck": "not_detected_in_frame"},
                 "returned_model_identity": f"checkpoint-sha256:{'a' * 64}", "actual_device": "cpu",
                 "latency_ms": 1.0, "peak_memory_bytes": 1024,
                 "native": {"detections": ([{"label": "an excavator", "score": 0.8, "box": [1, 2, 3, 4]}]
                                           if calls % 2 else []),
-                           "image_size": [96, 96]}}
+                           "image_size": image_size}}
 
     monkeypatch.setattr(executor, "_observe_bounded", observed)
 
@@ -301,18 +317,18 @@ def test_ordered_series_http_postgres_s3(isolated_admission_database, integratio
                     {"run": run}).all()
             assert [artifacts.read_verified(*ref) for ref in refs] == [first, second]
             checking, allow_check = threading.Event(), threading.Event()
-            original_assess = executor._unassessable
-            assessed = 0
+            original_decode = executor._decode_image
+            decoded = 0
 
-            def pause_second_assessment(image):
-                nonlocal assessed
-                assessed += 1
-                if assessed == 2:
+            def pause_second_decode(image):
+                nonlocal decoded
+                decoded += 1
+                if decoded == 2:
                     checking.set()
                     assert allow_check.wait(30)
-                return original_assess(image)
+                return original_decode(image)
 
-            monkeypatch.setattr(executor, "_unassessable", pause_second_assessment)
+            monkeypatch.setattr(executor, "_decode_image", pause_second_decode)
             work = store.claim_ordinary(profile, 1, 30)
             execution = asyncio.create_task(loop._execute(work, 1))
             try:
@@ -346,10 +362,11 @@ def test_ordered_series_http_postgres_s3(isolated_admission_database, integratio
             finally:
                 allow_observation.set()
             await execution
-            monkeypatch.setattr(executor, "_unassessable", original_assess)
+            monkeypatch.setattr(executor, "_decode_image", original_decode)
             monkeypatch.setattr(executor, "_observe_bounded", observed)
             done = (await client.get(f"/runs/{run}")).json()
             assert done["state"] == "succeeded" and done["outcome"] == "observations_only", done["error_code"]
+            assert observed_images[:2] == [first, second]
             assert done["result_projection"]["series"]["usable_input_ids"] == [item["input_id"] for item in done["inputs"]]
             assert done["result_projection"]["series"]["usable_count"] == 2
             assert done["result_projection"]["series"]["excavator_supporting_input_ids"] == [done["inputs"][0]["input_id"]]
@@ -391,6 +408,17 @@ def test_ordered_series_http_postgres_s3(isolated_admission_database, integratio
                 assert {item["invocation_id"] for item in done["observations"] if item["ordinal"] == ordinal} == {str(invocation_id)}
             assert all(artifacts.read_verified(*ref) for ref in native_refs)
 
+            def assert_completed_invocations(run_id, expected_input_count):
+                with store.engine.connect() as connection:
+                    rows = connection.execute(text("""SELECT i.input_id AS run_input_id, i.sha256,
+                        v.input_id AS invocation_input_id, v.input_sha256, v.state
+                        FROM run_inputs i LEFT JOIN observer_invocations v
+                        ON i.run_id = v.run_id AND i.input_id = v.input_id
+                        WHERE i.run_id = :run ORDER BY i.ordinal"""), {"run": run_id}).all()
+                assert len(rows) == expected_input_count
+                assert all(row.invocation_input_id == row.run_input_id and row.input_sha256 == row.sha256
+                           and row.state == "completed" for row in rows)
+
             same = await client.post("/runs/series", headers={"Idempotency-Key": uuid.uuid4().hex}, json=body(first, first))
             same_run = uuid.UUID(same.json()["run_id"])
             await loop._execute(store.claim_ordinary(profile, 1, 30), 1)
@@ -402,27 +430,38 @@ def test_ordered_series_http_postgres_s3(isolated_admission_database, integratio
             assert equal["result_projection"]["series"]["input_order"] == [item["input_id"] for item in equal["inputs"]]
             assert {item["source_artifact_id"] for item in equal["observations"]} == {
                 item["artifact_id"] for item in equal["inputs"]}
+            assert_completed_invocations(same_run, 2)
 
-            mixed = await client.post("/runs/series", headers={"Idempotency-Key": uuid.uuid4().hex}, json=body(first, black))
+            observed_start = len(observed_images)
+            small_series = await client.post("/runs/series", headers={"Idempotency-Key": uuid.uuid4().hex},
+                                             json=body(small, second))
+            small_series_run = uuid.UUID(small_series.json()["run_id"])
+            await loop._execute(store.claim_ordinary(profile, 1, 30), 1)
+            small_done = (await client.get(f"/runs/{small_series_run}")).json()
+            assert small_done["state"] == "succeeded" and small_done["result_projection"]["series"]["usable_count"] == 2
+            assert observed_images[observed_start:observed_start + 2] == [small, second]
+            assert_completed_invocations(small_series_run, 2)
+
+            observed_start = len(observed_images)
+            mixed = await client.post("/runs/series", headers={"Idempotency-Key": uuid.uuid4().hex}, json=body(first, low_range))
             mixed_run = uuid.UUID(mixed.json()["run_id"])
             await loop._execute(store.claim_ordinary(profile, 1, 30), 1)
             result = (await client.get(f"/runs/{mixed_run}")).json()
             assert result["state"] == "succeeded" and result["outcome"] == "observations_only"
-            assert all(item["state"] == "insufficient_data" and item["reason"] == "frame_unassessable"
-                       for item in result["observations"] if item["ordinal"] == 1)
-            assert "absence" not in str(result)
-            assert result["result_projection"]["series"]["usable_count"] == 1
-            assert result["result_projection"]["series"]["dump_truck_persistence_text"] is None
+            assert observed_images[observed_start:observed_start + 2] == [first, low_range]
+            assert result["result_projection"]["series"]["usable_count"] == 2
+            assert_completed_invocations(mixed_run, 2)
 
-            all_black = await client.post("/runs/series", headers={"Idempotency-Key": uuid.uuid4().hex},
-                                          json=body(black, black))
-            all_black_run = uuid.UUID(all_black.json()["run_id"])
+            observed_start = len(observed_images)
+            all_low_range = await client.post("/runs/series", headers={"Idempotency-Key": uuid.uuid4().hex},
+                                              json=body(low_range, low_range))
+            all_low_range_run = uuid.UUID(all_low_range.json()["run_id"])
             await loop._execute(store.claim_ordinary(profile, 1, 30), 1)
-            all_black_done = (await client.get(f"/runs/{all_black_run}")).json()
-            assert all_black_done["state"] == "succeeded"
-            assert all_black_done["stages"][2]["reason"] == "no_assessable_frame_or_supported_class"
-            assert all(item["state"] == "insufficient_data" for item in all_black_done["observations"])
-            assert all_black_done["result_projection"]["series"]["usable_count"] == 0
+            all_low_range_done = (await client.get(f"/runs/{all_low_range_run}")).json()
+            assert all_low_range_done["state"] == "succeeded"
+            assert all_low_range_done["result_projection"]["series"]["usable_count"] == 2
+            assert observed_images[observed_start:observed_start + 2] == [low_range, low_range]
+            assert_completed_invocations(all_low_range_run, 2)
 
             failing = await client.post("/runs/series", headers={"Idempotency-Key": uuid.uuid4().hex}, json=body(first, second))
             failing_run = uuid.UUID(failing.json()["run_id"])

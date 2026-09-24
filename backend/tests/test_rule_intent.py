@@ -1,5 +1,6 @@
 import base64
 import asyncio
+import io
 import json
 import hashlib
 import uuid
@@ -9,6 +10,7 @@ from types import SimpleNamespace
 
 import pytest
 from httpx import ASGITransport, AsyncClient
+from PIL import Image, ImageDraw
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError
 
@@ -24,6 +26,14 @@ from test_startup import database, integration
 CONTEXT = {"scenario": "excavation", "observation_area": "north", "period": "2026-09-23T12:00:00+03:00"}
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEMO_CASES = json.loads((PROJECT_ROOT / "web/src/demoCases.json").read_text())["cases"]
+
+
+def jpeg_with_size(width, height, color):
+    image = Image.new("RGB", (width, height), color)
+    ImageDraw.Draw(image).rectangle((0, 0, 8, 8), fill=(220, 240, 250))
+    output = io.BytesIO()
+    image.save(output, format="JPEG")
+    return output.getvalue()
 
 
 def test_included_demo_assets_remain_excluded_from_held_out():
@@ -290,39 +300,55 @@ def test_rule_intent_survives_publication_execution_and_readback(integration, mo
     detected_dump = False
     active_demo = None
     observed_index = 0
+    observer_cannot_assess = False
+    observer_unable_classes = set()
+    observed_images = []
 
-    def observed(*_):
+    def observed(*args):
         nonlocal observed_index
+        image_bytes = args[2]
+        observed_images.append(image_bytes)
         index = observed_index
         observed_index += 1
         excavator_seen = index == 0 or bool(active_demo)
         dump_seen = index in (0, 1) if active_demo and active_demo["id"] == "truck" else detected_dump and index == 2
+        excavator_unable = observer_cannot_assess or (index == 0 and "excavator" in observer_unable_classes)
+        dump_truck_unable = observer_cannot_assess or (index == 0 and "dump_truck" in observer_unable_classes)
         detections = []
-        if excavator_seen:
+        if excavator_seen and not excavator_unable:
             detections.append({"label": "an excavator", "score": 0.8, "box": [1, 2, 3, 4]})
-        if dump_seen:
+        if dump_seen and not dump_truck_unable:
             detections.append({"label": "a dump truck", "score": 0.8, "box": [1, 2, 3, 4]})
-        return {"states": {"excavator": "detected" if excavator_seen else "not_detected_in_frame",
-                           "dump_truck": "detected" if dump_seen else "not_detected_in_frame"},
+        with Image.open(io.BytesIO(image_bytes)) as image:
+            image_size = list(image.size)
+        return {"states": {"excavator": "insufficient_data" if excavator_unable else
+                            "detected" if excavator_seen else "not_detected_in_frame",
+                           "dump_truck": "insufficient_data" if dump_truck_unable else
+                            "detected" if dump_seen else "not_detected_in_frame"},
                 "returned_model_identity": f"checkpoint-sha256:{'a' * 64}", "actual_device": "cpu",
                 "latency_ms": 1.0, "peak_memory_bytes": 1024,
-                "native": {"detections": detections,
-                           "image_size": [96, 96]}}
+                "native": {"detections": detections, "image_size": image_size}}
 
     monkeypatch.setattr(executor, "_observe_bounded", observed)
     loop = executor.ClaimLoop()
     loop.store, loop.artifacts, loop.snapshot_dir = store, artifacts, "unused"
 
-    async def run_case(count, expected, dump=False, demo=None, requested=None, unassessable=False,
+    async def run_case(count, expected, dump=False, demo=None, requested=None, observer_unable=False,
+                       observer_unable_class=None,
+                       images_override=None,
                        intent="rule_evaluation"):
-        nonlocal detected_dump, observed_index, active_demo
+        nonlocal detected_dump, observed_index, active_demo, observer_cannot_assess
         detected_dump = dump
         active_demo = demo
+        observer_cannot_assess = observer_unable
+        observer_unable_classes.clear()
+        if observer_unable_class:
+            observer_unable_classes.add(observer_unable_class)
         observed_index = 0
         images = ([(PROJECT_ROOT / "web/public" / frame["path"].lstrip("/")).read_bytes()
                    for frame in demo["frames"]] if demo else
-                  [jpeg((10 + index, 20, 30)) for index in range(count)])
-        monkeypatch.setattr(executor, "_unassessable", lambda image: unassessable and image == images[0])
+                  images_override or [jpeg((10 + index, 20, 30)) for index in range(count)])
+        observed_start = len(observed_images)
         context = ({"scenario": demo["scenario"], "observation_area": demo["observationArea"],
                     "period": demo["period"] + ":00+03:00"} if demo else CONTEXT)
         body = {**request(intent=intent), **context,
@@ -353,20 +379,56 @@ def test_rule_intent_survives_publication_execution_and_readback(integration, mo
         await loop._execute(store.claim_ordinary(profile, 1, 30), 1)
         done = store.read_ordinary(run_id)
         assert done["state"] == "succeeded" and done["outcome"] == expected, done["error_code"]
+        assert observed_images[observed_start:] == images
         assert done["stages"][4]["state"] == ("succeeded" if intent == "rule_evaluation" else "skipped")
         assert bool(done["result_projection"].get("recommendation")) == (expected == "check_requested")
         assert done["result_projection"]["series"]["input_order"] == [item["input_id"] for item in done["inputs"]]
+        if intent == "rule_evaluation":
+            assert done["policy_snapshot"] == queued["policy_snapshot"] == {"intent": "rule_evaluation", **RULE_POLICY}
+            assert all(done["policy_snapshot"][key] is None for key in (
+                "image_quality_threshold", "subjective_resolution_threshold", "visibility_threshold"))
+        with store.engine.connect() as connection:
+            invocation_rows = connection.execute(text("""SELECT v.input_sha256, v.state, i.sha256
+                FROM observer_invocations v JOIN run_inputs i
+                ON i.run_id = v.run_id AND i.input_id = v.input_id
+                WHERE v.run_id = :run ORDER BY i.ordinal"""), {"run": run_id}).all()
+        assert [row.input_sha256 for row in invocation_rows] == [item["sha256"] for item in done["inputs"]]
+        assert all(row.input_sha256 == row.sha256 and row.state == "completed" for row in invocation_rows)
         if expected in ("insufficient_data", "not_analyzed", "observations_only"):
             if intent == "rule_evaluation":
                 assert done["result_projection"]["supporting_input_ids"] == []
             assert done["result_projection"]["frames"] == [
                 {key: item[key] for key in ("input_id", "ordinal", "class_name", "state", "reason", "source_artifact_id", "invocation_id")}
                 for item in done["observations"]]
-            if unassessable:
+            if observer_unable:
                 affected = [item for item in done["result_projection"]["frames"] if item["input_id"] == done["inputs"][0]["input_id"]]
                 assert all(item["state"] == "insufficient_data" and item["reason"] == "frame_unassessable" for item in affected)
+                assert all(item["invocation_id"] for item in affected)
+                assert done["result_projection"]["series"]["usable_count"] == 0
+                assert done["result_projection"]["series"]["usable_input_ids"] == []
                 if intent == "rule_evaluation":
                     assert done["inputs"][0]["input_id"] in done["result_projection"]["reason"]
+                    assert done["result_projection"]["outcome"] == "insufficient_data"
+                    with store.engine.connect() as connection:
+                        assert connection.execute(text("SELECT count(*) FROM result_projections WHERE run_id = :run AND outcome = 'check_requested'"),
+                                                  {"run": run_id}).scalar_one() == 0
+            if observer_unable_class:
+                first_input = done["inputs"][0]["input_id"]
+                affected = [item for item in done["result_projection"]["frames"] if item["input_id"] == first_input]
+                states = {item["class_name"]: item["state"] for item in affected}
+                assert states[observer_unable_class] == "insufficient_data"
+                assert all(item["invocation_id"] for item in affected)
+                assert done["result_projection"]["series"]["usable_count"] == count - 1
+                assert done["result_projection"]["series"]["usable_input_ids"] == [
+                    item["input_id"] for item in done["inputs"][1:]]
+                if intent == "rule_evaluation":
+                    other_class = "dump_truck" if observer_unable_class == "excavator" else "excavator"
+                    assert states[other_class] == "not_detected_in_frame"
+                    assert done["result_projection"]["outcome"] == "insufficient_data"
+                    assert done["result_projection"]["recommendation"] is None
+                    with store.engine.connect() as connection:
+                        assert connection.execute(text("SELECT count(*) FROM result_projections WHERE run_id = :run AND outcome = 'check_requested'"),
+                                                  {"run": run_id}).scalar_one() == 0
             if requested:
                 unsupported = [item for item in done["result_projection"]["frames"] if item["class_name"] == "crane"]
                 assert len(unsupported) == count
@@ -432,12 +494,14 @@ def test_rule_intent_survives_publication_execution_and_readback(integration, mo
 
     asyncio.run(run_case(1, "insufficient_data"))
     asyncio.run(run_case(2, "insufficient_data"))
-    asyncio.run(run_case(3, "insufficient_data", unassessable=True))
-    asyncio.run(run_case(1, "observations_only", unassessable=True, intent="observation_only"))
+    asyncio.run(run_case(3, "insufficient_data", observer_unable=True))
+    asyncio.run(run_case(3, "insufficient_data", observer_unable_class="excavator"))
+    asyncio.run(run_case(1, "observations_only", observer_unable=True, intent="observation_only"))
     asyncio.run(run_case(2, "not_analyzed", requested=["excavator", "dump_truck", "crane"]))
     asyncio.run(run_case(3, "not_analyzed", requested=["excavator", "dump_truck", "crane"]))
     asyncio.run(run_case(3, "observations_only", requested=["excavator", "dump_truck", "crane"], intent="observation_only"))
-    run_id = asyncio.run(run_case(3, "check_requested"))
+    run_id = asyncio.run(run_case(3, "check_requested", images_override=[
+        jpeg((0, 0, 0)), jpeg_with_size(32, 48, (20, 40, 60)), jpeg((10, 20, 30))]))
     asyncio.run(run_case(3, "no_check", dump=True))
     for demo in DEMO_CASES:
         asyncio.run(run_case(3, demo["expectedOutcome"], demo=demo))
