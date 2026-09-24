@@ -163,7 +163,57 @@ def create_app() -> FastAPI:
         except ValueError:
             return JSONResponse({"code": "run_not_found"}, status_code=404)
         run = await asyncio.to_thread(app.state.store.read_ordinary, identifier)
+        if run:
+            binding = app.state.claim_loop.runtime_binding
+            run["retry_eligible"] = False
+            if run["state"] == "failed" and not run["successor_run_id"] and binding and app.state.readiness.ready.is_set():
+                try:
+                    snapshot, _ = await asyncio.to_thread(app.state.store.require_authorized, binding[0], binding[1])
+                    await asyncio.to_thread(verify_snapshot, Path(app.state.claim_loop.snapshot_dir), snapshot["model_files"])
+                    run["retry_eligible"] = True
+                    run["retry_profile_id"] = str(binding[0])
+                    run["retry_authorization_revision"] = binding[1]
+                except Exception:
+                    pass
         return JSONResponse(run if run else {"code": "run_not_found"}, status_code=200 if run else 404)
+
+    @app.get("/runs")
+    async def list_runs(request: Request) -> JSONResponse:
+        raw_offset = request.query_params.get("offset", "0")
+        if not raw_offset.isdecimal() or len(raw_offset) > 9:
+            return JSONResponse({"code": "invalid_history_offset"}, status_code=400)
+        return JSONResponse(await asyncio.to_thread(app.state.store.list_ordinary, int(raw_offset)))
+
+    @app.post("/runs/{run_id}/retry")
+    async def retry_run(run_id: str) -> JSONResponse:
+        try:
+            identifier = uuid.UUID(run_id)
+        except ValueError:
+            return JSONResponse({"code": "run_not_found"}, status_code=404)
+        source = await asyncio.to_thread(app.state.store.read_ordinary, identifier)
+        if source is None:
+            return JSONResponse({"code": "run_not_found"}, status_code=404)
+        if source["state"] != "failed":
+            return JSONResponse({"code": "retry_ineligible"}, status_code=409)
+        if source["successor_run_id"]:
+            return JSONResponse({"run_id": source["successor_run_id"]}, status_code=202)
+        if not app.state.readiness.ready.is_set():
+            return JSONResponse({"code": "service_not_ready"}, status_code=503)
+        binding = app.state.claim_loop.runtime_binding
+        if binding is None:
+            return JSONResponse({"code": "profile_unauthorized"}, status_code=503)
+        try:
+            snapshot, revision = await asyncio.to_thread(app.state.store.require_authorized, binding[0], binding[1])
+            await asyncio.to_thread(verify_snapshot, Path(app.state.claim_loop.snapshot_dir), snapshot["model_files"])
+            successor = await asyncio.to_thread(app.state.store.retry_ordinary, identifier, binding[0], revision,
+                                                snapshot, app.state.artifacts)
+            return JSONResponse({"run_id": str(successor)}, status_code=202)
+        except AdmissionStoreError as exc:
+            code = str(exc)
+            return JSONResponse({"code": code}, status_code=404 if code == "run_not_found" else
+                                409 if code in {"retry_ineligible", "retry_source_unavailable"} else 503)
+        except Exception:
+            return JSONResponse({"code": "retry_unavailable"}, status_code=503)
 
     @app.get("/runs/{run_id}/artifacts/{artifact_id}")
     async def read_run_artifact(run_id: str, artifact_id: str) -> Response:

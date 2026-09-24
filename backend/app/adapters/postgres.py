@@ -758,10 +758,13 @@ class PostgresStore:
 
     def read_ordinary(self, run_id: uuid.UUID) -> dict | None:
         with self.engine.connect().execution_options(isolation_level="REPEATABLE READ") as connection:
-            row = connection.execute(text("""SELECT id, state, error_code, request_context, requested_classes
+            row = connection.execute(text("""SELECT id, state, error_code, request_context, requested_classes,
+                retry_of_run_id, created_at, profile_id, authorization_revision
                 FROM analysis_runs WHERE id = :id AND purpose = 'ordinary'"""), {"id": run_id}).one_or_none()
             if not row:
                 return None
+            successor = connection.execute(text("SELECT id FROM analysis_runs WHERE retry_of_run_id = :id"),
+                                           {"id": run_id}).scalar_one_or_none()
             stages = connection.execute(text("SELECT name, state, reason FROM analysis_stages WHERE run_id = :id ORDER BY ordinal"), {"id": run_id}).mappings().all()
             inputs = connection.execute(text("""SELECT input_id, ordinal, sha256, size, artifact_id
                 FROM run_inputs WHERE run_id = :id ORDER BY ordinal"""), {"id": run_id}).mappings().all()
@@ -776,6 +779,11 @@ class PostgresStore:
                 JOIN run_inputs r ON r.input_id = i.input_id
                 WHERE i.run_id = :id ORDER BY r.ordinal"""), {"id": run_id}).mappings().all()
             return {"run_id": str(row.id), "state": row.state, "error_code": row.error_code,
+                    "retry_of_run_id": str(row.retry_of_run_id) if row.retry_of_run_id else None,
+                    "successor_run_id": str(successor) if successor else None,
+                    "created_at": row.created_at.isoformat() if row.created_at else None,
+                    "profile_id": str(row.profile_id) if row.profile_id else None,
+                    "authorization_revision": row.authorization_revision,
                     "context": row.request_context, "requested_classes": row.requested_classes,
                     "stages": [dict(item) for item in stages],
                     "inputs": [{**item, "input_id": str(item["input_id"]),
@@ -794,6 +802,100 @@ class PostgresStore:
                                                   "preprocessing_revision": item["preprocessing_revision"]} for item in native],
                     "outcome": projection["outcome"] if projection and row.state == "succeeded" else None,
                     "result_projection": projection if projection and row.state == "succeeded" else None}
+
+    def list_ordinary(self, offset: int = 0) -> dict:
+        with self.engine.connect() as connection:
+            rows = connection.execute(text("""SELECT r.id, r.state, r.created_at, r.retry_of_run_id,
+                s.id AS successor_run_id FROM analysis_runs r
+                LEFT JOIN analysis_runs s ON s.retry_of_run_id = r.id
+                WHERE r.purpose = 'ordinary' ORDER BY r.created_at DESC NULLS LAST, r.id DESC
+                LIMIT 51 OFFSET :offset"""), {"offset": offset}).mappings().all()
+            return {"runs": [{**row, "id": str(row["id"]),
+                     "created_at": row["created_at"].isoformat() if row["created_at"] else None,
+                     "retry_of_run_id": str(row["retry_of_run_id"]) if row["retry_of_run_id"] else None,
+                     "successor_run_id": str(row["successor_run_id"]) if row["successor_run_id"] else None}
+                    for row in rows[:50]], "next_offset": offset + 50 if len(rows) > 50 else None}
+
+    def retry_ordinary(self, source_id: uuid.UUID, profile_id: uuid.UUID, revision: int,
+                       snapshot: dict, artifacts: ArtifactStore) -> uuid.UUID:
+        source_query = text("""SELECT * FROM analysis_runs WHERE id = :id AND purpose = 'ordinary'""")
+        inputs_query = text("""SELECT i.ordinal, i.input_id, i.sha256, i.size, i.context,
+            a.id AS artifact_id, a.key, a.media_type, a.sha256 AS artifact_sha256,
+            a.size AS artifact_size FROM run_inputs i
+            JOIN artifact_metadata a ON a.id = i.artifact_id AND a.run_id = i.run_id
+            WHERE i.run_id = :id ORDER BY i.ordinal""")
+        with self.engine.connect() as connection:
+            preliminary = connection.execute(source_query, {"id": source_id}).mappings().one_or_none()
+            if preliminary is None:
+                raise AdmissionStoreError("run_not_found")
+            if preliminary["state"] != "failed":
+                raise AdmissionStoreError("retry_ineligible")
+            existing = connection.execute(text("SELECT id FROM analysis_runs WHERE retry_of_run_id = :id"),
+                                          {"id": source_id}).scalar_one_or_none()
+            if existing:
+                return existing
+            verified_inputs = [dict(item) for item in connection.execute(inputs_query, {"id": source_id}).mappings()]
+        if not verified_inputs or any(item["ordinal"] != ordinal or item["media_type"] != "image/jpeg"
+                                      or item["sha256"] != item["artifact_sha256"]
+                                      or item["size"] != item["artifact_size"]
+                                      for ordinal, item in enumerate(verified_inputs)):
+            raise AdmissionStoreError("retry_source_unavailable")
+        for item in verified_inputs:
+            try:
+                artifacts.read_verified(item["key"], item["sha256"], item["size"])
+            except ArtifactGateError:
+                raise AdmissionStoreError("retry_source_unavailable") from None
+        with self.engine.begin() as connection:
+            source = connection.execute(text("""SELECT * FROM analysis_runs
+                WHERE id = :id AND purpose = 'ordinary' FOR UPDATE"""), {"id": source_id}).mappings().one_or_none()
+            if source is None:
+                raise AdmissionStoreError("run_not_found")
+            if source["state"] != "failed":
+                raise AdmissionStoreError("retry_ineligible")
+            successor = connection.execute(text("SELECT id FROM analysis_runs WHERE retry_of_run_id = :id"),
+                                           {"id": source_id}).scalar_one_or_none()
+            if successor:
+                return successor
+            inputs = [dict(item) for item in connection.execute(inputs_query, {"id": source_id}).mappings()]
+            if dict(source) != dict(preliminary) or inputs != verified_inputs:
+                raise AdmissionStoreError("retry_source_unavailable")
+            authorization = connection.execute(text("""SELECT p.status, p.snapshot, p.profile_hash, p.audit_hash,
+                a.audit_hash AS authorization_audit, a.state, a.revision FROM observer_profiles p
+                JOIN profile_authorizations a ON a.profile_id = p.id
+                WHERE p.id = :id FOR UPDATE OF p, a"""), {"id": profile_id}).one_or_none()
+            if (not authorization or authorization.status != "admitted" or authorization.state != "enabled"
+                    or authorization.revision != revision or authorization.snapshot != snapshot
+                    or authorization.audit_hash != authorization.authorization_audit):
+                raise AdmissionStoreError("profile_unauthorized")
+            run_id = uuid.uuid4()
+            connection.execute(text("""INSERT INTO analysis_runs
+                (id, state, purpose, profile_id, authorization_revision, binding_kind, profile_snapshot,
+                 request_context, policy_snapshot, taxonomy_snapshot, requested_classes, retry_of_run_id)
+                VALUES (:id, 'queued', 'ordinary', :profile, :revision, 'admitted_profile',
+                    CAST(:snapshot AS jsonb), CAST(:context AS jsonb), CAST(:policy AS jsonb),
+                    CAST(:taxonomy AS jsonb), CAST(:classes AS jsonb), :source)"""),
+                {"id": run_id, "profile": profile_id, "revision": revision, "snapshot": json.dumps(snapshot),
+                 "context": json.dumps(source["request_context"]), "policy": json.dumps(source["policy_snapshot"]),
+                 "taxonomy": json.dumps(source["taxonomy_snapshot"]), "classes": json.dumps(source["requested_classes"]),
+                 "source": source_id})
+            for item in inputs:
+                artifact_id = uuid.uuid4()
+                connection.execute(text("""INSERT INTO artifact_metadata
+                    (id, run_id, source_artifact_id, key, sha256, size, media_type)
+                    VALUES (:id, :run, :source, :key, :sha, :size, :media)"""),
+                    {"id": artifact_id, "run": run_id, "source": item["artifact_id"], "key": item["key"],
+                     "sha": item["sha256"], "size": item["size"], "media": item["media_type"]})
+                connection.execute(text("""INSERT INTO run_inputs
+                    (run_id, ordinal, input_id, sha256, size, context, artifact_id)
+                    VALUES (:run, :ordinal, :input, :sha, :size, CAST(:context AS jsonb), :artifact)"""),
+                    {"run": run_id, "ordinal": item["ordinal"], "input": uuid.uuid4(),
+                     "sha": item["sha256"], "size": item["size"], "context": json.dumps(item["context"]),
+                     "artifact": artifact_id})
+            for ordinal, name in enumerate(STAGES):
+                connection.execute(text("""INSERT INTO analysis_stages (run_id, ordinal, name, state)
+                    VALUES (:run, :ordinal, :name, 'pending')"""),
+                    {"run": run_id, "ordinal": ordinal, "name": name})
+            return run_id
 
     def resolve_run_artifact(self, run_id: uuid.UUID, artifact_id: uuid.UUID) -> dict | None:
         with self.engine.connect() as connection:

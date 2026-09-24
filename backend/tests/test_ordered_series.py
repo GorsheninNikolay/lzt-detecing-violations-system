@@ -1,6 +1,8 @@
 import asyncio
 import base64
+import json
 import threading
+from concurrent.futures import ThreadPoolExecutor
 import uuid
 from types import SimpleNamespace
 from pathlib import Path
@@ -19,6 +21,7 @@ from app.adapters.postgres import AdmissionStoreError, PostgresStore
 from app.application import executor, submission
 from app.config import Config
 from app.main import create_app
+from app import main
 from test_admission import isolated_admission_database
 from test_single_image import jpeg
 from test_startup import database, integration
@@ -198,6 +201,9 @@ def test_populated_single_image_upgrade_preserves_associations(integration, monk
                 with pytest.raises(IntegrityError), engine.begin() as connection:
                     connection.execute(text(f"UPDATE {table} SET input_id = :other WHERE run_id = :run"),
                                        {"other": input_ids[run_ids[1]], "run": run_ids[0]})
+            command.upgrade(migrations, "head")
+            with engine.connect() as connection:
+                assert connection.execute(text("SELECT count(*) FROM analysis_runs WHERE created_at IS NULL")).scalar_one() == 2
         finally:
             engine.dispose()
     finally:
@@ -210,6 +216,161 @@ def body(*images):
     return {"intent": "observation_only", "scenario": "equipment_check",
             "observation_area": "north_gate", "period": "2026-09-23T12:00:00+03:00",
             "images_base64": [base64.b64encode(image).decode() for image in images]}
+
+
+@pytest.mark.parametrize("series", [False, True], ids=["single", "series"])
+def test_failed_retry_is_linear_and_keeps_source(isolated_admission_database, integration, monkeypatch, series):
+    config, _, _ = integration
+    config = Config(isolated_admission_database, config.s3_endpoint, config.s3_bucket,
+                    config.s3_access_key, config.s3_secret_key)
+    store, artifacts = PostgresStore(isolated_admission_database), ArtifactStore(config)
+    parent, profile = uuid.uuid4(), uuid.uuid4()
+    snapshot = {"model_files": {"model.safetensors": "a" * 64},
+                "runtime": {"per_image_timeout_seconds": 2}}
+    with store.engine.begin() as connection:
+        connection.execute(text("INSERT INTO observer_profiles (id, status, profile_hash, snapshot) VALUES (:id, 'draft', :hash, '{}'::jsonb)"),
+                           {"id": parent, "hash": uuid.uuid4().hex})
+        connection.execute(text("""INSERT INTO observer_profiles (id, parent_id, status, profile_hash, snapshot, audit_hash)
+            VALUES (:id, :parent, 'admitted', :hash, CAST(:snapshot AS jsonb), :audit)"""),
+            {"id": profile, "parent": parent, "hash": uuid.uuid4().hex, "audit": uuid.uuid4().hex,
+             "snapshot": json.dumps(snapshot)})
+        connection.execute(text("""INSERT INTO profile_authorizations
+            (profile_id, revision, state, reason, audit_hash, interactive_retry_allowed)
+            SELECT :id, 1, 'enabled', 'test', audit_hash, false FROM observer_profiles WHERE id = :id"""), {"id": profile})
+    monkeypatch.setattr(store, "require_authorized", lambda *_: (snapshot, 1))
+    monkeypatch.setattr(main, "verify_snapshot", lambda *_: None)
+    app = create_app()
+    app.state.readiness.ready.set()
+    app.state.store, app.state.artifacts = store, artifacts
+    loop = executor.ClaimLoop()
+    loop.runtime_binding, loop.snapshot_dir = (profile, 1), "unused"
+    loop.store, loop.artifacts = store, artifacts
+    app.state.claim_loop = loop
+    monkeypatch.setattr(executor, "_observe_bounded", lambda *_: {
+        "states": {"excavator": "not_detected_in_frame", "dump_truck": "not_detected_in_frame"},
+        "returned_model_identity": f"checkpoint-sha256:{'a' * 64}", "actual_device": "cpu",
+        "latency_ms": 1.0, "peak_memory_bytes": 1024,
+        "native": {"detections": [], "image_size": [96, 96]},
+    })
+    first, second = jpeg((12, 120, 220)), jpeg((33, 111, 222))
+    submit = submission.submit_series if series else submission.submit
+    request = body(first, second) if series else {**{key: value for key, value in body(first).items()
+                                                 if key != "images_base64"}, "image_base64": base64.b64encode(first).decode()}
+    _, source = submit(store, artifacts, uuid.uuid4().hex, request, profile, 1, snapshot)
+    with store.engine.begin() as connection:
+        connection.execute(text("UPDATE analysis_runs SET state = 'failed', error_code = 'observer_timeout' WHERE id = :id"),
+                           {"id": source})
+    original = store.read_ordinary(source)
+
+    async def scenario():
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            assert (await client.get(f"/runs/{source}")).json()["retry_eligible"] is True
+            with ThreadPoolExecutor(max_workers=2) as pool:
+                futures = [pool.submit(store.retry_ordinary, source, profile, 1, snapshot, artifacts) for _ in range(2)]
+                successors = [future.result(timeout=20) for future in futures]
+            assert successors[0] == successors[1]
+            successor = successors[0]
+            assert (await client.post(f"/runs/{source}/retry")).json()["run_id"] == str(successor)
+            assert (await client.get(f"/runs/{successor}")).json()["retry_of_run_id"] == str(source)
+            assert (await client.get(f"/runs/{successor}")).json()["retry_eligible"] is False
+            history = (await client.get("/runs")).json()["runs"]
+            assert len(history) == 2 and next(item for item in history if item["id"] == str(source))["successor_run_id"] == str(successor)
+            predecessor = (await client.get(f"/runs/{source}")).json()
+            descendant = (await client.get(f"/runs/{successor}")).json()
+            assert predecessor["inputs"] == original["inputs"]
+            assert predecessor["stages"] == original["stages"]
+            assert predecessor["error_code"] == original["error_code"]
+            assert descendant["context"] == predecessor["context"]
+            assert descendant["requested_classes"] == predecessor["requested_classes"]
+            with store.engine.connect() as connection:
+                runs = connection.execute(text("""SELECT id, request_context, policy_snapshot,
+                    taxonomy_snapshot, requested_classes FROM analysis_runs WHERE id IN (:source, :successor)"""),
+                    {"source": source, "successor": successor}).mappings().all()
+                original_fields = next(dict(row) for row in runs if row["id"] == source)
+                successor_fields = next(dict(row) for row in runs if row["id"] == successor)
+                for field in ("request_context", "policy_snapshot", "taxonomy_snapshot", "requested_classes"):
+                    assert successor_fields[field] == original_fields[field]
+                manifests = {}
+                for run_id in (source, successor):
+                    manifests[run_id] = connection.execute(text("""SELECT i.ordinal, i.sha256, i.size, i.context,
+                        a.key, a.media_type FROM run_inputs i JOIN artifact_metadata a ON a.id = i.artifact_id
+                        WHERE i.run_id = :run ORDER BY i.ordinal"""), {"run": run_id}).all()
+                assert manifests[source] == manifests[successor]
+                assert connection.execute(text("SELECT count(*) FROM result_projections WHERE run_id = :id"), {"id": successor}).scalar_one() == 0
+                assert connection.execute(text("SELECT count(*) FROM analysis_stages WHERE run_id = :id AND state = 'pending'"), {"id": successor}).scalar_one() == 6
+                inherited = connection.execute(text("""SELECT a.id, a.source_artifact_id FROM artifact_metadata a
+                    JOIN run_inputs i ON i.artifact_id = a.id WHERE i.run_id = :id"""), {"id": successor}).all()
+            assert len(inherited) == (2 if series else 1) and all(item.source_artifact_id for item in inherited)
+            assert (await client.get(f"/runs/{successor}/artifacts/{inherited[0].id}")).status_code == 200
+            work = store.claim_ordinary(profile, 1, 30)
+            assert work and work["id"] == successor
+            await loop._execute(work, 1)
+            completed = (await client.get(f"/runs/{successor}")).json()
+            assert completed["state"] == "succeeded"
+            assert completed["result_projection"]["outcome"] == "observations_only"
+            assert (await client.get(f"/runs/{source}")).json()["stages"] == original["stages"]
+            for state in ("queued", "running", "succeeded"):
+                with store.engine.begin() as connection:
+                    connection.execute(text("UPDATE analysis_runs SET state = :state WHERE id = :id"),
+                                       {"state": state, "id": successor})
+                assert (await client.post(f"/runs/{successor}/retry")).json()["code"] == "retry_ineligible"
+            with store.engine.begin() as connection:
+                connection.execute(text("UPDATE analysis_runs SET state = 'failed' WHERE id = :id"), {"id": successor})
+            third = (await client.post(f"/runs/{successor}/retry")).json()["run_id"]
+            assert (await client.get(f"/runs/{third}")).json()["retry_of_run_id"] == str(successor)
+            assert (await client.post(f"/runs/{uuid.uuid4()}/retry")).status_code == 404
+            admission_run = uuid.uuid4()
+            with store.engine.begin() as connection:
+                connection.execute(text("INSERT INTO analysis_runs (id, state, purpose) VALUES (:id, 'failed', 'profile_admission')"),
+                                   {"id": admission_run})
+            assert (await client.post(f"/runs/{admission_run}/retry")).status_code == 404
+            with store.engine.begin() as connection:
+                connection.execute(text("UPDATE analysis_runs SET state = 'failed' WHERE id = :id"), {"id": third})
+                connection.execute(text("UPDATE profile_authorizations SET state = 'revoked' WHERE profile_id = :id"), {"id": profile})
+            assert (await client.post(f"/runs/{third}/retry")).status_code == 503
+            with store.engine.begin() as connection:
+                connection.execute(text("UPDATE profile_authorizations SET state = 'enabled' WHERE profile_id = :id"), {"id": profile})
+                third_artifact = connection.execute(text("SELECT artifact_id FROM run_inputs WHERE run_id = :id AND ordinal = 0"),
+                                                    {"id": uuid.UUID(third)}).scalar_one()
+                connection.execute(text("UPDATE artifact_metadata SET sha256 = :hash WHERE id = :id"),
+                                   {"hash": "0" * 64, "id": third_artifact})
+            assert (await client.post(f"/runs/{third}/retry")).status_code == 409
+            assert len((await client.get("/runs")).json()["runs"]) == 3
+            with store.engine.begin() as connection:
+                connection.execute(text("UPDATE artifact_metadata SET sha256 = (SELECT sha256 FROM run_inputs WHERE artifact_id = :id) WHERE id = :id"),
+                                   {"id": third_artifact})
+            entered, release = threading.Event(), threading.Event()
+            verified_read = artifacts.read_verified
+
+            def paused_read(*args):
+                entered.set()
+                assert release.wait(5)
+                return verified_read(*args)
+
+            monkeypatch.setattr(artifacts, "read_verified", paused_read)
+            with ThreadPoolExecutor(max_workers=1) as pool:
+                attempt = pool.submit(store.retry_ordinary, uuid.UUID(third), profile, 1, snapshot, artifacts)
+                assert entered.wait(5)
+                with store.engine.begin() as connection:
+                    connection.execute(text("UPDATE analysis_runs SET error_code = 'changed_during_verification' WHERE id = :id"),
+                                       {"id": uuid.UUID(third)})
+                release.set()
+                with pytest.raises(AdmissionStoreError, match="retry_source_unavailable"):
+                    attempt.result(timeout=5)
+            monkeypatch.setattr(artifacts, "read_verified", verified_read)
+            with store.engine.begin() as connection:
+                for _ in range(55):
+                    connection.execute(text("INSERT INTO analysis_runs (id, state, purpose) VALUES (:id, 'queued', 'ordinary')"),
+                                       {"id": uuid.uuid4()})
+            first_page = (await client.get("/runs")).json()
+            assert len(first_page["runs"]) == 50 and first_page["next_offset"] == 50
+            second_page = (await client.get("/runs?offset=50")).json()
+            assert len(second_page["runs"]) == 8 and second_page["next_offset"] is None
+            assert {row["id"] for row in first_page["runs"]}.isdisjoint(row["id"] for row in second_page["runs"])
+            assert (await client.get("/runs?offset=bad")).status_code == 400
+
+    asyncio.run(scenario())
+    store.close()
 
 
 def test_ordered_series_http_postgres_s3(isolated_admission_database, integration, monkeypatch):

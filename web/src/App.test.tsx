@@ -36,6 +36,81 @@ describe('Observation result', () => {
     HTMLDialogElement.prototype.close = function () { this.removeAttribute('open') }
   })
 
+  it('retries a failed run and keeps predecessor and history navigation', async () => {
+    const user = userEvent.setup()
+    const nextId = '22345678-1234-1234-1234-123456789abc'
+    vi.stubGlobal('fetch', vi.fn(async (url: string, options?: RequestInit) => {
+      if (url === `/api/runs/${runId}/retry` && options?.method === 'POST')
+        return { ok: true, json: async () => ({ run_id: nextId }) }
+      if (url === `/api/runs/${nextId}`)
+        return { ok: true, json: async () => ({ ...snapshot('queued'), retry_of_run_id: runId, retry_eligible: false }) }
+      if (url === '/api/runs')
+        return { ok: true, json: async () => ({ runs: [{ id: runId, state: 'failed', created_at: '2026-09-24T10:00:00Z', retry_of_run_id: null, successor_run_id: nextId }] }) }
+      return { ok: true, json: async () => ({ ...snapshot('failed'), retry_eligible: true, successor_run_id: null,
+        profile_id: 'old-profile', retry_profile_id: 'current-profile', retry_authorization_revision: 2 }) }
+    }))
+    render(<App />)
+    expect(await screen.findByText(/Повтор использует текущий профиль/)).toBeTruthy()
+    expect(screen.getByText(/Исходный анализ использовал профиль/)).toBeTruthy()
+    await user.click(await screen.findByRole('button', { name: 'Повторить анализ' }))
+    expect(await screen.findByText('Повтор анализа', { exact: false })).toBeTruthy()
+    expect(location.pathname).toBe(`/runs/${nextId}`)
+    expect(screen.queryByRole('button', { name: 'Повторить анализ' })).toBeNull()
+    await user.click(screen.getByRole('link', { name: 'История' }))
+    expect(await screen.findByRole('heading', { name: 'История анализов' })).toBeTruthy()
+    expect(screen.getByText(runId, { exact: true })).toBeTruthy()
+  })
+
+  it.each(['queued', 'running', 'succeeded'])('does not offer retry for %s', async state => {
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => ({ ...snapshot(state), retry_eligible: false }) })))
+    render(<App />)
+    expect(await screen.findByRole('heading', { name: state === 'queued' ? 'Анализ поставлен в очередь' : state === 'running' ? 'Анализ выполняется' : 'Анализ завершён' })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Повторить анализ' })).toBeNull()
+  })
+
+  it('shows history loading, recovers a failed fetch, and pages into unknown legacy dates', async () => {
+    const user = userEvent.setup()
+    history.replaceState({}, '', '/history')
+    let release: (response: unknown) => void = () => {}
+    const first = new Promise(resolve => { release = resolve })
+    let calls = 0
+    vi.stubGlobal('fetch', vi.fn((url: string) => {
+      calls++
+      if (calls === 1) return first
+      if (url === '/api/runs?offset=50') return Promise.resolve({ ok: true, json: async () => ({
+        runs: [{ id: runId, state: 'failed', created_at: null, retry_of_run_id: null, successor_run_id: null }], next_offset: null,
+      }) })
+      return Promise.resolve({ ok: true, json: async () => ({
+        runs: [{ id: '22345678-1234-1234-1234-123456789abc', state: 'queued', created_at: '2026-09-24T10:00:00Z', retry_of_run_id: null, successor_run_id: null }], next_offset: 50,
+      }) })
+    }))
+    render(<App />)
+    expect(await screen.findByText('Загружаем историю…')).toBeTruthy()
+    expect(screen.queryByText('Анализов пока нет.')).toBeNull()
+    await act(async () => { release({ ok: false }) })
+    await user.click(await screen.findByRole('button', { name: 'Повторить загрузку' }))
+    await user.click(await screen.findByRole('button', { name: 'Показать ещё' }))
+    expect(await screen.findByText(/дата создания неизвестна/)).toBeTruthy()
+    expect(screen.getAllByRole('listitem')).toHaveLength(2)
+  })
+
+  it('ignores a retry response after leaving the failed run', async () => {
+    const user = userEvent.setup()
+    let release: (response: unknown) => void = () => {}
+    const delayed = new Promise(resolve => { release = resolve })
+    vi.stubGlobal('fetch', vi.fn((url: string) => {
+      if (url === `/api/runs/${runId}/retry`) return delayed
+      if (url === '/api/runs') return Promise.resolve({ ok: true, json: async () => ({ runs: [], next_offset: null }) })
+      return Promise.resolve({ ok: true, json: async () => ({ ...snapshot('failed'), retry_eligible: true }) })
+    }))
+    render(<App />)
+    await user.click(await screen.findByRole('button', { name: 'Повторить анализ' }))
+    await user.click(screen.getByRole('link', { name: 'История' }))
+    await act(async () => { release({ ok: true, json: async () => ({ run_id: '22345678-1234-1234-1234-123456789abc' }) }) })
+    expect(location.pathname).toBe('/history')
+    expect(await screen.findByText('Анализов пока нет.')).toBeTruthy()
+  })
+
   it('shows source-bound rows, series evidence, focus jump, and native provenance', async () => {
     const user = userEvent.setup()
     const projected = { ...completed, result_projection: { ...completed.result_projection,

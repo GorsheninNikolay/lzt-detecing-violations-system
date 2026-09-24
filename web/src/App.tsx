@@ -8,7 +8,8 @@ type Input = { input_id: string; ordinal: number; sha256: string; artifact_id: s
 type Observation = { input_id: string; ordinal: number; class_name: string; state: string; reason?: string | null; source_artifact_id: string | null }
 type NativeEvidence = { artifact_id: string; input_id: string; ordinal: number; sha256: string; invocation_id: string; profile_id: string; profile_revision: number; preprocessing_revision: string }
 type Series = { usable_count: number; usable_input_ids: string[]; declared_observation_area: string | null; input_order: string[]; excavator_supporting_input_ids: string[]; dump_truck_persistence_input_ids: string[]; dump_truck_persistence_text: string | null }
-type RunSnapshot = { run_id?: string; state: string; stages: Stage[]; context?: { period?: string; observation_area?: string }; requested_classes?: string[]; inputs?: Input[]; observations?: Observation[]; native_evidence_by_frame?: NativeEvidence[]; outcome?: string | null; result_projection?: { outcome: string; series?: Series } | null }
+type RunSnapshot = { run_id?: string; state: string; stages: Stage[]; context?: { period?: string; observation_area?: string }; requested_classes?: string[]; inputs?: Input[]; observations?: Observation[]; native_evidence_by_frame?: NativeEvidence[]; outcome?: string | null; result_projection?: { outcome: string; series?: Series } | null; retry_of_run_id?: string | null; successor_run_id?: string | null; retry_eligible?: boolean; retry_profile_id?: string; retry_authorization_revision?: number; profile_id?: string; authorization_revision?: number; created_at?: string }
+type HistoryRun = { id: string; state: string; created_at: string | null; retry_of_run_id: string | null; successor_run_id: string | null }
 
 const CLASS_LABELS: Record<string, string> = { excavator: 'Экскаватор', dump_truck: 'Самосвал' }
 const OBSERVATION_STATES: Record<string, string> = { detected: 'Обнаружен', not_detected_in_frame: 'Не обнаружен в кадре', insufficient_data: 'Недостаточно данных', not_analyzed: 'Не анализировалось' }
@@ -250,6 +251,7 @@ function validLocalPeriod(value: string): boolean {
 }
 
 function runIdFromPath(): string | null {
+  if (location.pathname === '/history') return 'history'
   const match = location.pathname.match(/^\/runs\/([0-9a-f-]{36})$/i)
   return match?.[1] ?? null
 }
@@ -278,6 +280,15 @@ export default function App() {
   const [runMissing, setRunMissing] = useState(false)
   const [runReadAttempt, setRunReadAttempt] = useState(0)
   const [runReading, setRunReading] = useState(false)
+  const [retrying, setRetrying] = useState(false)
+  const [retryError, setRetryError] = useState('')
+  const [historyRuns, setHistoryRuns] = useState<HistoryRun[]>([])
+  const [historyError, setHistoryError] = useState('')
+  const [historyLoading, setHistoryLoading] = useState(false)
+  const [historyLoaded, setHistoryLoaded] = useState(false)
+  const [historyPage, setHistoryPage] = useState(0)
+  const [historyNextOffset, setHistoryNextOffset] = useState<number | null>(null)
+  const [historyAttempt, setHistoryAttempt] = useState(0)
   const announcedStages = useRef<string | null>(null)
   const summary = useRef<HTMLDivElement>(null)
   const pageHeading = useRef<HTMLHeadingElement>(null)
@@ -320,11 +331,23 @@ export default function App() {
     setRunChecked(false)
     setRunMissing(false)
     setRunReading(false)
+    setRetrying(false)
+    setRetryError('')
     announcedStages.current = null
   }, [route])
 
   useEffect(() => {
-    if (!route) return
+    if (route === 'history') {
+      setHistoryRuns([])
+      setHistoryPage(0)
+      setHistoryNextOffset(null)
+      setHistoryLoaded(false)
+      setHistoryError('')
+    }
+  }, [route])
+
+  useEffect(() => {
+    if (!route || route === 'history') return
     let active = true
     let timer: ReturnType<typeof setTimeout>
     let timeout: ReturnType<typeof setTimeout>
@@ -370,11 +393,51 @@ export default function App() {
   }, [route, runReadAttempt])
 
   useEffect(() => {
+    if (route !== 'history') return
+    let active = true
+    setHistoryLoading(true)
+    void fetch(historyPage ? `/api/runs?offset=${historyPage}` : '/api/runs').then(async response => {
+      if (!response.ok) throw new Error()
+      const data = await response.json() as { runs: HistoryRun[]; next_offset: number | null }
+      if (active) {
+        setHistoryRuns(current => historyPage ? [...current, ...data.runs.filter(run => !current.some(item => item.id === run.id))] : data.runs)
+        setHistoryNextOffset(data.next_offset)
+        setHistoryLoaded(true)
+        setHistoryError('')
+      }
+    }).catch(() => { if (active) setHistoryError('Не удалось загрузить историю анализов.')
+    }).finally(() => { if (active) setHistoryLoading(false) })
+    return () => { active = false }
+  }, [route, historyPage, historyAttempt])
+
+  async function retryRun() {
+    if (!route || route === 'history' || retrying) return
+    const sourceRoute = route
+    setRetrying(true)
+    setRetryError('')
+    try {
+      const response = await fetch(`/api/runs/${route}/retry`, { method: 'POST' })
+      const data = await response.json() as { run_id?: string; code?: string }
+      if (routeRef.current !== sourceRoute || !mounted.current) return
+      if (!response.ok || !data.run_id) {
+        setRetryError(data.code === 'retry_source_unavailable' ? 'Исходные данные повреждены или недоступны. Повторить анализ нельзя.' :
+          data.code === 'profile_unauthorized' || data.code === 'profile_runtime_mismatch' ? 'Текущий профиль наблюдателя недоступен для повтора.' :
+          data.code === 'retry_ineligible' ? 'Этот анализ нельзя повторить.' : 'Не удалось создать повторный анализ. Попробуйте позже.')
+        return
+      }
+      navigate(`/runs/${data.run_id}`)
+    } catch {
+      if (routeRef.current === sourceRoute && mounted.current)
+        setRetryError('Связь потеряна. Проверьте историю перед повторной попыткой.')
+    } finally { if (routeRef.current === sourceRoute && mounted.current) setRetrying(false) }
+  }
+
+  useEffect(() => {
     if (focusAfterNavigation.current) {
       pageHeading.current?.focus()
       focusAfterNavigation.current = false
     }
-    document.title = route ? 'Анализ — Контроль строительства' : 'Новый анализ — Контроль строительства'
+    document.title = route === 'history' ? 'История анализов — Контроль строительства' : route ? 'Анализ — Контроль строительства' : 'Новый анализ — Контроль строительства'
   }, [route])
 
   useEffect(() => () => { cameraGeneration.current++; cameraStream.current?.getTracks().forEach(track => track.stop()) }, [])
@@ -590,9 +653,9 @@ export default function App() {
 
   return <div className="app-shell">
     <a className="skip-link" href="#main">К основному содержимому</a>
-    <header className="topbar"><div className="topbar-inner"><a className="brand" href="/" onClick={event => { event.preventDefault(); navigate('/') }}>Контроль строительства <span>17 мгновений ИИ</span></a><nav aria-label="Основная навигация"><a href="/" aria-current={!route ? 'page' : undefined} onClick={event => { event.preventDefault(); navigate('/') }}>Новый анализ</a></nav></div></header>
+    <header className="topbar"><div className="topbar-inner"><a className="brand" href="/" onClick={event => { event.preventDefault(); navigate('/') }}>Контроль строительства <span>17 мгновений ИИ</span></a><nav aria-label="Основная навигация"><a href="/" aria-current={!route ? 'page' : undefined} onClick={event => { event.preventDefault(); navigate('/') }}>Новый анализ</a><a href="/history" aria-current={route === 'history' ? 'page' : undefined} onClick={event => { event.preventDefault(); navigate('/history') }}>История</a></nav></div></header>
     <main id="main" className="page">
-      {route ? <section className="run-workspace" aria-labelledby="run-heading" aria-busy={runReading}><div className="panel run-header"><p className="eyebrow">Анализ</p><h1 ref={pageHeading} tabIndex={-1} id="run-heading">{runMissing ? 'Анализ не найден' : runSnapshot ? RUN_HEADINGS[runSnapshot.state] ?? 'Статус анализа неизвестен' : runChecked ? 'Статус анализа неизвестен' : 'Проверяем анализ…'}</h1><p>Номер анализа: <code>{route}</code></p>{runSnapshot && <p>Состояние сервера: <strong>{RUN_STATES[runSnapshot.state] ?? 'Состояние доступно на сервере'}</strong></p>}{runError && <div className="attention"><p>{runError}</p><button type="button" className="secondary" disabled={runReading} onClick={() => { if (!runReading) { setRunReading(true); setRunReadAttempt(value => value + 1) } }}>{runReading ? 'Проверяем статус…' : 'Проверить статус'}</button></div>}<p role="status" className="sr-only">{runError || runAnnouncement}</p><button type="button" className="secondary" onClick={() => navigate('/')}>Новый анализ</button></div>{runSnapshot && <section className="panel pipeline" aria-labelledby="pipeline-heading"><h2 id="pipeline-heading">Этапы анализа</h2><ol className="pipeline-stages">{runSnapshot.stages.map(stage => <li key={stage.name} className={`pipeline-stage stage-${stage.state}`}><h3>{STAGE_LABELS[stage.name] ?? 'Этап анализа'}</h3><p>{STAGE_STATES[stage.state] ?? 'Состояние доступно на сервере'}</p>{stage.reason && <><p className="stage-reason">{STAGE_REASONS[stage.reason] ?? 'Причина не описана для пользователя.'}</p>{!STAGE_REASONS[stage.reason] && <details><summary>Техническая причина</summary><code>{stage.reason}</code></details>}</>}{stage.timestamp && <time dateTime={stage.timestamp}>{stage.timestamp}</time>}</li>)}</ol></section>}{runSnapshot && <ObservationResult run={runSnapshot} runId={route} />}</section> : <>
+      {route === 'history' ? <section className="panel run-history" aria-labelledby="history-heading"><h1 ref={pageHeading} tabIndex={-1} id="history-heading">История анализов</h1>{historyLoading && !historyLoaded && <p role="status">Загружаем историю…</p>}{historyError && <div className="error" role="alert"><p>{historyError}</p><button type="button" className="secondary" onClick={() => setHistoryAttempt(value => value + 1)}>Повторить загрузку</button></div>}{historyLoaded && !historyError && !historyRuns.length && <p>Анализов пока нет.</p>}<ol>{historyRuns.map(run => <li key={run.id}><a href={`/runs/${run.id}`} onClick={event => { event.preventDefault(); navigate(`/runs/${run.id}`) }}>{run.id}</a> — {RUN_STATES[run.state] ?? run.state}, {run.created_at ? <time dateTime={run.created_at}>{run.created_at}</time> : 'дата создания неизвестна'}{run.retry_of_run_id && <> · повтор анализа <a href={`/runs/${run.retry_of_run_id}`} onClick={event => { event.preventDefault(); navigate(`/runs/${run.retry_of_run_id}`) }}>{run.retry_of_run_id}</a></>}{run.successor_run_id && <> · следующий <a href={`/runs/${run.successor_run_id}`} onClick={event => { event.preventDefault(); navigate(`/runs/${run.successor_run_id}`) }}>{run.successor_run_id}</a></>}</li>)}</ol>{historyNextOffset !== null && !historyError && <button type="button" className="secondary" disabled={historyLoading} onClick={() => setHistoryPage(historyNextOffset)}>{historyLoading ? 'Загружаем…' : 'Показать ещё'}</button>}</section> : route ? <section className="run-workspace" aria-labelledby="run-heading" aria-busy={runReading}><div className="panel run-header"><p className="eyebrow">Анализ</p><h1 ref={pageHeading} tabIndex={-1} id="run-heading">{runMissing ? 'Анализ не найден' : runSnapshot ? RUN_HEADINGS[runSnapshot.state] ?? 'Статус анализа неизвестен' : runChecked ? 'Статус анализа неизвестен' : 'Проверяем анализ…'}</h1><p>Номер анализа: <code>{route}</code></p>{runSnapshot && <p>Состояние сервера: <strong>{RUN_STATES[runSnapshot.state] ?? 'Состояние доступно на сервере'}</strong></p>}{runError && <div className="attention"><p>{runError}</p><button type="button" className="secondary" disabled={runReading} onClick={() => { if (!runReading) { setRunReading(true); setRunReadAttempt(value => value + 1) } }}>{runReading ? 'Проверяем статус…' : 'Проверить статус'}</button></div>}<p role="status" className="sr-only">{runError || runAnnouncement}</p>{runSnapshot?.retry_of_run_id && <p>Повтор анализа <a href={`/runs/${runSnapshot.retry_of_run_id}`} onClick={event => { event.preventDefault(); navigate(`/runs/${runSnapshot.retry_of_run_id}`) }}>{runSnapshot.retry_of_run_id}</a></p>}{runSnapshot?.successor_run_id && <p>Следующий анализ <a href={`/runs/${runSnapshot.successor_run_id}`} onClick={event => { event.preventDefault(); navigate(`/runs/${runSnapshot.successor_run_id}`) }}>{runSnapshot.successor_run_id}</a></p>}{runSnapshot?.retry_eligible && <p>Повтор использует текущий профиль <code>{runSnapshot.retry_profile_id}</code>, ревизия допуска {runSnapshot.retry_authorization_revision}.{runSnapshot.profile_id !== runSnapshot.retry_profile_id && <> Исходный анализ использовал профиль <code>{runSnapshot.profile_id}</code>.</>}</p>}{runSnapshot?.retry_eligible && <button type="button" className="primary" disabled={retrying || offline} onClick={() => void retryRun()}>{retrying ? 'Создаём повтор…' : 'Повторить анализ'}</button>}{retryError && <p className="error" role="alert">{retryError}</p>}<button type="button" className="secondary" onClick={() => navigate('/')}>Новый анализ</button></div>{runSnapshot && <section className="panel pipeline" aria-labelledby="pipeline-heading"><h2 id="pipeline-heading">Этапы анализа</h2><ol className="pipeline-stages">{runSnapshot.stages.map(stage => <li key={stage.name} className={`pipeline-stage stage-${stage.state}`}><h3>{STAGE_LABELS[stage.name] ?? 'Этап анализа'}</h3><p>{STAGE_STATES[stage.state] ?? 'Состояние доступно на сервере'}</p>{stage.reason && <><p className="stage-reason">{STAGE_REASONS[stage.reason] ?? 'Причина не описана для пользователя.'}</p>{!STAGE_REASONS[stage.reason] && <details><summary>Техническая причина</summary><code>{stage.reason}</code></details>}</>}{stage.timestamp && <time dateTime={stage.timestamp}>{stage.timestamp}</time>}</li>)}</ol></section>}{runSnapshot && <ObservationResult run={runSnapshot} runId={route} />}</section> : <>
         <div className="page-intro"><p className="eyebrow">Новый анализ</p><h1 ref={pageHeading} tabIndex={-1}>Наблюдение за техникой</h1><p>Добавьте снимки и контекст наблюдения. Анализ распознаёт экскаватор и самосвал на отдельных кадрах; правило этапа и отсутствие техники на всей площадке здесь не проверяются.</p></div>
         <form onSubmit={submit} noValidate aria-busy={sending}>
           <div className="form-grid"><section className="panel" aria-labelledby="context-heading"><h2 id="context-heading">Контекст наблюдения</h2><p className="muted">Режим: только распознать технику</p><fieldset disabled={!!pending || sending || validating}><div className="field"><label htmlFor="scenario">Сценарий</label><input id="scenario" value={scenario} onChange={event => setScenario(event.target.value)} aria-invalid={!!errors.scenario} aria-describedby={errors.scenario ? 'scenario-error' : undefined} maxLength={256} /><p className="hint">Например, наблюдение за земляными работами.</p>{errors.scenario && <p id="scenario-error" className="error">{errors.scenario}</p>}</div><div className="field"><label htmlFor="area">Зона наблюдения</label><input id="area" value={area} onChange={event => setArea(event.target.value)} aria-invalid={!!errors.observation_area} aria-describedby={errors.observation_area ? 'area-error' : undefined} maxLength={256} /><p className="hint">Укажите конкретный участок, к которому относятся кадры.</p>{errors.observation_area && <p id="area-error" className="error">{errors.observation_area}</p>}</div><div className="field"><label htmlFor="period">Дата и время наблюдения</label><input id="period" type="datetime-local" value={period} onChange={event => setPeriod(event.target.value)} aria-invalid={!!errors.period} aria-describedby={errors.period ? 'period-error' : undefined} />{errors.period && <p id="period-error" className="error">{errors.period}</p>}</div></fieldset></section>
