@@ -8,8 +8,10 @@ type Input = { input_id: string; ordinal: number; sha256: string; artifact_id: s
 type Observation = { input_id: string; ordinal: number; class_name: string; state: string; reason?: string | null; source_artifact_id: string | null }
 type NativeEvidence = { artifact_id: string; input_id: string; ordinal: number; sha256: string; invocation_id: string; profile_id: string; profile_revision: number; preprocessing_revision: string }
 type Series = { usable_count: number; usable_input_ids: string[]; declared_observation_area: string | null; input_order: string[]; excavator_supporting_input_ids: string[]; dump_truck_persistence_input_ids: string[]; dump_truck_persistence_text: string | null }
-type RunSnapshot = { run_id?: string; state: string; stages: Stage[]; context?: { period?: string; observation_area?: string }; requested_classes?: string[]; inputs?: Input[]; observations?: Observation[]; native_evidence_by_frame?: NativeEvidence[]; outcome?: string | null; result_projection?: { outcome: string; series?: Series } | null; retry_of_run_id?: string | null; successor_run_id?: string | null; retry_eligible?: boolean; retry_profile_id?: string; retry_authorization_revision?: number; profile_id?: string; authorization_revision?: number; created_at?: string }
+type RunSnapshot = { run_id?: string; state: string; stages: Stage[]; context?: { period?: string; observation_area?: string; stage_id?: string }; requested_classes?: string[]; inputs?: Input[]; observations?: Observation[]; native_evidence_by_frame?: NativeEvidence[]; outcome?: string | null; result_projection?: { outcome: string; series?: Series } | null; retry_of_run_id?: string | null; successor_run_id?: string | null; retry_eligible?: boolean; retry_profile_id?: string; retry_authorization_revision?: number; profile_id?: string; authorization_revision?: number; created_at?: string }
 type HistoryRun = { id: string; state: string; created_at: string | null; retry_of_run_id: string | null; successor_run_id: string | null }
+type StageSummary = { stage_id: string; name: string; supported: boolean; latest_result: { run_id: string; created_at: string | null; projection: { outcome: string } } | null; latest_lifecycle: { run_id: string; created_at: string | null; state: string } | null }
+const OUTCOME_LABELS: Record<string, string> = { no_check: 'Проверка не требуется', check_requested: 'Требуется проверка', insufficient_data: 'Недостаточно данных', observations_only: 'Только наблюдения', not_analyzed: 'Не анализировалось' }
 
 const CLASS_LABELS: Record<string, string> = { excavator: 'Экскаватор', dump_truck: 'Самосвал' }
 const OBSERVATION_STATES: Record<string, string> = { detected: 'Обнаружен', not_detected_in_frame: 'Не обнаружен в кадре', insufficient_data: 'Недостаточно данных', not_analyzed: 'Не анализировалось' }
@@ -251,7 +253,9 @@ function validLocalPeriod(value: string): boolean {
 }
 
 function runIdFromPath(): string | null {
+  if (location.pathname === '/new') return 'new'
   if (location.pathname === '/history') return 'history'
+  if (location.pathname === '/' || location.pathname === '/stages') return 'stages'
   const match = location.pathname.match(/^\/runs\/([0-9a-f-]{36})$/i)
   return match?.[1] ?? null
 }
@@ -289,6 +293,12 @@ export default function App() {
   const [historyPage, setHistoryPage] = useState(0)
   const [historyNextOffset, setHistoryNextOffset] = useState<number | null>(null)
   const [historyAttempt, setHistoryAttempt] = useState(0)
+  const [stageSummaries, setStageSummaries] = useState<StageSummary[] | null>(null)
+  const [selectedStage, setSelectedStage] = useState('excavation')
+  const [stageError, setStageError] = useState('')
+  const [stageAttempt, setStageAttempt] = useState(0)
+  const [stageLoading, setStageLoading] = useState(false)
+  const [unsupportedStageNotice, setUnsupportedStageNotice] = useState(false)
   const announcedStages = useRef<string | null>(null)
   const summary = useRef<HTMLDivElement>(null)
   const pageHeading = useRef<HTMLHeadingElement>(null)
@@ -303,7 +313,7 @@ export default function App() {
 
   useEffect(() => {
     const update = () => setOffline(!navigator.onLine)
-    const pop = () => { closeCamera(); routeRef.current = runIdFromPath(); setRoute(routeRef.current) }
+    const pop = () => { closeCamera(); routeRef.current = runIdFromPath(); focusAfterNavigation.current = true; setRoute(routeRef.current) }
     addEventListener('online', update)
     addEventListener('offline', update)
     addEventListener('popstate', pop)
@@ -347,7 +357,7 @@ export default function App() {
   }, [route])
 
   useEffect(() => {
-    if (!route || route === 'history') return
+    if (!route || route === 'history' || route === 'new' || route === 'stages') return
     let active = true
     let timer: ReturnType<typeof setTimeout>
     let timeout: ReturnType<typeof setTimeout>
@@ -410,8 +420,29 @@ export default function App() {
     return () => { active = false }
   }, [route, historyPage, historyAttempt])
 
+  useEffect(() => {
+    if (route !== 'stages') return
+    let active = true
+    const controller = new AbortController()
+    let timeout: ReturnType<typeof setTimeout>
+    let refresh: ReturnType<typeof setTimeout>
+    setStageLoading(true)
+    void Promise.race([
+      (async () => { const response = await fetch('/api/stages/summary', { signal: controller.signal });
+        if (!response.ok) throw new Error(); return response.json() as Promise<{ stages: StageSummary[] }> })(),
+      new Promise<{ stages: StageSummary[] }>((_, reject) => { timeout = setTimeout(() => { controller.abort(); reject(new Error('timeout')) }, 10000) }),
+    ]).then(data => {
+      if (!Array.isArray(data.stages)) throw new Error()
+      if (active) { setStageSummaries(data.stages); setStageError('') }
+    }).catch(() => { if (active) setStageError(stageSummaries
+      ? 'Не удалось обновить этапы. Показаны последние доступные данные.'
+      : 'Не удалось загрузить этапы.')
+    }).finally(() => { clearTimeout(timeout); if (active) { setStageLoading(false); refresh = setTimeout(() => setStageAttempt(value => value + 1), 30000) } })
+    return () => { active = false; controller.abort(); clearTimeout(timeout); clearTimeout(refresh) }
+  }, [route, stageAttempt])
+
   async function retryRun() {
-    if (!route || route === 'history' || retrying) return
+    if (!route || route === 'history' || route === 'new' || route === 'stages' || retrying) return
     const sourceRoute = route
     setRetrying(true)
     setRetryError('')
@@ -437,7 +468,7 @@ export default function App() {
       pageHeading.current?.focus()
       focusAfterNavigation.current = false
     }
-    document.title = route === 'history' ? 'История анализов — Контроль строительства' : route ? 'Анализ — Контроль строительства' : 'Новый анализ — Контроль строительства'
+    document.title = route === 'history' ? 'История анализов — Контроль строительства' : route === 'stages' ? 'Этапы — Контроль строительства' : route === 'new' ? 'Новый анализ — Контроль строительства' : route ? 'Анализ — Контроль строительства' : 'Страница не найдена — Контроль строительства'
   }, [route])
 
   useEffect(() => () => { cameraGeneration.current++; cameraStream.current?.getTracks().forEach(track => track.stop()) }, [])
@@ -454,6 +485,8 @@ export default function App() {
     setRoute(routeRef.current)
     setRunError('')
   }
+
+  function newAnalysis() { setUnsupportedStageNotice(route === 'stages' && selectedStage !== 'excavation'); setSelectedStage('excavation'); navigate('/new') }
 
   function updateFrames(next: Frame[]) {
     framesRef.current = next
@@ -474,7 +507,7 @@ export default function App() {
         if (error) rejected.push(`${file.name}: ${error}`)
         else next.push({ id: crypto.randomUUID(), file })
       }
-      if (!mounted.current || routeRef.current) return
+      if (!mounted.current || routeRef.current !== 'new') return
       updateFrames(next)
       if (next.length !== originalCount) setNotice(`Добавлено кадров: ${next.length - originalCount}. Всего ${next.length}.`)
       setErrors(current => ({ ...current, images: rejected.join(' ') || undefined }))
@@ -523,7 +556,7 @@ export default function App() {
     const generation = ++cameraGeneration.current
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: false })
-      if (!mounted.current || generation !== cameraGeneration.current || routeRef.current) {
+      if (!mounted.current || generation !== cameraGeneration.current || routeRef.current !== 'new') {
         stream.getTracks().forEach(track => track.stop())
         return
       }
@@ -560,7 +593,7 @@ export default function App() {
     context.drawImage(video, 0, 0)
     const generation = cameraGeneration.current
     canvas.toBlob(blob => {
-      if (!mounted.current || generation !== cameraGeneration.current || routeRef.current) return
+      if (!mounted.current || generation !== cameraGeneration.current || routeRef.current !== 'new') return
       if (!blob) { setErrors(current => ({ ...current, images: 'Не удалось получить снимок. Повторите попытку.' })); return }
       void addFiles([new File([blob], `camera-${Date.now()}.jpg`, { type: 'image/jpeg' })])
       closeCamera()
@@ -633,7 +666,7 @@ export default function App() {
       const images: string[] = []
       for (const frame of framesRef.current) images.push(await base64(frame.file))
       const body = JSON.stringify({
-        intent: 'observation_only', scenario: scenario.trim(), observation_area: area.trim(),
+        intent: 'observation_only', stage_id: selectedStage, scenario: scenario.trim(), observation_area: area.trim(),
         period: periodWithOffset(period), requested_classes: ['excavator', 'dump_truck'],
         ...(images.length === 1 ? { image_base64: images[0] } : { images_base64: images }),
       })
@@ -653,10 +686,10 @@ export default function App() {
 
   return <div className="app-shell">
     <a className="skip-link" href="#main">К основному содержимому</a>
-    <header className="topbar"><div className="topbar-inner"><a className="brand" href="/" onClick={event => { event.preventDefault(); navigate('/') }}>Контроль строительства <span>17 мгновений ИИ</span></a><nav aria-label="Основная навигация"><a href="/" aria-current={!route ? 'page' : undefined} onClick={event => { event.preventDefault(); navigate('/') }}>Новый анализ</a><a href="/history" aria-current={route === 'history' ? 'page' : undefined} onClick={event => { event.preventDefault(); navigate('/history') }}>История</a></nav></div></header>
+    <header className="topbar"><div className="topbar-inner"><a className="brand" href="/" onClick={event => { event.preventDefault(); navigate('/') }}>Контроль строительства <span>17 мгновений ИИ</span></a><nav aria-label="Основная навигация"><a href="/" aria-current={route === 'stages' ? 'page' : undefined} onClick={event => { event.preventDefault(); navigate('/') }}>Этапы</a><a href="/history" aria-current={route === 'history' ? 'page' : undefined} onClick={event => { event.preventDefault(); navigate('/history') }}>Анализы</a></nav><a className="primary new-analysis-link" href="/new" aria-current={route === 'new' ? 'page' : undefined} onClick={event => { event.preventDefault(); newAnalysis() }}>Новый анализ</a></div></header>
     <main id="main" className="page">
-      {route === 'history' ? <section className="panel run-history" aria-labelledby="history-heading"><h1 ref={pageHeading} tabIndex={-1} id="history-heading">История анализов</h1>{historyLoading && !historyLoaded && <p role="status">Загружаем историю…</p>}{historyError && <div className="error" role="alert"><p>{historyError}</p><button type="button" className="secondary" onClick={() => setHistoryAttempt(value => value + 1)}>Повторить загрузку</button></div>}{historyLoaded && !historyError && !historyRuns.length && <p>Анализов пока нет.</p>}<ol>{historyRuns.map(run => <li key={run.id}><a href={`/runs/${run.id}`} onClick={event => { event.preventDefault(); navigate(`/runs/${run.id}`) }}>{run.id}</a> — {RUN_STATES[run.state] ?? run.state}, {run.created_at ? <time dateTime={run.created_at}>{run.created_at}</time> : 'дата создания неизвестна'}{run.retry_of_run_id && <> · повтор анализа <a href={`/runs/${run.retry_of_run_id}`} onClick={event => { event.preventDefault(); navigate(`/runs/${run.retry_of_run_id}`) }}>{run.retry_of_run_id}</a></>}{run.successor_run_id && <> · следующий <a href={`/runs/${run.successor_run_id}`} onClick={event => { event.preventDefault(); navigate(`/runs/${run.successor_run_id}`) }}>{run.successor_run_id}</a></>}</li>)}</ol>{historyNextOffset !== null && !historyError && <button type="button" className="secondary" disabled={historyLoading} onClick={() => setHistoryPage(historyNextOffset)}>{historyLoading ? 'Загружаем…' : 'Показать ещё'}</button>}</section> : route ? <section className="run-workspace" aria-labelledby="run-heading" aria-busy={runReading}><div className="panel run-header"><p className="eyebrow">Анализ</p><h1 ref={pageHeading} tabIndex={-1} id="run-heading">{runMissing ? 'Анализ не найден' : runSnapshot ? RUN_HEADINGS[runSnapshot.state] ?? 'Статус анализа неизвестен' : runChecked ? 'Статус анализа неизвестен' : 'Проверяем анализ…'}</h1><p>Номер анализа: <code>{route}</code></p>{runSnapshot && <p>Состояние сервера: <strong>{RUN_STATES[runSnapshot.state] ?? 'Состояние доступно на сервере'}</strong></p>}{runError && <div className="attention"><p>{runError}</p><button type="button" className="secondary" disabled={runReading} onClick={() => { if (!runReading) { setRunReading(true); setRunReadAttempt(value => value + 1) } }}>{runReading ? 'Проверяем статус…' : 'Проверить статус'}</button></div>}<p role="status" className="sr-only">{runError || runAnnouncement}</p>{runSnapshot?.retry_of_run_id && <p>Повтор анализа <a href={`/runs/${runSnapshot.retry_of_run_id}`} onClick={event => { event.preventDefault(); navigate(`/runs/${runSnapshot.retry_of_run_id}`) }}>{runSnapshot.retry_of_run_id}</a></p>}{runSnapshot?.successor_run_id && <p>Следующий анализ <a href={`/runs/${runSnapshot.successor_run_id}`} onClick={event => { event.preventDefault(); navigate(`/runs/${runSnapshot.successor_run_id}`) }}>{runSnapshot.successor_run_id}</a></p>}{runSnapshot?.retry_eligible && <p>Повтор использует текущий профиль <code>{runSnapshot.retry_profile_id}</code>, ревизия допуска {runSnapshot.retry_authorization_revision}.{runSnapshot.profile_id !== runSnapshot.retry_profile_id && <> Исходный анализ использовал профиль <code>{runSnapshot.profile_id}</code>.</>}</p>}{runSnapshot?.retry_eligible && <button type="button" className="primary" disabled={retrying || offline} onClick={() => void retryRun()}>{retrying ? 'Создаём повтор…' : 'Повторить анализ'}</button>}{retryError && <p className="error" role="alert">{retryError}</p>}<button type="button" className="secondary" onClick={() => navigate('/')}>Новый анализ</button></div>{runSnapshot && <section className="panel pipeline" aria-labelledby="pipeline-heading"><h2 id="pipeline-heading">Этапы анализа</h2><ol className="pipeline-stages">{runSnapshot.stages.map(stage => <li key={stage.name} className={`pipeline-stage stage-${stage.state}`}><h3>{STAGE_LABELS[stage.name] ?? 'Этап анализа'}</h3><p>{STAGE_STATES[stage.state] ?? 'Состояние доступно на сервере'}</p>{stage.reason && <><p className="stage-reason">{STAGE_REASONS[stage.reason] ?? 'Причина не описана для пользователя.'}</p>{!STAGE_REASONS[stage.reason] && <details><summary>Техническая причина</summary><code>{stage.reason}</code></details>}</>}{stage.timestamp && <time dateTime={stage.timestamp}>{stage.timestamp}</time>}</li>)}</ol></section>}{runSnapshot && <ObservationResult run={runSnapshot} runId={route} />}</section> : <>
-        <div className="page-intro"><p className="eyebrow">Новый анализ</p><h1 ref={pageHeading} tabIndex={-1}>Наблюдение за техникой</h1><p>Добавьте снимки и контекст наблюдения. Анализ распознаёт экскаватор и самосвал на отдельных кадрах; правило этапа и отсутствие техники на всей площадке здесь не проверяются.</p></div>
+      {route === 'stages' ? <section aria-labelledby="stages-heading"><div className="page-intro"><p className="eyebrow">Обзор этапов</p><h1 ref={pageHeading} tabIndex={-1} id="stages-heading">Этапы строительства</h1><p>Здесь показаны результаты завершённых анализов, привязанных к этапу. График и состояние проекта не оцениваются.</p></div>{stageError && <div className="error" role="alert"><p>{stageError}</p><button type="button" className="secondary" onClick={() => setStageAttempt(value => value + 1)}>Повторить загрузку</button></div>}<div className="stages-layout"><section className="panel" aria-labelledby="stage-map-heading" aria-busy={stageLoading}><h2 id="stage-map-heading">Карта этапов</h2>{stageLoading && !stageSummaries && <p role="status">Загружаем этапы…</p>}<div className="stage-tiles">{stageSummaries?.map(stage => <button key={stage.stage_id} className="stage-tile" type="button" aria-pressed={selectedStage === stage.stage_id} aria-controls="stage-inspector" onClick={() => setSelectedStage(stage.stage_id)}><strong>{stage.name}</strong><span>{stage.supported ? stage.latest_result ? OUTCOME_LABELS[stage.latest_result.projection.outcome] ?? 'Результат доступен' : 'Анализов нет' : 'Не настроено в прототипе'}</span>{stage.latest_lifecycle && <small>{stage.latest_result ? 'Более новый запуск' : 'Последняя попытка'}: {RUN_STATES[stage.latest_lifecycle.state] ?? 'Состояние неизвестно'}</small>}</button>)}</div><p className="hint">В прототипе настроен анализ земляных работ котлована. Другие этапы показаны для навигации.</p><button type="button" className="secondary" disabled={stageLoading} onClick={() => setStageAttempt(value => value + 1)}>{stageLoading ? 'Обновляем…' : 'Обновить этапы'}</button></section><section className="panel stage-inspector" id="stage-inspector" aria-labelledby="inspector-heading">{(() => { const stage = stageSummaries?.find(item => item.stage_id === selectedStage); if (!stage) return <p>Выберите этап.</p>; return <><p className="eyebrow">Выбранный этап</p><h2 id="inspector-heading">{stage.name}</h2><p className="stage-outcome">{stage.supported ? stage.latest_result ? OUTCOME_LABELS[stage.latest_result.projection.outcome] ?? 'Результат доступен' : 'Анализов нет' : 'Не настроено в прототипе'}</p>{stage.supported ? <>{stage.latest_result ? <p>Результат последнего завершённого анализа с сохранёнными доказательствами. {stage.latest_result.created_at && <>Время запуска: <time dateTime={stage.latest_result.created_at}>{stage.latest_result.created_at}</time>. </>}<a href={`/runs/${stage.latest_result.run_id}`} onClick={event => { event.preventDefault(); navigate(`/runs/${stage.latest_result!.run_id}`) }}>Открыть доказательства</a></p> : <p>Для этого этапа ещё нет завершённого анализа с результатом.</p>}{stage.latest_lifecycle && <p className="attention">{stage.latest_result ? 'Более новый запуск' : 'Последняя попытка'}: {RUN_STATES[stage.latest_lifecycle.state] ?? 'Состояние неизвестно'}. {stage.latest_lifecycle.created_at && <>Время запуска: <time dateTime={stage.latest_lifecycle.created_at}>{stage.latest_lifecycle.created_at}</time>. </>}<a href={`/runs/${stage.latest_lifecycle.run_id}`} onClick={event => { event.preventDefault(); navigate(`/runs/${stage.latest_lifecycle!.run_id}`) }}>Открыть запуск</a>. {stage.latest_result && 'Он не заменяет завершённый результат.'}</p>}</> : <p>Для этого этапа правило не настроено в прототипе. Анализ доступен для этапа «Земляные работы котлована».</p>}</> })()}</section></div></section> : route === 'history' ? <section className="panel run-history" aria-labelledby="history-heading"><h1 ref={pageHeading} tabIndex={-1} id="history-heading">История анализов</h1>{historyLoading && !historyLoaded && <p role="status">Загружаем историю…</p>}{historyError && <div className="error" role="alert"><p>{historyError}</p><button type="button" className="secondary" onClick={() => setHistoryAttempt(value => value + 1)}>Повторить загрузку</button></div>}{historyLoaded && !historyError && !historyRuns.length && <p>Анализов пока нет.</p>}<ol>{historyRuns.map(run => <li key={run.id}><a href={`/runs/${run.id}`} onClick={event => { event.preventDefault(); navigate(`/runs/${run.id}`) }}>{run.id}</a> — {RUN_STATES[run.state] ?? run.state}, {run.created_at ? <time dateTime={run.created_at}>{run.created_at}</time> : 'дата создания неизвестна'}{run.retry_of_run_id && <> · повтор анализа <a href={`/runs/${run.retry_of_run_id}`} onClick={event => { event.preventDefault(); navigate(`/runs/${run.retry_of_run_id}`) }}>{run.retry_of_run_id}</a></>}{run.successor_run_id && <> · следующий <a href={`/runs/${run.successor_run_id}`} onClick={event => { event.preventDefault(); navigate(`/runs/${run.successor_run_id}`) }}>{run.successor_run_id}</a></>}</li>)}</ol>{historyNextOffset !== null && !historyError && <button type="button" className="secondary" disabled={historyLoading} onClick={() => setHistoryPage(historyNextOffset)}>{historyLoading ? 'Загружаем…' : 'Показать ещё'}</button>}</section> : route === null ? <section className="panel" aria-labelledby="not-found-heading"><h1 ref={pageHeading} tabIndex={-1} id="not-found-heading">Страница не найдена</h1><p>Проверьте адрес или откройте обзор этапов.</p></section> : route !== 'new' ? <section className="run-workspace" aria-labelledby="run-heading" aria-busy={runReading}><div className="panel run-header"><p className="eyebrow">Анализ</p><h1 ref={pageHeading} tabIndex={-1} id="run-heading">{runMissing ? 'Анализ не найден' : runSnapshot ? RUN_HEADINGS[runSnapshot.state] ?? 'Статус анализа неизвестен' : runChecked ? 'Статус анализа неизвестен' : 'Проверяем анализ…'}</h1><p>Номер анализа: <code>{route}</code></p>{runSnapshot?.context?.stage_id === 'excavation' && <p>Этап строительства: <strong>Земляные работы котлована</strong></p>}{runSnapshot && <p>Состояние сервера: <strong>{RUN_STATES[runSnapshot.state] ?? 'Состояние доступно на сервере'}</strong></p>}{runError && <div className="attention"><p>{runError}</p><button type="button" className="secondary" disabled={runReading} onClick={() => { if (!runReading) { setRunReading(true); setRunReadAttempt(value => value + 1) } }}>{runReading ? 'Проверяем статус…' : 'Проверить статус'}</button></div>}<p role="status" className="sr-only">{runError || runAnnouncement}</p>{runSnapshot?.retry_of_run_id && <p>Повтор анализа <a href={`/runs/${runSnapshot.retry_of_run_id}`} onClick={event => { event.preventDefault(); navigate(`/runs/${runSnapshot.retry_of_run_id}`) }}>{runSnapshot.retry_of_run_id}</a></p>}{runSnapshot?.successor_run_id && <p>Следующий анализ <a href={`/runs/${runSnapshot.successor_run_id}`} onClick={event => { event.preventDefault(); navigate(`/runs/${runSnapshot.successor_run_id}`) }}>{runSnapshot.successor_run_id}</a></p>}{runSnapshot?.retry_eligible && <p>Повтор использует текущий профиль <code>{runSnapshot.retry_profile_id}</code>, ревизия допуска {runSnapshot.retry_authorization_revision}.{runSnapshot.profile_id !== runSnapshot.retry_profile_id && <> Исходный анализ использовал профиль <code>{runSnapshot.profile_id}</code>.</>}</p>}{runSnapshot?.retry_eligible && <button type="button" className="primary" disabled={retrying || offline} onClick={() => void retryRun()}>{retrying ? 'Создаём повтор…' : 'Повторить анализ'}</button>}{retryError && <p className="error" role="alert">{retryError}</p>}</div>{runSnapshot && <section className="panel pipeline" aria-labelledby="pipeline-heading"><h2 id="pipeline-heading">Этапы анализа</h2><ol className="pipeline-stages">{runSnapshot.stages.map(stage => <li key={stage.name} className={`pipeline-stage stage-${stage.state}`}><h3>{STAGE_LABELS[stage.name] ?? 'Этап анализа'}</h3><p>{STAGE_STATES[stage.state] ?? 'Состояние доступно на сервере'}</p>{stage.reason && <><p className="stage-reason">{STAGE_REASONS[stage.reason] ?? 'Причина не описана для пользователя.'}</p>{!STAGE_REASONS[stage.reason] && <details><summary>Техническая причина</summary><code>{stage.reason}</code></details>}</>}{stage.timestamp && <time dateTime={stage.timestamp}>{stage.timestamp}</time>}</li>)}</ol></section>}{runSnapshot && <ObservationResult run={runSnapshot} runId={route!} />}</section> : <>
+        <div className="page-intro"><p className="eyebrow">Новый анализ</p><h1 ref={pageHeading} tabIndex={-1}>Наблюдение за техникой</h1><p>Этап строительства: <strong>Земляные работы котлована</strong>. Привязка сохранится в анализе и его повторе.</p>{unsupportedStageNotice && <p className="attention">Выбранный этап не настроен в прототипе. Новый анализ привязан к этапу «Земляные работы котлована».</p>}<p>Добавьте снимки и контекст наблюдения. Анализ распознаёт экскаватор и самосвал на отдельных кадрах; правило этапа и отсутствие техники на всей площадке здесь не проверяются.</p></div>
         <form onSubmit={submit} noValidate aria-busy={sending}>
           <div className="form-grid"><section className="panel" aria-labelledby="context-heading"><h2 id="context-heading">Контекст наблюдения</h2><p className="muted">Режим: только распознать технику</p><fieldset disabled={!!pending || sending || validating}><div className="field"><label htmlFor="scenario">Сценарий</label><input id="scenario" value={scenario} onChange={event => setScenario(event.target.value)} aria-invalid={!!errors.scenario} aria-describedby={errors.scenario ? 'scenario-error' : undefined} maxLength={256} /><p className="hint">Например, наблюдение за земляными работами.</p>{errors.scenario && <p id="scenario-error" className="error">{errors.scenario}</p>}</div><div className="field"><label htmlFor="area">Зона наблюдения</label><input id="area" value={area} onChange={event => setArea(event.target.value)} aria-invalid={!!errors.observation_area} aria-describedby={errors.observation_area ? 'area-error' : undefined} maxLength={256} /><p className="hint">Укажите конкретный участок, к которому относятся кадры.</p>{errors.observation_area && <p id="area-error" className="error">{errors.observation_area}</p>}</div><div className="field"><label htmlFor="period">Дата и время наблюдения</label><input id="period" type="datetime-local" value={period} onChange={event => setPeriod(event.target.value)} aria-invalid={!!errors.period} aria-describedby={errors.period ? 'period-error' : undefined} />{errors.period && <p id="period-error" className="error">{errors.period}</p>}</div></fieldset></section>
           <section className="panel" aria-labelledby="images-heading"><h2 id="images-heading">Кадры наблюдения</h2><p className="muted">Выберите один JPEG или серию из 2–8 JPEG. Каждый файл — до 16 МБ и 40 миллионов пикселей. Порядок кадров влияет на анализ.</p><div className="upload-actions"><label className="file-button secondary" htmlFor="images">Выбрать JPEG</label><input id="images" type="file" accept="image/jpeg,.jpg,.jpeg" multiple onChange={onFiles} disabled={!!pending || sending || validating} aria-invalid={!!errors.images} aria-describedby={errors.images ? 'images-error' : undefined} /><button className="secondary" type="button" onClick={openCamera} disabled={!!pending || sending || validating || cameraOpen || cameraDenied}>Снять камерой</button></div>{errors.images && <p id="images-error" className="error" role="alert">{errors.images}</p>}{cameraOpen && <div className="camera"><video ref={cameraVideo} autoPlay playsInline muted aria-label="Изображение с камеры" /><div className="upload-actions"><button type="button" onClick={capture}>Сделать снимок</button><button className="secondary" type="button" onClick={closeCamera}>Закрыть камеру</button></div></div>}

@@ -40,6 +40,10 @@ def validate_images(body: dict, series: bool) -> tuple[list[bytes], dict, list[s
     context = {key: body.get(key) for key in ("scenario", "observation_area", "period")}
     if not all(isinstance(value, str) and 0 < len(value.strip()) <= 256 for value in context.values()):
         raise SubmissionError("invalid_observation_context")
+    if "stage_id" in body:
+        if body["stage_id"] != "excavation":
+            raise SubmissionError("invalid_stage_id")
+        context["stage_id"] = body["stage_id"]
     try:
         period = datetime.fromisoformat(context["period"])
         if period.tzinfo is None:

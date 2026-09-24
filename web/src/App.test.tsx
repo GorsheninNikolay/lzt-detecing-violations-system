@@ -56,7 +56,7 @@ describe('Observation result', () => {
     expect(await screen.findByText('Повтор анализа', { exact: false })).toBeTruthy()
     expect(location.pathname).toBe(`/runs/${nextId}`)
     expect(screen.queryByRole('button', { name: 'Повторить анализ' })).toBeNull()
-    await user.click(screen.getByRole('link', { name: 'История' }))
+    await user.click(screen.getByRole('link', { name: 'Анализы' }))
     expect(await screen.findByRole('heading', { name: 'История анализов' })).toBeTruthy()
     expect(screen.getByText(runId, { exact: true })).toBeTruthy()
   })
@@ -105,7 +105,7 @@ describe('Observation result', () => {
     }))
     render(<App />)
     await user.click(await screen.findByRole('button', { name: 'Повторить анализ' }))
-    await user.click(screen.getByRole('link', { name: 'История' }))
+    await user.click(screen.getByRole('link', { name: 'Анализы' }))
     await act(async () => { release({ ok: true, json: async () => ({ run_id: '22345678-1234-1234-1234-123456789abc' }) }) })
     expect(location.pathname).toBe('/history')
     expect(await screen.findByText('Анализов пока нет.')).toBeTruthy()
@@ -156,6 +156,15 @@ describe('Observation result', () => {
     expect(screen.getByText('Самосвал: Не обнаружен в кадре')).toBeTruthy()
     expect(await screen.findByRole('img', { name: /Исходное изображение: Кадр 1\. Экскаватор: Обнаружен/ })).toBeTruthy()
     expect(screen.queryByRole('heading', { name: 'Данные серии' })).toBeNull()
+  })
+
+  it('shows persisted stage binding in a source workspace', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => url === `/api/runs/${runId}`
+      ? { ok: true, json: async () => ({ ...completed, context: { ...completed.context, stage_id: 'excavation' } }) }
+      : { ok: true, blob: async () => new Blob(['jpeg']) }))
+    render(<App />)
+    expect(await screen.findByText('Этап строительства:', { exact: false })).toHaveProperty('textContent',
+      'Этап строительства: Земляные работы котлована')
   })
 
   it('keeps single-frame text and native metadata when verified bytes fail', async () => {
@@ -243,13 +252,132 @@ describe('Observation result', () => {
 })
 
 beforeEach(() => {
-  history.replaceState({}, '', '/')
+  history.replaceState({}, '', '/new')
   sessionStorage.clear()
   Object.defineProperty(navigator, 'onLine', { configurable: true, value: true })
   vi.stubGlobal('createImageBitmap', vi.fn(async () => ({ width: 2, height: 2, close: vi.fn() })))
   vi.stubGlobal('crypto', { randomUUID: vi.fn().mockReturnValueOnce('frame-1').mockReturnValueOnce('frame-2').mockReturnValueOnce('frame-3').mockReturnValue('key-1') })
 })
 afterEach(() => { vi.useRealTimers(); cleanup(); vi.unstubAllGlobals(); vi.restoreAllMocks() })
+
+describe('Stages Overview', () => {
+  const completed = '12345678-1234-1234-1234-123456789abc'
+  const newer = '22345678-1234-1234-1234-123456789abc'
+  const stages = [
+    { stage_id: 'excavation', name: 'Земляные работы котлована', supported: true,
+      latest_result: { run_id: completed, created_at: '2026-09-23T10:00:00Z', projection: { outcome: 'check_requested' } },
+      latest_lifecycle: { run_id: newer, created_at: '2026-09-24T10:00:00Z', state: 'failed' } },
+    { stage_id: 'foundation', name: 'Устройство фундамента', supported: false, latest_result: null, latest_lifecycle: null },
+  ]
+
+  beforeEach(() => { history.replaceState({}, '', '/') })
+
+  it('shows an explicit not-found route without fetching a run', () => {
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+    history.replaceState({}, '', '/missing')
+    render(<App />)
+    expect(screen.getByRole('heading', { name: 'Страница не найдена' })).toBeTruthy()
+    expect(document.title).toBe('Страница не найдена — Контроль строительства')
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('keeps projected outcome separate from a newer failed run and opens the evidence workspace', async () => {
+    const user = userEvent.setup()
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => url === '/api/stages/summary'
+      ? { ok: true, json: async () => ({ stages }) }
+      : { ok: true, json: async () => snapshot('succeeded') }))
+    render(<App />)
+    expect(await screen.findByRole('heading', { name: 'Этапы строительства' })).toBeTruthy()
+    expect((await screen.findAllByText('Более новый запуск:', { exact: false })).length).toBe(2)
+    const excavation = screen.getByRole('button', { name: /Земляные работы котлована/ })
+    expect(excavation.getAttribute('aria-pressed')).toBe('true')
+    expect(excavation.textContent).toContain('Более новый запуск: Ошибка выполнения')
+    expect(within(screen.getByRole('region', { name: 'Земляные работы котлована' })).getByText('Требуется проверка')).toBeTruthy()
+    expect(screen.getAllByText('2026-09-23T10:00:00Z')).toHaveLength(1)
+    expect(screen.getAllByText('2026-09-24T10:00:00Z')).toHaveLength(1)
+    await user.click(screen.getByRole('link', { name: 'Открыть доказательства' }))
+    expect(location.pathname).toBe(`/runs/${completed}`)
+    expect(document.activeElement).toBe(screen.getByRole('heading', { name: 'Анализ завершён' }))
+  })
+
+  it('explains empty and unsupported stages, preserves selected tile focus, and routes to bound analysis', async () => {
+    const user = userEvent.setup()
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => ({ stages: [
+      { ...stages[0], latest_result: null }, stages[1],
+    ] }) })))
+    render(<App />)
+    expect(await screen.findByText('Для этого этапа ещё нет завершённого анализа с результатом.')).toBeTruthy()
+    expect(screen.getAllByText('Последняя попытка:', { exact: false })).toHaveLength(2)
+    const foundation = screen.getByRole('button', { name: /Устройство фундамента/ })
+    await user.click(foundation)
+    expect(foundation.getAttribute('aria-pressed')).toBe('true')
+    expect(document.activeElement).toBe(foundation)
+    expect(screen.getByText(/Для этого этапа правило не настроено/)).toBeTruthy()
+    expect(screen.getAllByRole('link', { name: 'Новый анализ' })).toHaveLength(1)
+    await user.click(screen.getByRole('link', { name: 'Новый анализ' }))
+    expect(location.pathname).toBe('/new')
+    expect(document.activeElement).toBe(screen.getByRole('heading', { name: 'Наблюдение за техникой' }))
+    expect(screen.getByText(/Выбранный этап не настроен в прототипе/)).toBeTruthy()
+    expect(screen.getByText(/Привязка сохранится в анализе/)).toBeTruthy()
+  })
+
+  it('shows fetch failure and retains the last summary through recovery', async () => {
+    const user = userEvent.setup()
+    let stageCalls = 0
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => url === '/api/stages/summary'
+      ? ++stageCalls === 2 ? { ok: false } : { ok: true, json: async () => ({ stages }) }
+      : { ok: true, json: async () => ({ runs: [], next_offset: null }) }))
+    render(<App />)
+    await screen.findByRole('button', { name: /Земляные работы котлована/ })
+    await user.click(screen.getByRole('link', { name: 'Анализы' }))
+    await user.click(screen.getByRole('link', { name: 'Этапы' }))
+    expect((await screen.findByRole('alert')).textContent).toContain('Не удалось обновить этапы')
+    expect(screen.getByRole('button', { name: /Земляные работы котлована/ })).toBeTruthy()
+    await user.click(screen.getByRole('button', { name: 'Повторить загрузку' }))
+    await waitFor(() => expect(screen.queryByRole('alert')).toBeNull())
+  })
+
+  it('shows a truthful first-load error, then refreshes without losing selected state', async () => {
+    const user = userEvent.setup()
+    let calls = 0
+    vi.stubGlobal('fetch', vi.fn(async () => ++calls === 1 ? { ok: false } : { ok: true, json: async () => ({ stages }) }))
+    render(<App />)
+    expect((await screen.findByRole('alert')).textContent).toContain('Не удалось загрузить этапы.')
+    expect(screen.queryByRole('button', { name: /Земляные работы котлована/ })).toBeNull()
+    await user.click(screen.getByRole('button', { name: 'Повторить загрузку' }))
+    await screen.findByRole('button', { name: /Устройство фундамента/ })
+    await user.click(screen.getByRole('button', { name: /Устройство фундамента/ }))
+    await user.click(screen.getByRole('button', { name: 'Обновить этапы' }))
+    await waitFor(() => expect(calls).toBe(3))
+    expect(screen.getByRole('button', { name: /Устройство фундамента/ }).getAttribute('aria-pressed')).toBe('true')
+  })
+
+  it('times out a hung summary request and offers retry', async () => {
+    vi.useFakeTimers()
+    const signal = vi.fn()
+    vi.stubGlobal('fetch', vi.fn((_url: string, options: RequestInit) => {
+      options.signal?.addEventListener('abort', signal)
+      return new Promise(() => {})
+    }))
+    await act(async () => { render(<App />) })
+    await act(async () => { await vi.advanceTimersByTimeAsync(10000) })
+    expect(signal).toHaveBeenCalledOnce()
+    expect(screen.getByRole('alert').textContent).toContain('Не удалось загрузить этапы.')
+  })
+
+  it('refreshes while the overview stays open without moving focus', async () => {
+    vi.useFakeTimers()
+    const fetchMock = vi.fn(async () => ({ ok: true, json: async () => ({ stages }) }))
+    vi.stubGlobal('fetch', fetchMock)
+    await act(async () => { render(<App />) })
+    const tile = screen.getByRole('button', { name: /Земляные работы котлована/ })
+    tile.focus()
+    await act(async () => { await vi.advanceTimersByTimeAsync(30000) })
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(document.activeElement).toBe(tile)
+  })
+})
 
 async function fillContext(user: ReturnType<typeof userEvent.setup>) {
   await user.type(screen.getByLabelText('Сценарий'), 'Земляные работы')
@@ -281,6 +409,7 @@ describe('New Analysis', () => {
     expect(url).toBe('/api/runs/series')
     const body = JSON.parse(options.body)
     expect(body.intent).toBe('observation_only')
+    expect(body.stage_id).toBe('excavation')
     expect(body.images_base64).toHaveLength(3)
     expect(body.images_base64).toEqual([btoa(String.fromCharCode(...jpeg, 2)), btoa(String.fromCharCode(...jpeg, 1)), btoa(String.fromCharCode(...jpeg, 1))])
     expect(body.period).toMatch(/[+-]\d\d:\d\d$/)
@@ -503,7 +632,7 @@ describe('New Analysis', () => {
       'Регистрация входных данных', 'Проверка пригодности кадров', 'Распознавание техники',
       'Объединение наблюдений серии', 'Проверка правила', 'Формирование результата',
     ])
-    const navigationButton = screen.getByRole('button', { name: 'Новый анализ' })
+    const navigationButton = screen.getByRole('link', { name: 'Новый анализ' })
     navigationButton.focus()
     await act(async () => { await vi.advanceTimersByTimeAsync(3000) })
     expect(within(list).getAllByRole('listitem')[0].textContent).toContain('Завершено')
@@ -547,7 +676,7 @@ describe('New Analysis', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Проверяем статус…' }))
     expect(fetchMock).toHaveBeenCalledTimes(3)
     expect(fetchMock.mock.calls[2][0]).toBe(`/api/runs/${runId}`)
-    fireEvent.click(screen.getByRole('button', { name: 'Новый анализ' }))
+    fireEvent.click(screen.getByRole('link', { name: 'Новый анализ' }))
     await act(async () => { resolveLate({ ok: true, json: async () => snapshot('failed') }); await Promise.resolve() })
     expect(fetchMock.mock.calls[2][1].signal.aborted).toBe(true)
     expect(screen.getByRole('heading', { name: 'Наблюдение за техникой' })).toBeTruthy()

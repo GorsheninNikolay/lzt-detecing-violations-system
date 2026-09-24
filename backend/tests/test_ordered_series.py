@@ -218,6 +218,68 @@ def body(*images):
             "images_base64": [base64.b64encode(image).decode() for image in images]}
 
 
+def test_stage_binding_is_explicit_and_changes_request_identity():
+    request = {key: value for key, value in body(jpeg((1, 2, 3))).items() if key != "images_base64"}
+    request["image_base64"] = body(jpeg((1, 2, 3)))["images_base64"][0]
+    _, legacy_context, _, legacy_hash = submission.validate_request(request)
+    assert "stage_id" not in legacy_context
+    _, context, _, bound_hash = submission.validate_request({**request, "stage_id": "excavation"})
+    assert context["stage_id"] == "excavation" and bound_hash != legacy_hash
+    with pytest.raises(submission.SubmissionError, match="invalid_stage_id"):
+        submission.validate_request({**request, "stage_id": "foundation"})
+
+
+def test_stage_summary_route_returns_stable_error():
+    app = create_app()
+
+    class Store:
+        def stage_summary(self):
+            raise RuntimeError("database unavailable")
+
+    app.state.store = Store()
+
+    async def scenario():
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            response = await client.get("/stages/summary")
+            assert response.status_code == 503
+            assert response.json() == {"code": "stage_summary_unavailable"}
+
+    asyncio.run(scenario())
+
+
+def test_stage_summary_separates_projection_and_newer_lifecycle(isolated_admission_database):
+    store = PostgresStore(isolated_admission_database)
+    legacy, admission, result, no_projection = [uuid.uuid4() for _ in range(4)]
+    newer = [uuid.uuid4() for _ in range(51)]
+    try:
+        with store.engine.begin() as connection:
+            for run_id, purpose, state, context, age in (
+                (legacy, "ordinary", "succeeded", {}, 10),
+                (admission, "profile_admission", "succeeded", {"stage_id": "excavation"}, 9),
+                (result, "ordinary", "succeeded", {"stage_id": "excavation"}, 98),
+                (no_projection, "ordinary", "succeeded", {"stage_id": "excavation"}, 97),
+                *((run_id, "ordinary", "failed", {"stage_id": "excavation"}, 96 - index)
+                  for index, run_id in enumerate(newer)),
+            ):
+                connection.execute(text("""INSERT INTO analysis_runs
+                    (id, purpose, state, request_context, created_at)
+                    VALUES (:id, :purpose, :state, CAST(:context AS jsonb),
+                    '2026-09-24T10:00:00Z'::timestamptz - (:age * interval '1 minute'))"""),
+                    {"id": run_id, "purpose": purpose, "state": state,
+                     "context": json.dumps(context), "age": age})
+            for run_id in (legacy, admission, result):
+                connection.execute(text("""INSERT INTO result_projections (run_id, outcome, snapshot)
+                    VALUES (:id, 'observations_only', '{"outcome":"observations_only"}'::jsonb)"""), {"id": run_id})
+        summary = store.stage_summary()["stages"]
+        excavation = next(stage for stage in summary if stage["stage_id"] == "excavation")
+        assert excavation["latest_result"] == {"run_id": str(result), "created_at": "2026-09-24T08:22:00+00:00",
+                                                "projection": {"outcome": "observations_only"}}
+        assert excavation["latest_lifecycle"]["run_id"] == str(newer[-1])
+        assert all(not stage["supported"] and stage["latest_result"] is None for stage in summary if stage is not excavation)
+    finally:
+        store.close()
+
+
 @pytest.mark.parametrize("series", [False, True], ids=["single", "series"])
 def test_failed_retry_is_linear_and_keeps_source(isolated_admission_database, integration, monkeypatch, series):
     config, _, _ = integration
@@ -256,6 +318,7 @@ def test_failed_retry_is_linear_and_keeps_source(isolated_admission_database, in
     submit = submission.submit_series if series else submission.submit
     request = body(first, second) if series else {**{key: value for key, value in body(first).items()
                                                  if key != "images_base64"}, "image_base64": base64.b64encode(first).decode()}
+    request["stage_id"] = "excavation"
     _, source = submit(store, artifacts, uuid.uuid4().hex, request, profile, 1, snapshot)
     with store.engine.begin() as connection:
         connection.execute(text("UPDATE analysis_runs SET state = 'failed', error_code = 'observer_timeout' WHERE id = :id"),
@@ -281,6 +344,11 @@ def test_failed_retry_is_linear_and_keeps_source(isolated_admission_database, in
             assert predecessor["stages"] == original["stages"]
             assert predecessor["error_code"] == original["error_code"]
             assert descendant["context"] == predecessor["context"]
+            assert descendant["context"]["stage_id"] == "excavation"
+            stage = next(item for item in (await client.get("/stages/summary")).json()["stages"]
+                         if item["stage_id"] == "excavation")
+            assert stage["latest_result"] is None
+            assert stage["latest_lifecycle"]["run_id"] == str(successor)
             assert descendant["requested_classes"] == predecessor["requested_classes"]
             with store.engine.connect() as connection:
                 runs = connection.execute(text("""SELECT id, request_context, policy_snapshot,

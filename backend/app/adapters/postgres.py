@@ -816,6 +816,40 @@ class PostgresStore:
                      "successor_run_id": str(row["successor_run_id"]) if row["successor_run_id"] else None}
                     for row in rows[:50]], "next_offset": offset + 50 if len(rows) > 50 else None}
 
+    def stage_summary(self) -> dict:
+        with self.engine.connect().execution_options(isolation_level="REPEATABLE READ") as connection:
+            rows = connection.execute(text("""WITH latest_run AS (
+                    SELECT r.id, r.state, r.created_at, NULL::jsonb AS snapshot, 'run' AS kind
+                    FROM analysis_runs r
+                    WHERE r.purpose = 'ordinary' AND r.request_context->>'stage_id' = 'excavation'
+                    ORDER BY r.created_at DESC NULLS LAST, r.id DESC LIMIT 1
+                ), latest_result AS (
+                    SELECT r.id, r.state, r.created_at, p.snapshot, 'result' AS kind
+                    FROM analysis_runs r JOIN result_projections p ON p.run_id = r.id
+                    WHERE r.purpose = 'ordinary' AND r.state = 'succeeded'
+                      AND r.request_context->>'stage_id' = 'excavation'
+                    ORDER BY r.created_at DESC NULLS LAST, r.id DESC LIMIT 1
+                ) SELECT * FROM latest_run UNION ALL SELECT * FROM latest_result""")).mappings().all()
+        result = next((row for row in rows if row["kind"] == "result"), None)
+        latest = next((row for row in rows if row["kind"] == "run"), None)
+        newer = latest if latest and (not result or latest["id"] != result["id"]) else None
+
+        def reference(row: dict | None) -> dict | None:
+            return ({"run_id": str(row["id"]), "created_at": row["created_at"].isoformat() if row["created_at"] else None}
+                    if row else None)
+
+        return {"stages": [
+            {"stage_id": "preparation", "name": "Подготовительные работы", "supported": False,
+             "latest_result": None, "latest_lifecycle": None},
+            {"stage_id": "excavation", "name": "Земляные работы котлована", "supported": True,
+             "latest_result": {**reference(result), "projection": result["snapshot"]} if result else None,
+             "latest_lifecycle": {**reference(newer), "state": newer["state"]} if newer else None},
+            {"stage_id": "foundation", "name": "Устройство фундамента", "supported": False,
+             "latest_result": None, "latest_lifecycle": None},
+            {"stage_id": "monolithic", "name": "Монолитные работы", "supported": False,
+             "latest_result": None, "latest_lifecycle": None},
+        ]}
+
     def retry_ordinary(self, source_id: uuid.UUID, profile_id: uuid.UUID, revision: int,
                        snapshot: dict, artifacts: ArtifactStore) -> uuid.UUID:
         source_query = text("""SELECT * FROM analysis_runs WHERE id = :id AND purpose = 'ordinary'""")

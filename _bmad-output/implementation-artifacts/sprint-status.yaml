@@ -35,7 +35,7 @@ development_status:
   epic-3: in-progress
   3-1-reopen-analyses-and-their-evidence: backlog
   3-2-retry-a-failed-run-as-a-linked-successor: done
-  3-3-navigate-evidence-backed-stage-status: backlog
+  3-3-navigate-evidence-backed-stage-status: done
   3-4-explain-the-prototype-and-its-limits: backlog
   epic-3-retrospective: optional
 
