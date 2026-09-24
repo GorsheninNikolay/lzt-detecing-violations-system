@@ -44,6 +44,65 @@ def request_body(image: bytes, classes=None) -> dict:
     return body
 
 
+def test_ordinary_history_orders_and_guards_outcome(database):
+    store = database
+    first, second, running, failed, unprojected, admission, defaulted = [uuid.uuid4() for _ in range(7)]
+    with store.engine.begin() as connection:
+        for identifier, state, purpose, age, predecessor in (
+            (first, "succeeded", "ordinary", 3, None),
+            (second, "queued", "ordinary", 2, first),
+            (running, "running", "ordinary", 1, None),
+            (failed, "failed", "ordinary", 0, None),
+            (unprojected, "succeeded", "ordinary", 4, None),
+            (admission, "succeeded", "profile_admission", 0, None),
+        ):
+            connection.execute(text("""INSERT INTO analysis_runs
+                (id, state, purpose, analysis_intent, stage_key, retry_predecessor_id, created_at)
+                VALUES (:id, :state, :purpose, 'observation_only', 'excavation', :predecessor,
+                        clock_timestamp() - (:age * interval '1 hour'))"""),
+                {"id": identifier, "state": state, "purpose": purpose, "age": age, "predecessor": predecessor})
+        for identifier in (first, running, failed, admission):
+            connection.execute(text("""INSERT INTO result_projections (run_id, outcome, snapshot)
+                VALUES (:id, 'observations_only', '{"outcome":"observations_only"}'::jsonb)"""), {"id": identifier})
+        connection.execute(text("UPDATE analysis_runs SET created_at = NULL WHERE id = :id"), {"id": unprojected})
+        default_created_at = connection.execute(text("""INSERT INTO analysis_runs
+            (id, state, purpose, analysis_intent, stage_key)
+            VALUES (:id, 'queued', 'ordinary', 'observation_only', 'excavation') RETURNING created_at"""),
+            {"id": defaulted}).scalar_one()
+    try:
+        all_rows = store.list_ordinary()
+        assert str(admission) not in {row["run_id"] for row in all_rows}
+        assert next(row for row in all_rows if row["run_id"] == str(defaulted))["created_at"] == default_created_at.isoformat()
+        rows = [row for row in all_rows if row["run_id"] in {str(first), str(second), str(running), str(failed), str(unprojected)}]
+        assert [row["run_id"] for row in rows] == [str(failed), str(running), str(second), str(first), str(unprojected)]
+        assert [row["outcome"] for row in rows] == [None, None, None, "observations_only", None]
+        assert rows[-1]["created_at"] is None
+        assert rows[2]["retry_predecessor_id"] == str(first)
+        assert rows[3]["retry_successor_id"] == str(second)
+        assert store.read_ordinary(first)["retry_successor_id"] == str(second)
+        assert store.read_ordinary(second)["retry_predecessor_id"] == str(first)
+    finally:
+        with store.engine.begin() as connection:
+            connection.execute(text("DELETE FROM result_projections WHERE run_id = ANY(:ids)"), {"ids": [first, second, running, failed, unprojected, admission]})
+            connection.execute(text("DELETE FROM analysis_runs WHERE id = ANY(:ids)"), {"ids": [second, first, running, failed, unprojected, admission, defaulted]})
+
+
+def test_history_route_reads_store_without_starting_observer():
+    class Store:
+        def list_ordinary(self):
+            return [{"run_id": "persisted", "state": "queued", "outcome": None}]
+
+    async def check():
+        app = create_app()
+        app.state.store = Store()
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            response = await client.get("/runs")
+            assert response.status_code == 200
+            assert response.json() == {"runs": [{"run_id": "persisted", "state": "queued", "outcome": None}]}
+
+    asyncio.run(check())
+
+
 @pytest.mark.parametrize("after_execute", [False, True], ids=["pre-claim", "post-execution"])
 @pytest.mark.parametrize("series", [False, True], ids=["single", "series"])
 def test_runtime_recovery_preserves_active_submission(isolated_admission_database, integration, monkeypatch,

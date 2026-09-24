@@ -781,12 +781,31 @@ class PostgresStore:
                 connection.execute(text("UPDATE analysis_stages SET state = 'failed', reason = 'profile_unauthorized' WHERE run_id = :run AND ordinal = 0"), {"run": run_id})
                 connection.execute(text("UPDATE analysis_stages SET state = 'skipped', reason = 'dependency_failed' WHERE run_id = :run AND ordinal > 0"), {"run": run_id})
 
+    def list_ordinary(self) -> list[dict]:
+        with self.engine.connect() as connection:
+            rows = connection.execute(text("""SELECT r.id, r.created_at, r.stage_key, r.analysis_intent,
+                r.state, r.retry_predecessor_id, successor.id AS retry_successor_id,
+                CASE WHEN r.state = 'succeeded' THEN p.outcome END AS outcome
+                FROM analysis_runs r
+                LEFT JOIN result_projections p ON p.run_id = r.id
+                LEFT JOIN analysis_runs successor ON successor.retry_predecessor_id = r.id
+                WHERE r.purpose = 'ordinary'
+                ORDER BY r.created_at DESC NULLS LAST, r.id DESC""")).mappings().all()
+        return [{"run_id": str(row.id), "created_at": row.created_at.isoformat() if row.created_at else None,
+                 "stage": row.stage_key, "intent": row.analysis_intent or "observation_only",
+                 "state": row.state, "outcome": row.outcome,
+                 "retry_predecessor_id": str(row.retry_predecessor_id) if row.retry_predecessor_id else None,
+                 "retry_successor_id": str(row.retry_successor_id) if row.retry_successor_id else None}
+                for row in rows]
+
     def read_ordinary(self, run_id: uuid.UUID) -> dict | None:
         with self.engine.connect().execution_options(isolation_level="REPEATABLE READ") as connection:
-            row = connection.execute(text("""SELECT id, state, error_code, request_context, requested_classes,
-                profile_id, authorization_revision, binding_kind, profile_snapshot, taxonomy_snapshot,
-                analysis_intent, stage_key, policy_snapshot, rule_snapshot
-                FROM analysis_runs WHERE id = :id AND purpose = 'ordinary'"""), {"id": run_id}).one_or_none()
+            row = connection.execute(text("""SELECT r.id, r.state, r.error_code, r.request_context, r.requested_classes,
+                r.profile_id, r.authorization_revision, r.binding_kind, r.profile_snapshot, r.taxonomy_snapshot,
+                r.analysis_intent, r.stage_key, r.policy_snapshot, r.rule_snapshot, r.retry_predecessor_id,
+                successor.id AS retry_successor_id
+                FROM analysis_runs r LEFT JOIN analysis_runs successor ON successor.retry_predecessor_id = r.id
+                WHERE r.id = :id AND r.purpose = 'ordinary'"""), {"id": run_id}).one_or_none()
             if not row:
                 return None
             stages = connection.execute(text("SELECT name, state, reason FROM analysis_stages WHERE run_id = :id ORDER BY ordinal"), {"id": run_id}).mappings().all()
@@ -809,6 +828,8 @@ class PostgresStore:
                     "binding_kind": row.binding_kind, "profile_snapshot": row.profile_snapshot,
                     "taxonomy_snapshot": row.taxonomy_snapshot,
                     "intent": row.analysis_intent or "observation_only", "stage": row.stage_key,
+                    "retry_predecessor_id": str(row.retry_predecessor_id) if row.retry_predecessor_id else None,
+                    "retry_successor_id": str(row.retry_successor_id) if row.retry_successor_id else None,
                     "policy_snapshot": row.policy_snapshot, "rule_snapshot": row.rule_snapshot,
                     "stages": [dict(item) for item in stages],
                     "inputs": [{**item, "input_id": str(item["input_id"]),

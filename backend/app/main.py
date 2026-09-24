@@ -161,6 +161,10 @@ def create_app() -> FastAPI:
         except Exception:
             return JSONResponse({"code": "submission_unavailable"}, status_code=503)
 
+    @app.get("/runs")
+    async def list_runs() -> JSONResponse:
+        return JSONResponse({"runs": await asyncio.to_thread(app.state.store.list_ordinary)})
+
     @app.get("/runs/{run_id}")
     async def read_run(run_id: str) -> JSONResponse:
         try:

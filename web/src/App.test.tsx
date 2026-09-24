@@ -11,6 +11,101 @@ const snapshot = (state: string, states = Array(6).fill('pending'), reasons: Rec
   state, stages: stageNames.map((name, index) => ({ name, state: states[index], ...(reasons[index] ? { reason: reasons[index] } : {}) })),
 })
 
+describe('Analysis history', () => {
+  const first = '11111111-1111-1111-1111-111111111111'
+  const second = '22222222-2222-2222-2222-222222222222'
+  const row = (run_id: string, state: string, outcome: string | null = null) => ({
+    run_id, state, outcome, created_at: '2026-09-24T10:00:00+00:00', stage: 'excavation',
+    intent: 'observation_only', retry_predecessor_id: null, retry_successor_id: null,
+  })
+
+  beforeEach(() => history.replaceState({}, '', '/analyses'))
+
+  it('shows empty and failed loading states with a recovery action', async () => {
+    const fetchMock = vi.fn().mockRejectedValueOnce(new Error('offline'))
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ runs: [] }) })
+    vi.stubGlobal('fetch', fetchMock)
+    render(<App />)
+    expect(screen.getByText('Загружаем анализы…')).toBeTruthy()
+    expect(await screen.findByText('Не удалось загрузить анализы.')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Повторить' }))
+    expect(await screen.findByText('Запусков пока нет.')).toBeTruthy()
+    expect(screen.getAllByRole('link', { name: 'Новый анализ' })).toHaveLength(2)
+  })
+
+  it('times out a stalled history read and recovers on retry', async () => {
+    const fetchMock = vi.fn().mockImplementationOnce(() => new Promise<Response>(() => {}))
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ runs: [] }) })
+    vi.stubGlobal('fetch', fetchMock)
+    vi.useFakeTimers()
+    await act(async () => { render(<App />) })
+    expect(screen.getByText('Загружаем анализы…')).toBeTruthy()
+    await act(async () => { await vi.advanceTimersByTimeAsync(10000) })
+    expect(screen.getByText('Не удалось загрузить анализы.')).toBeTruthy()
+    expect(fetchMock.mock.calls[0][1].signal.aborted).toBe(true)
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Повторить' })) })
+    expect(screen.getByText('Запусков пока нет.')).toBeTruthy()
+  })
+
+  it('loads fresh server order when returning to history', async () => {
+    let reads = 0
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => url === '/api/runs'
+      ? { ok: true, json: async () => ({ runs: ++reads === 1 ? [row(first, 'queued'), row(second, 'queued')] : [row(second, 'queued'), row(first, 'queued')] }) }
+      : { ok: true, json: async () => snapshot('succeeded') }))
+    render(<App />)
+    await screen.findByRole('link', { name: `Анализ ${first}` })
+    fireEvent.click(screen.getByRole('link', { name: `Анализ ${first}` }))
+    await screen.findByRole('heading', { name: 'Анализ завершён' })
+    fireEvent.click(screen.getByRole('link', { name: 'Анализы' }))
+    await waitFor(() => expect(screen.getAllByRole('link', { name: /^Анализ / }).map(link => link.textContent))
+      .toEqual([`Анализ ${second}`, `Анализ ${first}`]))
+  })
+
+  it('retains order and focus on polling, guards unfinished outcomes, and reopens a workspace', async () => {
+    const initial = [
+      { ...row(first, 'queued'), retry_successor_id: second },
+      { ...row(second, 'succeeded', 'no_check'), retry_predecessor_id: first, stage: 'other', intent: 'rule_evaluation' },
+    ]
+    const third = '33333333-3333-3333-3333-333333333333'
+    const changed = [row(third, 'queued'), initial[1], { ...initial[0], state: 'running', outcome: 'no_check' }]
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url !== '/api/runs') return { ok: true, json: async () => snapshot('succeeded') }
+      const count = fetchMock.mock.calls.filter(call => call[0] === '/api/runs').length
+      if (count > 2) throw new Error('offline')
+      return { ok: true, json: async () => ({ runs: count === 1 ? initial : changed }) }
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    vi.useFakeTimers()
+    await act(async () => { render(<App />) })
+    const links = () => screen.getAllByRole('link', { name: /^Анализ / })
+    expect(links().map(link => link.textContent)).toEqual([`Анализ ${first}`, `Анализ ${second}`])
+    const succeededRow = links()[1].closest('li')!
+    expect(within(succeededRow).getByText('Другой этап')).toBeTruthy()
+    expect(within(succeededRow).getByText('Проверить правило этапа')).toBeTruthy()
+    expect(within(succeededRow).getByText('Завершён')).toBeTruthy()
+    expect(within(succeededRow).getByText('Проверка не запрошена')).toBeTruthy()
+    expect(within(succeededRow).getByText('Итог')).toBeTruthy()
+    expect(within(succeededRow).getByText(first)).toBeTruthy()
+    expect(within(succeededRow).getByText('Создан')).toBeTruthy()
+    expect(succeededRow.querySelector('time')?.getAttribute('datetime')).toBe(initial[1].created_at)
+    expect(within(links()[0].closest('li')!).getByText(second)).toBeTruthy()
+    const selected = links()[0]
+    selected.focus()
+    await act(async () => { await vi.advanceTimersByTimeAsync(3000) })
+    expect(links().map(link => link.textContent)).toEqual([`Анализ ${first}`, `Анализ ${second}`, `Анализ ${third}`])
+    expect(document.activeElement).toBe(selected)
+    expect(within(links()[0].closest('li')!).queryByText('Проверка не запрошена')).toBeNull()
+    expect(within(links()[0].closest('li')!).queryByText('Итог')).toBeNull()
+    await act(async () => { await vi.advanceTimersByTimeAsync(3000) })
+    expect(screen.getByText('Не удалось загрузить анализы.')).toBeTruthy()
+    expect(links()).toHaveLength(3)
+    await act(async () => { fireEvent.click(selected) })
+    vi.useRealTimers()
+    expect(await screen.findByRole('heading', { name: 'Анализ завершён' })).toBeTruthy()
+    expect(fetchMock.mock.calls.some(call => call[0] === `/api/runs/${first}`)).toBe(true)
+  })
+})
+
 describe('Observation result', () => {
   const runId = '12345678-1234-1234-1234-123456789abc'
   const inputs = [0, 1].map(ordinal => ({ input_id: `input-${ordinal}`, ordinal, sha256: `hash-${ordinal}`, artifact_id: `image-${ordinal}` }))
