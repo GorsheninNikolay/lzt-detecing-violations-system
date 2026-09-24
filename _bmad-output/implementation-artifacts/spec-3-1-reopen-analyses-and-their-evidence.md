@@ -119,6 +119,6 @@ Files changed: `backend/migrations/versions/0007_run_history.py` adds timestamps
 
 Review: eight distinct patch groups resolved (nine medium and one low finding across reviewers); two unverified risks deferred in frontmatter. Five findings rejected because current application has no retry-link writer, or because the existing workspace is reused under a no-GUI constraint. See Review Triage Log for each finding and reason.
 
-Verification: isolated PostgreSQL migrated to head; 2 focused backend SQL/API tests passed; 56 web tests passed; web build passed; sprint-status validation passed; `git diff --check` passed. The wider backend suite requires separate S3 integration configuration and was not run to completion. Real browser rendering and deployed runtime were not verified.
+Verification: isolated PostgreSQL migrated to head; 2 focused backend SQL/API tests passed; 56 web tests passed; web build passed; sprint-status validation passed; `git diff --check` passed. On 2026-09-24, the complete backend suite passed (99/99 in 78.53 seconds) using the isolated `evidence_test` database, `evidence-test` MinIO bucket, and pinned offline model snapshot. Real browser rendering and deployed runtime were not verified.
 
 Follow-up review recommended: true. Review the history page against a real browser and backend with persisted evidence when GUI verification is available; the current run is limited to CLI and test surfaces.
