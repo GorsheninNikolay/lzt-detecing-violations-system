@@ -1,0 +1,261 @@
+{
+  "schema_revision": "held-out-evaluation-v1",
+  "source_url": "https://www.kaggle.com/datasets/xyzyxzzxy/construction-equipment/data",
+  "source_archive_sha256": "215e3364701c60dcb9ebf12081083a14822b36da3ebd29484f641c8e98e88169",
+  "declared_license": "CC0",
+  "cloud_upload_authorization": "Owner authorized 11 additional CC0 frames for Yandex AI Studio on 2026-09-24",
+  "provenance_caveat": "Original capture and camera ownership remain unverified; numeric filename prefix is used as conservative source-group exclusion unit.",
+  "label_caveat": "YOLO class 0=dump truck and 1=excavator; selected images were visually reviewed with a non-GUI tool. Ground-truth labels remain provisional pending independent human adjudication.",
+  "scenarios": {
+    "single_both": {
+      "expected_outcome": "observations_only",
+      "requested_classes": [
+        "excavator",
+        "dump_truck"
+      ]
+    },
+    "single_excavator": {
+      "expected_outcome": "observations_only",
+      "requested_classes": [
+        "excavator",
+        "dump_truck"
+      ]
+    },
+    "positive_series": {
+      "expected_outcome": "no_check",
+      "requested_classes": [
+        "excavator",
+        "dump_truck"
+      ]
+    },
+    "check_request_series": {
+      "expected_outcome": "check_requested",
+      "requested_classes": [
+        "excavator",
+        "dump_truck"
+      ]
+    },
+    "insufficient_series": {
+      "expected_outcome": "insufficient_data",
+      "requested_classes": [
+        "excavator",
+        "dump_truck"
+      ]
+    },
+    "out_of_scope": {
+      "expected_outcome": "not_analyzed",
+      "requested_classes": [
+        "crane"
+      ]
+    }
+  },
+  "frames": [
+    {
+      "ordinal": 0,
+      "id": "1626_15_06_18_898289-2023-11-09",
+      "scenario": "single_both",
+      "source_group": "1626",
+      "image": {
+        "archive_member": "valid/images/1626_15_06_18_898289-2023-11-09.jpg",
+        "sha256": "87409562ee727490f0791ebbfbe2d5e2e0ae65cf462fb77fbcd5819795dabd5d",
+        "size": 2188543
+      },
+      "label": {
+        "archive_member": "valid/labels/1626_15_06_18_898289-2023-11-09.txt",
+        "sha256": "169723395404917a7cca32786263f46108ed6dca67a9671228906203004c6e25",
+        "size": 114
+      },
+      "expected_classes": [
+        "excavator",
+        "dump_truck"
+      ]
+    },
+    {
+      "ordinal": 1,
+      "id": "1231_15_26_28_442592-2023-11-09",
+      "scenario": "single_excavator",
+      "source_group": "1231",
+      "image": {
+        "archive_member": "train/images/1231_15_26_28_442592-2023-11-09.jpg",
+        "sha256": "afcbec7b9fbcbd354e7cf6f77d3c18e1c236267354a0151885a84e6b0c78d260",
+        "size": 1078483
+      },
+      "label": {
+        "archive_member": "train/labels/1231_15_26_28_442592-2023-11-09.txt",
+        "sha256": "af5b22111866eb55a7db130e13a96ae561d8a913d2a03da2036d207a1ef4344e",
+        "size": 38
+      },
+      "expected_classes": [
+        "excavator"
+      ]
+    },
+    {
+      "ordinal": 2,
+      "id": "238_10_38_13_280077-2023-09-22",
+      "scenario": "positive_series",
+      "source_group": "238",
+      "image": {
+        "archive_member": "train/images/238_10_38_13_280077-2023-09-22.jpg",
+        "sha256": "53823acff97c4c13845d181fe0642f64b6f80f25dd884f7421037ca9ebbfe619",
+        "size": 1019421
+      },
+      "label": {
+        "archive_member": "train/labels/238_10_38_13_280077-2023-09-22.txt",
+        "sha256": "a8154ef9908c08b83603bddc1149b6b5f7a3617fd7e71afea31df5be14ac703a",
+        "size": 76
+      },
+      "expected_classes": [
+        "excavator",
+        "dump_truck"
+      ]
+    },
+    {
+      "ordinal": 3,
+      "id": "238_10_38_13_846358-2023-09-22",
+      "scenario": "positive_series",
+      "source_group": "238",
+      "image": {
+        "archive_member": "train/images/238_10_38_13_846358-2023-09-22.jpg",
+        "sha256": "384fba0a27ecf8e54c5eefceeeb5ece6fe6f5abfa1747ec92285104323586305",
+        "size": 1024803
+      },
+      "label": {
+        "archive_member": "train/labels/238_10_38_13_846358-2023-09-22.txt",
+        "sha256": "8a15d4908afaaef4e04365e4efedf4034e085405d330027f71e53ceb05a13f97",
+        "size": 76
+      },
+      "expected_classes": [
+        "excavator",
+        "dump_truck"
+      ]
+    },
+    {
+      "ordinal": 4,
+      "id": "238_10_38_15_094767-2023-09-22",
+      "scenario": "positive_series",
+      "source_group": "238",
+      "image": {
+        "archive_member": "train/images/238_10_38_15_094767-2023-09-22.jpg",
+        "sha256": "b082c59de661f02a7c02480090a0f34841d7f3ecff75c9d93329638034ec2cad",
+        "size": 1018307
+      },
+      "label": {
+        "archive_member": "train/labels/238_10_38_15_094767-2023-09-22.txt",
+        "sha256": "ea01f7657b0d60fe6ae703544cf736fb94ad44527a50355c006134a904f22989",
+        "size": 76
+      },
+      "expected_classes": [
+        "excavator",
+        "dump_truck"
+      ]
+    },
+    {
+      "ordinal": 5,
+      "id": "1624_08_00_34_256477-2023-11-10",
+      "scenario": "check_request_series",
+      "source_group": "1624",
+      "image": {
+        "archive_member": "train/images/1624_08_00_34_256477-2023-11-10.jpg",
+        "sha256": "53959e468a0d24c756415694a2d23a8e97ab2ce7c867453c4f8933d60ca28054",
+        "size": 2346223
+      },
+      "label": {
+        "archive_member": "train/labels/1624_08_00_34_256477-2023-11-10.txt",
+        "sha256": "966f2a2b53e10e120520d22f75dad9b6807cc988621d974b39ca7281564b6947",
+        "size": 38
+      },
+      "expected_classes": [
+        "excavator"
+      ]
+    },
+    {
+      "ordinal": 6,
+      "id": "1624_08_00_44_761471-2023-11-10",
+      "scenario": "check_request_series",
+      "source_group": "1624",
+      "image": {
+        "archive_member": "train/images/1624_08_00_44_761471-2023-11-10.jpg",
+        "sha256": "c287db0518d2290da808a62b7e529a6e191c350863c2deac9bd9b47d25a65ee2",
+        "size": 2346957
+      },
+      "label": {
+        "archive_member": "train/labels/1624_08_00_44_761471-2023-11-10.txt",
+        "sha256": "57f1489200988cc074fc978583001ee7bac53d0331b3cc9b020fba61f06b97e1",
+        "size": 38
+      },
+      "expected_classes": [
+        "excavator"
+      ]
+    },
+    {
+      "ordinal": 7,
+      "id": "1624_08_00_51_744872-2023-11-10",
+      "scenario": "check_request_series",
+      "source_group": "1624",
+      "image": {
+        "archive_member": "train/images/1624_08_00_51_744872-2023-11-10.jpg",
+        "sha256": "aedbd201f651f65f450f834e73bb9425891e1a150522b6dcd0caed2e8e76fa59",
+        "size": 2340345
+      },
+      "label": {
+        "archive_member": "train/labels/1624_08_00_51_744872-2023-11-10.txt",
+        "sha256": "7419543e1ea14e4ba2a23d2df8e95e0e7210a243d4229d81e89f0789a83c29e6",
+        "size": 38
+      },
+      "expected_classes": [
+        "excavator"
+      ]
+    },
+    {
+      "ordinal": 8,
+      "id": "227_04_56_23_695394-2023-11-10",
+      "scenario": "insufficient_series",
+      "source_group": "227",
+      "image": {
+        "archive_member": "train/images/227_04_56_23_695394-2023-11-10.jpg",
+        "sha256": "3e9a4894b829bff22721ddc2ad2145e0909372b5c391b7b5d2339f5febdfdcf4",
+        "size": 724515
+      },
+      "label": {
+        "archive_member": "train/labels/227_04_56_23_695394-2023-11-10.txt",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "size": 0
+      },
+      "expected_classes": []
+    },
+    {
+      "ordinal": 9,
+      "id": "227_04_59_07_646152-2023-11-10",
+      "scenario": "insufficient_series",
+      "source_group": "227",
+      "image": {
+        "archive_member": "train/images/227_04_59_07_646152-2023-11-10.jpg",
+        "sha256": "fb227c99fbbb60a452c7c6059c7eab402c8ef93a2fc702bc04de09f5fc00629f",
+        "size": 690200
+      },
+      "label": {
+        "archive_member": "train/labels/227_04_59_07_646152-2023-11-10.txt",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "size": 0
+      },
+      "expected_classes": []
+    },
+    {
+      "ordinal": 10,
+      "id": "1821_07_25_53_183875-2023-11-10",
+      "scenario": "out_of_scope",
+      "source_group": "1821",
+      "image": {
+        "archive_member": "train/images/1821_07_25_53_183875-2023-11-10.jpg",
+        "sha256": "ade899097a43b540c4dd4a6b359517051387904c3aea15cf47dd952ccf57d74e",
+        "size": 1531008
+      },
+      "label": {
+        "archive_member": "train/labels/1821_07_25_53_183875-2023-11-10.txt",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "size": 0
+      },
+      "expected_classes": []
+    }
+  ]
+}

@@ -4,6 +4,7 @@ import argparse
 import hashlib
 import json
 import os
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
 from cloud_api import CloudObserverError, observe
@@ -16,9 +17,14 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--folder-id", required=True)
     parser.add_argument("--allow-cloud-upload", action="store_true")
-    parser.add_argument("--confirmed-grant-rub", type=float, required=True)
+    parser.add_argument("--confirmed-grant-rub", required=True)
+    parser.add_argument("--reasoning-effort", choices=("none", "medium"), default="medium")
     args = parser.parse_args()
-    if not args.allow_cloud_upload or args.confirmed_grant_rub <= 0:
+    try:
+        balance = Decimal(args.confirmed_grant_rub)
+    except InvalidOperation:
+        parser.error("confirmed grant balance must be a number")
+    if not args.allow_cloud_upload or not balance.is_finite() or balance <= 0:
         parser.error("cloud upload permission and positive verified grant balance are required")
     api_key = os.environ.get("YC_AI_API_KEY")
     if not api_key:
@@ -34,7 +40,7 @@ def main() -> None:
         if len(image) != entry["size"] or hashlib.sha256(image).hexdigest() != entry["sha256"]:
             raise CloudObserverError("fixture_hash_mismatch")
         try:
-            result = observe(image, args.folder_id, api_key)
+            result = observe(image, args.folder_id, api_key, reasoning_effort=args.reasoning_effort)
             predicted = {name for name, state in result["states"].items() if state == "detected"}
             expected = set(fixture["expected_classes"])
             results.append({"fixture_id": fixture["id"], **result,

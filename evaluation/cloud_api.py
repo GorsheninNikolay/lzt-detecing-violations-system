@@ -64,10 +64,14 @@ def normalize_response(payload: dict, model_uri: str, latency_ms: float) -> dict
     }
 
 
-def observe(image: bytes, folder_id: str, api_key: str, timeout_seconds: float = 60) -> dict:
+def observe(image: bytes, folder_id: str, api_key: str, timeout_seconds: float = 60,
+            reasoning_effort: str = "medium") -> dict:
+    if reasoning_effort not in {"none", "medium"}:
+        raise ValueError("unsupported_reasoning_effort")
     model_uri = f"gpt://{folder_id}/{MODEL}"
     body = json.dumps({
         "model": model_uri, "store": False, "text": {"format": RESPONSE_FORMAT},
+        "reasoning": {"effort": reasoning_effort},
         "input": [{"role": "user", "content": [
             {"type": "input_text", "text": PROMPT},
             {"type": "input_image", "image_url": "data:image/jpeg;base64," + base64.b64encode(image).decode(),
@@ -89,4 +93,6 @@ def observe(image: bytes, folder_id: str, api_key: str, timeout_seconds: float =
         raise CloudObserverError("observer_timeout_or_transport_failed") from None
     except (ValueError, UnicodeError):
         raise CloudObserverError("observation_normalization_failed") from None
-    return normalize_response(payload, model_uri, (time.monotonic() - started) * 1000)
+    result = normalize_response(payload, model_uri, (time.monotonic() - started) * 1000)
+    result["reasoning_effort"] = reasoning_effort
+    return result
