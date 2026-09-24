@@ -674,6 +674,56 @@ beforeEach(() => {
 })
 afterEach(() => { vi.useRealTimers(); cleanup(); vi.unstubAllGlobals(); vi.restoreAllMocks() })
 
+describe('About project', () => {
+  it('opens directly without API reads and explains the bounded outcomes and source', async () => {
+    history.replaceState({}, '', '/about')
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+    const { container } = render(<App />)
+    expect(screen.getByRole('heading', { name: 'Контроль строительства' })).toBeTruthy()
+    expect(document.title).toBe('О проекте — Контроль строительства')
+    expect(screen.getByText(/пригодных кадров должно быть минимум три/)).toBeTruthy()
+    expect(screen.getByText(/все наблюдения обязательных классов/)).toBeTruthy()
+    expect(screen.getByText(/Это не доказательство нарушения/)).toBeTruthy()
+    expect(screen.getByText(/не доказывает отсутствие техники на всей площадке/)).toBeTruthy()
+    expect(screen.getByText(/Только распознать технику/)).toBeTruthy()
+    expect(screen.getByText(/organizer-archive-site-85-94/)).toBeTruthy()
+    expect(screen.getByText(/PNG-файлы преобразованы в JPEG-копии/)).toBeTruthy()
+    expect(screen.getByText(/при одном лишь распознавании или недостатке данных такие кадры не выбираются/)).toBeTruthy()
+    expect(screen.getByText(/потокам камер/)).toBeTruthy()
+    expect(screen.getByText('Команда:', { exact: false })).toBeTruthy()
+    expect(fetchMock).not.toHaveBeenCalled()
+    const logo = container.querySelector('.about-team img') as HTMLImageElement
+    fireEvent.error(logo)
+    expect(logo.hidden).toBe(true)
+    expect(screen.getByText('Команда:', { exact: false })).toBeTruthy()
+    await userEvent.setup().click(screen.getByRole('link', { name: 'Вернуться назад' }))
+    expect(location.pathname).toBe('/')
+    expect(history.state?.aboutFromApp).toBeUndefined()
+  })
+
+  it('opens from secondary navigation and team attribution with heading focus and a return path', async () => {
+    history.replaceState({}, '', '/')
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => ({ stages: [] }) })))
+    const user = userEvent.setup()
+    render(<App />)
+    const secondary = screen.getByRole('navigation', { name: 'Дополнительная навигация' })
+    expect(within(screen.getByRole('navigation', { name: 'Основная навигация' })).queryByRole('link', { name: 'О проекте' })).toBeNull()
+    await user.click(within(secondary).getByRole('link', { name: 'О проекте' }))
+    expect(document.activeElement).toBe(screen.getByRole('heading', { name: 'Контроль строительства' }))
+    expect(screen.getByRole('link', { name: 'О проекте' }).getAttribute('aria-current')).toBe('page')
+    await user.click(screen.getByRole('link', { name: 'Вернуться назад' }))
+    await waitFor(() => expect(location.pathname).toBe('/'))
+    history.forward()
+    await waitFor(() => expect(location.pathname).toBe('/about'))
+    history.back()
+    await waitFor(() => expect(location.pathname).toBe('/'))
+    await user.click(screen.getByRole('link', { name: '17 мгновений ИИ' }))
+    expect(location.pathname).toBe('/about')
+    expect(document.activeElement).toBe(screen.getByRole('heading', { name: 'Контроль строительства' }))
+  })
+})
+
 describe('Stages Overview', () => {
   const completed = '12345678-1234-1234-1234-123456789abc'
   const newer = '22345678-1234-1234-1234-123456789abc'

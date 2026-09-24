@@ -4,7 +4,7 @@
 # Retrospective: optional, done
 # Action item: open, in-progress, done
 generated: 09-22-2026 21:57
-last_updated: 09-24-2026 20:37
+last_updated: 09-24-2026 21:12
 project: lzt-detecing-violations-system
 project_key: NOKEY
 tracking_system: file-system
@@ -36,7 +36,7 @@ development_status:
   3-1-reopen-analyses-and-their-evidence: done
   3-2-retry-a-failed-run-as-a-linked-successor: done
   3-3-navigate-evidence-backed-stage-status: done
-  3-4-explain-the-prototype-and-its-limits: backlog
+  3-4-explain-the-prototype-and-its-limits: done
   epic-3-retrospective: optional
 
   epic-4: backlog
