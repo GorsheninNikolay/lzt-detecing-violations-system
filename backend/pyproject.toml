@@ -21,6 +21,7 @@ test = ["pytest==9.0.2", "httpx==0.28.1"]
 [project.scripts]
 evidence-service = "app.main:serve"
 evidence-admission = "app.application.admission:main"
+evidence-evaluation = "app.application.evaluation:main"
 
 [build-system]
 requires = ["hatchling==1.29.0"]

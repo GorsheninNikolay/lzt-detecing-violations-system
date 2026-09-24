@@ -2,13 +2,17 @@ from alembic.runtime.migration import MigrationContext
 from alembic.script import ScriptDirectory
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
+import fcntl
+import hashlib
 import json
 import math
+import tempfile
 import uuid
 from pathlib import Path
 from time import monotonic
 
 from app.domain.observations import CLASSES, STAGES, normalized_states
+from app.domain.evaluation_set import inspect_evaluation_set, reserve_held_out_inventory
 from app.profiles import grounding_dino
 from app.profiles.grounding_dino import canonical_bytes, digest
 from app.adapters.artifacts import ArtifactGateError, ArtifactStore
@@ -31,6 +35,10 @@ class AdmissionStoreError(RuntimeError):
     pass
 
 
+class EvaluationStoreError(RuntimeError):
+    pass
+
+
 LOCK_ID = 804298270113
 
 
@@ -41,6 +49,54 @@ class PostgresStore:
 
     def close(self) -> None:
         self.engine.dispose()
+
+    def freeze_evaluation_set(self, manifest_path: Path, archive_path: Path, inventory_paths: list[Path],
+                              contract_path: Path, admission_path: Path, historical_path: Path) -> tuple[dict, uuid.UUID | None]:
+        held_out = next((path for path in inventory_paths if path.stem == "held_out_evaluation"), None)
+        lock_target = held_out or manifest_path
+        lock_name = hashlib.sha256(str(lock_target.resolve()).encode()).hexdigest()[:24]
+        lock_path = Path(tempfile.gettempdir()) / f"evaluation-inventory-{lock_name}.lock"
+        with lock_path.open("a+b") as file_lock:
+            fcntl.flock(file_lock, fcntl.LOCK_EX)
+            with self.engine.begin() as connection:
+                connection.execute(text("SELECT pg_advisory_xact_lock(:id)"), {"id": LOCK_ID + 1})
+                decision = inspect_evaluation_set(manifest_path, archive_path, inventory_paths,
+                                                  contract_path, admission_path, historical_path)
+                if decision["status"] == "accepted":
+                    # Reserve before commit: a failed insert leaves a conservative exclusion, never an exposed fixture.
+                    reserve_held_out_inventory(held_out, decision["manifest"], decision["manifest_hash"])
+                revision_id = self._record_evaluation_decision(connection, decision)
+        return decision, revision_id
+
+    def _record_evaluation_decision(self, connection, decision: dict) -> uuid.UUID | None:
+        """Persist a byte-free rejection or atomically append a frozen revision."""
+        revision_id = None
+        if decision["status"] == "accepted":
+            if decision.get("errors") or not decision.get("manifest"):
+                raise EvaluationStoreError("evaluation_decision_invalid")
+            if connection.execute(text("SELECT 1 FROM evaluation_set_revisions WHERE manifest_hash = :hash"),
+                                  {"hash": decision["manifest_hash"]}).first():
+                raise EvaluationStoreError("evaluation_revision_already_frozen")
+            revision_id = uuid.uuid4()
+            connection.execute(text("""INSERT INTO evaluation_set_revisions
+                (id, revision_number, manifest_hash, manifest, inventory_evidence)
+                VALUES (:id, (SELECT coalesce(max(revision_number), 0) + 1 FROM evaluation_set_revisions),
+                        :hash, CAST(:manifest AS jsonb), CAST(:evidence AS jsonb))"""),
+                {"id": revision_id, "hash": decision["manifest_hash"],
+                 "manifest": json.dumps(decision["manifest"]),
+                 "evidence": json.dumps(decision["inventory_evidence"])})
+        connection.execute(text("""INSERT INTO evaluation_freeze_decisions
+            (id, revision_id, manifest_hash, status, inventory_evidence, errors)
+            VALUES (:id, :revision, :hash, :status, CAST(:evidence AS jsonb), CAST(:errors AS jsonb))"""),
+            {"id": uuid.uuid4(), "revision": revision_id, "hash": decision["manifest_hash"],
+             "status": decision["status"], "evidence": json.dumps(decision["inventory_evidence"]),
+             "errors": json.dumps(decision["errors"])})
+        return revision_id
+
+    def bind_evaluation_report(self, report_id: uuid.UUID, revision_id: uuid.UUID) -> None:
+        with self.engine.begin() as connection:
+            connection.execute(text("""INSERT INTO evaluation_report_bindings (report_id, revision_id)
+                VALUES (:report, :revision)"""), {"report": report_id, "revision": revision_id})
 
     def check_head_and_smoke(self, migrations_path: str) -> None:
         try:

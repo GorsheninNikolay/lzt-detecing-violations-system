@@ -1,11 +1,615 @@
 {
+  "source_archive_sha256": "215e3364701c60dcb9ebf12081083a14822b36da3ebd29484f641c8e98e88169",
+  "frames": [
+    {
+      "ordinal": 0,
+      "scenario": "single_both",
+      "id": "648_07_33_54_619011-2023-11-10",
+      "source_group_candidate": "648",
+      "image": {
+        "archive_member": "train/images/648_07_33_54_619011-2023-11-10.jpg",
+        "sha256": "3a92873a0b2a65f561431d0a9e4376a11f1fe16483e25853be30cb533b936c4d",
+        "size": 783404
+      },
+      "label": {
+        "archive_member": "train/labels/648_07_33_54_619011-2023-11-10.txt",
+        "sha256": "65eabd457d8b7c7255b2017c9e7ef58ffc8daef5f7a6a50e0c66887a2af6112a",
+        "size": 114
+      },
+      "provisional_labels": {
+        "excavator": "yes",
+        "dump_truck": "yes"
+      },
+      "source_site_camera_time_sequence_group": "kaggle-construction-equipment:source-prefix:648",
+      "group_evidence": {
+        "archive_sha256": "215e3364701c60dcb9ebf12081083a14822b36da3ebd29484f641c8e98e88169",
+        "conservative_source_prefix": "648",
+        "owner_review_file": "human-review-2026-09-24.json",
+        "same_area_response": null,
+        "limit": "Broad exclusion group; exact site and camera identity unavailable."
+      },
+      "manual_labels": {
+        "excavator": "yes",
+        "dump_truck": "yes"
+      },
+      "adjudicator": "project owner",
+      "adjudicated_at": "2026-09-24T19:10:27.731Z",
+      "context": {
+        "analysis_intent": "observations_only",
+        "requested_classes": [
+          "excavator",
+          "dump_truck"
+        ],
+        "observation_area": "review-area-648-single_both",
+        "area_relation": "single_frame",
+        "capture_site_camera": "unverified",
+        "expected_outcome": "observations_only"
+      },
+      "source_rights": {
+        "status": "owner_approved_with_caveat",
+        "evidence": "owner-attestation-2026-09-24.json",
+        "caveat": "Kaggle declares CC0; original capture and camera ownership remain unverified."
+      },
+      "cloud_upload_permission": true,
+      "sufficiency_notes": "One usable frame for observation-only; both target classes confirmed by owner.",
+      "usable": true
+    },
+    {
+      "ordinal": 1,
+      "scenario": "single_excavator",
+      "id": "648_07_16_43_397007-2023-11-10",
+      "source_group_candidate": "648",
+      "image": {
+        "archive_member": "train/images/648_07_16_43_397007-2023-11-10.jpg",
+        "sha256": "4e5885330ae96c9fb668dd9e1643d966c6431a74b2034f212890302887c0110e",
+        "size": 466638
+      },
+      "label": {
+        "archive_member": "train/labels/648_07_16_43_397007-2023-11-10.txt",
+        "sha256": "f22aafc1d4aae75815960e46f3461d2db99f6f1d0a818d5d786c95319b45b0d3",
+        "size": 76
+      },
+      "provisional_labels": {
+        "excavator": "yes",
+        "dump_truck": "no"
+      },
+      "source_site_camera_time_sequence_group": "kaggle-construction-equipment:source-prefix:648",
+      "group_evidence": {
+        "archive_sha256": "215e3364701c60dcb9ebf12081083a14822b36da3ebd29484f641c8e98e88169",
+        "conservative_source_prefix": "648",
+        "owner_review_file": "human-review-2026-09-24.json",
+        "same_area_response": null,
+        "limit": "Broad exclusion group; exact site and camera identity unavailable."
+      },
+      "manual_labels": {
+        "excavator": "yes",
+        "dump_truck": "no"
+      },
+      "adjudicator": "project owner",
+      "adjudicated_at": "2026-09-24T19:10:27.731Z",
+      "context": {
+        "analysis_intent": "observations_only",
+        "requested_classes": [
+          "excavator",
+          "dump_truck"
+        ],
+        "observation_area": "review-area-648-single_excavator",
+        "area_relation": "single_frame",
+        "capture_site_camera": "unverified",
+        "expected_outcome": "observations_only"
+      },
+      "source_rights": {
+        "status": "owner_approved_with_caveat",
+        "evidence": "owner-attestation-2026-09-24.json",
+        "caveat": "Kaggle declares CC0; original capture and camera ownership remain unverified."
+      },
+      "cloud_upload_permission": true,
+      "sufficiency_notes": "One usable frame for observation-only; excavator confirmed and dump truck absent by owner.",
+      "usable": true
+    },
+    {
+      "ordinal": 2,
+      "scenario": "positive_series",
+      "id": "648_08_15_24_542473-2023-11-10",
+      "source_group_candidate": "648",
+      "image": {
+        "archive_member": "train/images/648_08_15_24_542473-2023-11-10.jpg",
+        "sha256": "e4b44dc1eb8e6469e371d5ed3fdf588d67de1271b166c96ecd9f6a7156fe0242",
+        "size": 985529
+      },
+      "label": {
+        "archive_member": "train/labels/648_08_15_24_542473-2023-11-10.txt",
+        "sha256": "5bbf999fda3e6fb92869df65373480e20292cc507ae5314a3a1123d70e28e269",
+        "size": 191
+      },
+      "provisional_labels": {
+        "excavator": "yes",
+        "dump_truck": "yes"
+      },
+      "source_site_camera_time_sequence_group": "kaggle-construction-equipment:source-prefix:648",
+      "group_evidence": {
+        "archive_sha256": "215e3364701c60dcb9ebf12081083a14822b36da3ebd29484f641c8e98e88169",
+        "conservative_source_prefix": "648",
+        "owner_review_file": "human-review-2026-09-24.json",
+        "same_area_response": "Да",
+        "limit": "Broad exclusion group; exact site and camera identity unavailable."
+      },
+      "manual_labels": {
+        "excavator": "yes",
+        "dump_truck": "yes"
+      },
+      "adjudicator": "project owner",
+      "adjudicated_at": "2026-09-24T19:10:27.731Z",
+      "context": {
+        "analysis_intent": "excavation_rule",
+        "requested_classes": [
+          "excavator",
+          "dump_truck"
+        ],
+        "observation_area": "review-area-648-positive_series",
+        "area_relation": "Да",
+        "capture_site_camera": "unverified",
+        "expected_outcome": "no_check"
+      },
+      "source_rights": {
+        "status": "owner_approved_with_caveat",
+        "evidence": "owner-attestation-2026-09-24.json",
+        "caveat": "Kaggle declares CC0; original capture and camera ownership remain unverified."
+      },
+      "cloud_upload_permission": true,
+      "sufficiency_notes": "Three usable ordered frames from one owner-confirmed observation area; both classes confirmed in each.",
+      "usable": true
+    },
+    {
+      "ordinal": 3,
+      "scenario": "positive_series",
+      "id": "648_08_15_46_190803-2023-11-10",
+      "source_group_candidate": "648",
+      "image": {
+        "archive_member": "train/images/648_08_15_46_190803-2023-11-10.jpg",
+        "sha256": "b93d35c78a4d513159c8b492e5a18af4fa96ee2cdff0e15bc53df6cb6581b689",
+        "size": 977006
+      },
+      "label": {
+        "archive_member": "train/labels/648_08_15_46_190803-2023-11-10.txt",
+        "sha256": "2e68fca4452bc7ad1e3efeaad5cd0f8cd6505738184e41c079cc341c835de5a6",
+        "size": 153
+      },
+      "provisional_labels": {
+        "excavator": "yes",
+        "dump_truck": "yes"
+      },
+      "source_site_camera_time_sequence_group": "kaggle-construction-equipment:source-prefix:648",
+      "group_evidence": {
+        "archive_sha256": "215e3364701c60dcb9ebf12081083a14822b36da3ebd29484f641c8e98e88169",
+        "conservative_source_prefix": "648",
+        "owner_review_file": "human-review-2026-09-24.json",
+        "same_area_response": "Да",
+        "limit": "Broad exclusion group; exact site and camera identity unavailable."
+      },
+      "manual_labels": {
+        "excavator": "yes",
+        "dump_truck": "yes"
+      },
+      "adjudicator": "project owner",
+      "adjudicated_at": "2026-09-24T19:10:27.731Z",
+      "context": {
+        "analysis_intent": "excavation_rule",
+        "requested_classes": [
+          "excavator",
+          "dump_truck"
+        ],
+        "observation_area": "review-area-648-positive_series",
+        "area_relation": "Да",
+        "capture_site_camera": "unverified",
+        "expected_outcome": "no_check"
+      },
+      "source_rights": {
+        "status": "owner_approved_with_caveat",
+        "evidence": "owner-attestation-2026-09-24.json",
+        "caveat": "Kaggle declares CC0; original capture and camera ownership remain unverified."
+      },
+      "cloud_upload_permission": true,
+      "sufficiency_notes": "Three usable ordered frames from one owner-confirmed observation area; both classes confirmed in each.",
+      "usable": true
+    },
+    {
+      "ordinal": 4,
+      "scenario": "positive_series",
+      "id": "648_08_16_17_892116-2023-11-10",
+      "source_group_candidate": "648",
+      "image": {
+        "archive_member": "train/images/648_08_16_17_892116-2023-11-10.jpg",
+        "sha256": "41a68a6a020119979f0a9b9138110745589c9bf8df3a96ee5e8f3239f6784a81",
+        "size": 976417
+      },
+      "label": {
+        "archive_member": "train/labels/648_08_16_17_892116-2023-11-10.txt",
+        "sha256": "e1a883b91da1c0a8ee11decd61f3a1d28e783bfd7a2e41ecc004591181deebd3",
+        "size": 115
+      },
+      "provisional_labels": {
+        "excavator": "yes",
+        "dump_truck": "yes"
+      },
+      "source_site_camera_time_sequence_group": "kaggle-construction-equipment:source-prefix:648",
+      "group_evidence": {
+        "archive_sha256": "215e3364701c60dcb9ebf12081083a14822b36da3ebd29484f641c8e98e88169",
+        "conservative_source_prefix": "648",
+        "owner_review_file": "human-review-2026-09-24.json",
+        "same_area_response": "Да",
+        "limit": "Broad exclusion group; exact site and camera identity unavailable."
+      },
+      "manual_labels": {
+        "excavator": "yes",
+        "dump_truck": "yes"
+      },
+      "adjudicator": "project owner",
+      "adjudicated_at": "2026-09-24T19:10:27.731Z",
+      "context": {
+        "analysis_intent": "excavation_rule",
+        "requested_classes": [
+          "excavator",
+          "dump_truck"
+        ],
+        "observation_area": "review-area-648-positive_series",
+        "area_relation": "Да",
+        "capture_site_camera": "unverified",
+        "expected_outcome": "no_check"
+      },
+      "source_rights": {
+        "status": "owner_approved_with_caveat",
+        "evidence": "owner-attestation-2026-09-24.json",
+        "caveat": "Kaggle declares CC0; original capture and camera ownership remain unverified."
+      },
+      "cloud_upload_permission": true,
+      "sufficiency_notes": "Three usable ordered frames from one owner-confirmed observation area; both classes confirmed in each.",
+      "usable": true
+    },
+    {
+      "ordinal": 5,
+      "scenario": "check_request_series",
+      "id": "648_09_00_30_886261-2023-11-10",
+      "source_group_candidate": "648",
+      "image": {
+        "archive_member": "train/images/648_09_00_30_886261-2023-11-10.jpg",
+        "sha256": "e8136ff03a43e7f3658057baa5a2b0166b5c50a069ba2fc57f558f98f6b12e39",
+        "size": 968846
+      },
+      "label": {
+        "archive_member": "train/labels/648_09_00_30_886261-2023-11-10.txt",
+        "sha256": "bff5acdd2cdeb723bd46db4963066d44d322d06a24a9e3a774c643e3c38f0773",
+        "size": 152
+      },
+      "provisional_labels": {
+        "excavator": "yes",
+        "dump_truck": "no"
+      },
+      "source_site_camera_time_sequence_group": "kaggle-construction-equipment:source-prefix:648",
+      "group_evidence": {
+        "archive_sha256": "215e3364701c60dcb9ebf12081083a14822b36da3ebd29484f641c8e98e88169",
+        "conservative_source_prefix": "648",
+        "owner_review_file": "human-review-2026-09-24.json",
+        "same_area_response": "Да",
+        "limit": "Broad exclusion group; exact site and camera identity unavailable."
+      },
+      "manual_labels": {
+        "excavator": "yes",
+        "dump_truck": "no"
+      },
+      "adjudicator": "project owner",
+      "adjudicated_at": "2026-09-24T19:10:27.731Z",
+      "context": {
+        "analysis_intent": "excavation_rule",
+        "requested_classes": [
+          "excavator",
+          "dump_truck"
+        ],
+        "observation_area": "review-area-648-check_request_series",
+        "area_relation": "Да",
+        "capture_site_camera": "unverified",
+        "expected_outcome": "check_requested"
+      },
+      "source_rights": {
+        "status": "owner_approved_with_caveat",
+        "evidence": "owner-attestation-2026-09-24.json",
+        "caveat": "Kaggle declares CC0; original capture and camera ownership remain unverified."
+      },
+      "cloud_upload_permission": true,
+      "sufficiency_notes": "Three usable ordered frames from one owner-confirmed observation area; excavator confirmed and dump truck absent in each.",
+      "usable": true
+    },
+    {
+      "ordinal": 6,
+      "scenario": "check_request_series",
+      "id": "648_09_00_39_146540-2023-11-10",
+      "source_group_candidate": "648",
+      "image": {
+        "archive_member": "train/images/648_09_00_39_146540-2023-11-10.jpg",
+        "sha256": "eaf00eb4320d5dae093d044790c604f152624be29cec260854e2417bfb80ca6c",
+        "size": 963684
+      },
+      "label": {
+        "archive_member": "train/labels/648_09_00_39_146540-2023-11-10.txt",
+        "sha256": "b3e051a460391e2ecad68899e3538bbf0935a5d500e818893f6546316b79f1a8",
+        "size": 114
+      },
+      "provisional_labels": {
+        "excavator": "yes",
+        "dump_truck": "no"
+      },
+      "source_site_camera_time_sequence_group": "kaggle-construction-equipment:source-prefix:648",
+      "group_evidence": {
+        "archive_sha256": "215e3364701c60dcb9ebf12081083a14822b36da3ebd29484f641c8e98e88169",
+        "conservative_source_prefix": "648",
+        "owner_review_file": "human-review-2026-09-24.json",
+        "same_area_response": "Да",
+        "limit": "Broad exclusion group; exact site and camera identity unavailable."
+      },
+      "manual_labels": {
+        "excavator": "yes",
+        "dump_truck": "no"
+      },
+      "adjudicator": "project owner",
+      "adjudicated_at": "2026-09-24T19:10:27.731Z",
+      "context": {
+        "analysis_intent": "excavation_rule",
+        "requested_classes": [
+          "excavator",
+          "dump_truck"
+        ],
+        "observation_area": "review-area-648-check_request_series",
+        "area_relation": "Да",
+        "capture_site_camera": "unverified",
+        "expected_outcome": "check_requested"
+      },
+      "source_rights": {
+        "status": "owner_approved_with_caveat",
+        "evidence": "owner-attestation-2026-09-24.json",
+        "caveat": "Kaggle declares CC0; original capture and camera ownership remain unverified."
+      },
+      "cloud_upload_permission": true,
+      "sufficiency_notes": "Three usable ordered frames from one owner-confirmed observation area; excavator confirmed and dump truck absent in each.",
+      "usable": true
+    },
+    {
+      "ordinal": 7,
+      "scenario": "check_request_series",
+      "id": "648_09_00_44_139915-2023-11-10",
+      "source_group_candidate": "648",
+      "image": {
+        "archive_member": "train/images/648_09_00_44_139915-2023-11-10.jpg",
+        "sha256": "7a1eb6609f4a714f0e7b7b33eaa7818f16ddb6e1c4a1ffc62a78862b9035e39d",
+        "size": 962447
+      },
+      "label": {
+        "archive_member": "train/labels/648_09_00_44_139915-2023-11-10.txt",
+        "sha256": "c98b5f47239c6fa308b17ce410671d23fe43fae5070298496b03530ec5287e6a",
+        "size": 114
+      },
+      "provisional_labels": {
+        "excavator": "yes",
+        "dump_truck": "no"
+      },
+      "source_site_camera_time_sequence_group": "kaggle-construction-equipment:source-prefix:648",
+      "group_evidence": {
+        "archive_sha256": "215e3364701c60dcb9ebf12081083a14822b36da3ebd29484f641c8e98e88169",
+        "conservative_source_prefix": "648",
+        "owner_review_file": "human-review-2026-09-24.json",
+        "same_area_response": "Да",
+        "limit": "Broad exclusion group; exact site and camera identity unavailable."
+      },
+      "manual_labels": {
+        "excavator": "yes",
+        "dump_truck": "no"
+      },
+      "adjudicator": "project owner",
+      "adjudicated_at": "2026-09-24T19:10:27.731Z",
+      "context": {
+        "analysis_intent": "excavation_rule",
+        "requested_classes": [
+          "excavator",
+          "dump_truck"
+        ],
+        "observation_area": "review-area-648-check_request_series",
+        "area_relation": "Да",
+        "capture_site_camera": "unverified",
+        "expected_outcome": "check_requested"
+      },
+      "source_rights": {
+        "status": "owner_approved_with_caveat",
+        "evidence": "owner-attestation-2026-09-24.json",
+        "caveat": "Kaggle declares CC0; original capture and camera ownership remain unverified."
+      },
+      "cloud_upload_permission": true,
+      "sufficiency_notes": "Three usable ordered frames from one owner-confirmed observation area; excavator confirmed and dump truck absent in each.",
+      "usable": true
+    },
+    {
+      "ordinal": 8,
+      "scenario": "insufficient_series",
+      "id": "237_10_20_46_949410-2023-09-22",
+      "source_group_candidate": "237",
+      "image": {
+        "archive_member": "train/images/237_10_20_46_949410-2023-09-22.jpg",
+        "sha256": "616c825b10e783e974a3bd5d48beb6107603f78bcc522068b31601ebf5fe41ea",
+        "size": 1017532
+      },
+      "label": {
+        "archive_member": "train/labels/237_10_20_46_949410-2023-09-22.txt",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "size": 0
+      },
+      "provisional_labels": {
+        "excavator": "no",
+        "dump_truck": "no"
+      },
+      "source_site_camera_time_sequence_group": "kaggle-construction-equipment:source-prefix:237",
+      "group_evidence": {
+        "archive_sha256": "215e3364701c60dcb9ebf12081083a14822b36da3ebd29484f641c8e98e88169",
+        "conservative_source_prefix": "237",
+        "owner_review_file": "human-review-2026-09-24.json",
+        "same_area_response": "Нет",
+        "limit": "Broad exclusion group; exact site and camera identity unavailable."
+      },
+      "manual_labels": {
+        "excavator": "no",
+        "dump_truck": "no"
+      },
+      "adjudicator": "project owner",
+      "adjudicated_at": "2026-09-24T19:10:27.731Z",
+      "context": {
+        "analysis_intent": "excavation_rule",
+        "requested_classes": [
+          "excavator",
+          "dump_truck"
+        ],
+        "observation_area": "review-area-237-8",
+        "area_relation": "Нет",
+        "capture_site_camera": "unverified",
+        "expected_outcome": "insufficient_data"
+      },
+      "source_rights": {
+        "status": "owner_approved_with_caveat",
+        "evidence": "owner-attestation-2026-09-24.json",
+        "caveat": "Kaggle declares CC0; original capture and camera ownership remain unverified."
+      },
+      "cloud_upload_permission": true,
+      "sufficiency_notes": "Only two usable frames and owner marked the observation areas as different; fewer than three usable same-area frames.",
+      "usable": true
+    },
+    {
+      "ordinal": 9,
+      "scenario": "insufficient_series",
+      "id": "237_10_20_59_421857-2023-09-22",
+      "source_group_candidate": "237",
+      "image": {
+        "archive_member": "train/images/237_10_20_59_421857-2023-09-22.jpg",
+        "sha256": "ce484f8c6caf51123527bc99ecea18ad1bd1748b320973eace886a12601acbcd",
+        "size": 1018549
+      },
+      "label": {
+        "archive_member": "train/labels/237_10_20_59_421857-2023-09-22.txt",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "size": 0
+      },
+      "provisional_labels": {
+        "excavator": "no",
+        "dump_truck": "no"
+      },
+      "source_site_camera_time_sequence_group": "kaggle-construction-equipment:source-prefix:237",
+      "group_evidence": {
+        "archive_sha256": "215e3364701c60dcb9ebf12081083a14822b36da3ebd29484f641c8e98e88169",
+        "conservative_source_prefix": "237",
+        "owner_review_file": "human-review-2026-09-24.json",
+        "same_area_response": "Нет",
+        "limit": "Broad exclusion group; exact site and camera identity unavailable."
+      },
+      "manual_labels": {
+        "excavator": "no",
+        "dump_truck": "no"
+      },
+      "adjudicator": "project owner",
+      "adjudicated_at": "2026-09-24T19:10:27.731Z",
+      "context": {
+        "analysis_intent": "excavation_rule",
+        "requested_classes": [
+          "excavator",
+          "dump_truck"
+        ],
+        "observation_area": "review-area-237-9",
+        "area_relation": "Нет",
+        "capture_site_camera": "unverified",
+        "expected_outcome": "insufficient_data"
+      },
+      "source_rights": {
+        "status": "owner_approved_with_caveat",
+        "evidence": "owner-attestation-2026-09-24.json",
+        "caveat": "Kaggle declares CC0; original capture and camera ownership remain unverified."
+      },
+      "cloud_upload_permission": true,
+      "sufficiency_notes": "Only two usable frames and owner marked the observation areas as different; fewer than three usable same-area frames.",
+      "usable": true
+    },
+    {
+      "ordinal": 10,
+      "scenario": "out_of_scope",
+      "id": "237_10_21_02_784879-2023-09-22",
+      "source_group_candidate": "237",
+      "image": {
+        "archive_member": "train/images/237_10_21_02_784879-2023-09-22.jpg",
+        "sha256": "ab329284b3f5f7caa335e1194539ebf1a03b59ac077898eb452ab98c7ce1e527",
+        "size": 1017372
+      },
+      "label": {
+        "archive_member": "train/labels/237_10_21_02_784879-2023-09-22.txt",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "size": 0
+      },
+      "provisional_labels": {
+        "excavator": "no",
+        "dump_truck": "no"
+      },
+      "source_site_camera_time_sequence_group": "kaggle-construction-equipment:source-prefix:237",
+      "group_evidence": {
+        "archive_sha256": "215e3364701c60dcb9ebf12081083a14822b36da3ebd29484f641c8e98e88169",
+        "conservative_source_prefix": "237",
+        "owner_review_file": "human-review-2026-09-24.json",
+        "same_area_response": null,
+        "limit": "Broad exclusion group; exact site and camera identity unavailable."
+      },
+      "manual_labels": {
+        "excavator": "no",
+        "dump_truck": "no"
+      },
+      "adjudicator": "project owner",
+      "adjudicated_at": "2026-09-24T19:10:27.731Z",
+      "context": {
+        "analysis_intent": "observations_only",
+        "requested_classes": [
+          "crane"
+        ],
+        "observation_area": "review-area-237-out_of_scope",
+        "area_relation": "single_frame",
+        "capture_site_camera": "unverified",
+        "expected_outcome": "not_analyzed"
+      },
+      "source_rights": {
+        "status": "owner_approved_with_caveat",
+        "evidence": "owner-attestation-2026-09-24.json",
+        "caveat": "Kaggle declares CC0; original capture and camera ownership remain unverified."
+      },
+      "cloud_upload_permission": true,
+      "sufficiency_notes": "The test requests unsupported crane class; frame is usable but the requested class remains not_analyzed.",
+      "usable": true
+    }
+  ],
   "schema_revision": "held-out-evaluation-v1",
   "source_url": "https://www.kaggle.com/datasets/xyzyxzzxy/construction-equipment/data",
-  "source_archive_sha256": "215e3364701c60dcb9ebf12081083a14822b36da3ebd29484f641c8e98e88169",
-  "declared_license": "CC0",
-  "cloud_upload_authorization": "Owner authorized 11 additional CC0 frames for Yandex AI Studio on 2026-09-24",
-  "provenance_caveat": "Original capture and camera ownership remain unverified; numeric filename prefix is used as conservative source-group exclusion unit.",
-  "label_caveat": "YOLO class 0=dump truck and 1=excavator; selected images were visually reviewed with a non-GUI tool. Ground-truth labels remain provisional pending independent human adjudication.",
+  "declared_license": "CC0 declared by Kaggle dataset; owner approved prototype use with provenance caveat",
+  "cloud_upload_authorization": {
+    "granted": true,
+    "evidence": "owner-attestation-2026-09-24.json"
+  },
+  "source_non_use_attestation": {
+    "confirmed": true,
+    "evidence": "owner-attestation-2026-09-24.json"
+  },
+  "group_provenance": "Conservative archive filename-prefix exclusion groups, combined with owner visual review of scenario area relations; exact source site and camera unavailable.",
+  "evidence_artifacts": {
+    "human_review_export": {
+      "path": "human-review-export-2026-09-24.json",
+      "sha256": "14f2b6be0c420b073a63b468a5481514a3fa5a2ca7998bb48d85f08ef43fc4da"
+    },
+    "human_review": {
+      "path": "human-review-2026-09-24.json",
+      "sha256": "4b533249dee92ebf8f3293e211e98b5b1c2649929a0f49f15802933d0336a129"
+    },
+    "owner_attestation": {
+      "path": "owner-attestation-2026-09-24.json",
+      "sha256": "18363ef09c6e75a29da7d21a4d4e9d5430f4c726452d74a64cfeae11f7b0ad89"
+    }
+  },
   "scenarios": {
     "single_both": {
       "expected_outcome": "observations_only",
@@ -48,214 +652,5 @@
         "crane"
       ]
     }
-  },
-  "frames": [
-    {
-      "ordinal": 0,
-      "id": "1626_15_06_18_898289-2023-11-09",
-      "scenario": "single_both",
-      "source_group": "1626",
-      "image": {
-        "archive_member": "valid/images/1626_15_06_18_898289-2023-11-09.jpg",
-        "sha256": "87409562ee727490f0791ebbfbe2d5e2e0ae65cf462fb77fbcd5819795dabd5d",
-        "size": 2188543
-      },
-      "label": {
-        "archive_member": "valid/labels/1626_15_06_18_898289-2023-11-09.txt",
-        "sha256": "169723395404917a7cca32786263f46108ed6dca67a9671228906203004c6e25",
-        "size": 114
-      },
-      "expected_classes": [
-        "excavator",
-        "dump_truck"
-      ]
-    },
-    {
-      "ordinal": 1,
-      "id": "1231_15_26_28_442592-2023-11-09",
-      "scenario": "single_excavator",
-      "source_group": "1231",
-      "image": {
-        "archive_member": "train/images/1231_15_26_28_442592-2023-11-09.jpg",
-        "sha256": "afcbec7b9fbcbd354e7cf6f77d3c18e1c236267354a0151885a84e6b0c78d260",
-        "size": 1078483
-      },
-      "label": {
-        "archive_member": "train/labels/1231_15_26_28_442592-2023-11-09.txt",
-        "sha256": "af5b22111866eb55a7db130e13a96ae561d8a913d2a03da2036d207a1ef4344e",
-        "size": 38
-      },
-      "expected_classes": [
-        "excavator"
-      ]
-    },
-    {
-      "ordinal": 2,
-      "id": "238_10_38_13_280077-2023-09-22",
-      "scenario": "positive_series",
-      "source_group": "238",
-      "image": {
-        "archive_member": "train/images/238_10_38_13_280077-2023-09-22.jpg",
-        "sha256": "53823acff97c4c13845d181fe0642f64b6f80f25dd884f7421037ca9ebbfe619",
-        "size": 1019421
-      },
-      "label": {
-        "archive_member": "train/labels/238_10_38_13_280077-2023-09-22.txt",
-        "sha256": "a8154ef9908c08b83603bddc1149b6b5f7a3617fd7e71afea31df5be14ac703a",
-        "size": 76
-      },
-      "expected_classes": [
-        "excavator",
-        "dump_truck"
-      ]
-    },
-    {
-      "ordinal": 3,
-      "id": "238_10_38_13_846358-2023-09-22",
-      "scenario": "positive_series",
-      "source_group": "238",
-      "image": {
-        "archive_member": "train/images/238_10_38_13_846358-2023-09-22.jpg",
-        "sha256": "384fba0a27ecf8e54c5eefceeeb5ece6fe6f5abfa1747ec92285104323586305",
-        "size": 1024803
-      },
-      "label": {
-        "archive_member": "train/labels/238_10_38_13_846358-2023-09-22.txt",
-        "sha256": "8a15d4908afaaef4e04365e4efedf4034e085405d330027f71e53ceb05a13f97",
-        "size": 76
-      },
-      "expected_classes": [
-        "excavator",
-        "dump_truck"
-      ]
-    },
-    {
-      "ordinal": 4,
-      "id": "238_10_38_15_094767-2023-09-22",
-      "scenario": "positive_series",
-      "source_group": "238",
-      "image": {
-        "archive_member": "train/images/238_10_38_15_094767-2023-09-22.jpg",
-        "sha256": "b082c59de661f02a7c02480090a0f34841d7f3ecff75c9d93329638034ec2cad",
-        "size": 1018307
-      },
-      "label": {
-        "archive_member": "train/labels/238_10_38_15_094767-2023-09-22.txt",
-        "sha256": "ea01f7657b0d60fe6ae703544cf736fb94ad44527a50355c006134a904f22989",
-        "size": 76
-      },
-      "expected_classes": [
-        "excavator",
-        "dump_truck"
-      ]
-    },
-    {
-      "ordinal": 5,
-      "id": "1624_08_00_34_256477-2023-11-10",
-      "scenario": "check_request_series",
-      "source_group": "1624",
-      "image": {
-        "archive_member": "train/images/1624_08_00_34_256477-2023-11-10.jpg",
-        "sha256": "53959e468a0d24c756415694a2d23a8e97ab2ce7c867453c4f8933d60ca28054",
-        "size": 2346223
-      },
-      "label": {
-        "archive_member": "train/labels/1624_08_00_34_256477-2023-11-10.txt",
-        "sha256": "966f2a2b53e10e120520d22f75dad9b6807cc988621d974b39ca7281564b6947",
-        "size": 38
-      },
-      "expected_classes": [
-        "excavator"
-      ]
-    },
-    {
-      "ordinal": 6,
-      "id": "1624_08_00_44_761471-2023-11-10",
-      "scenario": "check_request_series",
-      "source_group": "1624",
-      "image": {
-        "archive_member": "train/images/1624_08_00_44_761471-2023-11-10.jpg",
-        "sha256": "c287db0518d2290da808a62b7e529a6e191c350863c2deac9bd9b47d25a65ee2",
-        "size": 2346957
-      },
-      "label": {
-        "archive_member": "train/labels/1624_08_00_44_761471-2023-11-10.txt",
-        "sha256": "57f1489200988cc074fc978583001ee7bac53d0331b3cc9b020fba61f06b97e1",
-        "size": 38
-      },
-      "expected_classes": [
-        "excavator"
-      ]
-    },
-    {
-      "ordinal": 7,
-      "id": "1624_08_00_51_744872-2023-11-10",
-      "scenario": "check_request_series",
-      "source_group": "1624",
-      "image": {
-        "archive_member": "train/images/1624_08_00_51_744872-2023-11-10.jpg",
-        "sha256": "aedbd201f651f65f450f834e73bb9425891e1a150522b6dcd0caed2e8e76fa59",
-        "size": 2340345
-      },
-      "label": {
-        "archive_member": "train/labels/1624_08_00_51_744872-2023-11-10.txt",
-        "sha256": "7419543e1ea14e4ba2a23d2df8e95e0e7210a243d4229d81e89f0789a83c29e6",
-        "size": 38
-      },
-      "expected_classes": [
-        "excavator"
-      ]
-    },
-    {
-      "ordinal": 8,
-      "id": "227_04_56_23_695394-2023-11-10",
-      "scenario": "insufficient_series",
-      "source_group": "227",
-      "image": {
-        "archive_member": "train/images/227_04_56_23_695394-2023-11-10.jpg",
-        "sha256": "3e9a4894b829bff22721ddc2ad2145e0909372b5c391b7b5d2339f5febdfdcf4",
-        "size": 724515
-      },
-      "label": {
-        "archive_member": "train/labels/227_04_56_23_695394-2023-11-10.txt",
-        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-        "size": 0
-      },
-      "expected_classes": []
-    },
-    {
-      "ordinal": 9,
-      "id": "227_04_59_07_646152-2023-11-10",
-      "scenario": "insufficient_series",
-      "source_group": "227",
-      "image": {
-        "archive_member": "train/images/227_04_59_07_646152-2023-11-10.jpg",
-        "sha256": "fb227c99fbbb60a452c7c6059c7eab402c8ef93a2fc702bc04de09f5fc00629f",
-        "size": 690200
-      },
-      "label": {
-        "archive_member": "train/labels/227_04_59_07_646152-2023-11-10.txt",
-        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-        "size": 0
-      },
-      "expected_classes": []
-    },
-    {
-      "ordinal": 10,
-      "id": "1821_07_25_53_183875-2023-11-10",
-      "scenario": "out_of_scope",
-      "source_group": "1821",
-      "image": {
-        "archive_member": "train/images/1821_07_25_53_183875-2023-11-10.jpg",
-        "sha256": "ade899097a43b540c4dd4a6b359517051387904c3aea15cf47dd952ccf57d74e",
-        "size": 1531008
-      },
-      "label": {
-        "archive_member": "train/labels/1821_07_25_53_183875-2023-11-10.txt",
-        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-        "size": 0
-      },
-      "expected_classes": []
-    }
-  ]
+  }
 }

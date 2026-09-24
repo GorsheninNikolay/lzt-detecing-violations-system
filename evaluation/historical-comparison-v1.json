@@ -1,0 +1,106 @@
+{
+  "schema_revision": "historical-comparison-v1",
+  "status": "compared_before_freeze",
+  "source_archive_sha256": "215e3364701c60dcb9ebf12081083a14822b36da3ebd29484f641c8e98e88169",
+  "frames": [
+    {
+      "id": "1319_14_35_47_388270-2023-11-09",
+      "source_group_candidate": "1319",
+      "image": {
+        "archive_member": "valid/images/1319_14_35_47_388270-2023-11-09.jpg",
+        "sha256": "679888d8d0cfeb0d1eb4cc8c96869f519f6c7903b2b4356cea5076938b1bb4e4",
+        "size": 1628458
+      }
+    },
+    {
+      "id": "212_09_29_44_479633-2023-11-10",
+      "source_group_candidate": "212",
+      "image": {
+        "archive_member": "train/images/212_09_29_44_479633-2023-11-10.jpg",
+        "sha256": "aa39a7852774cf1b82b8625b5064febb7ed272780a7857f61dcd6a80cc3e0a6a",
+        "size": 1019967
+      }
+    },
+    {
+      "id": "2501_08_56_18_005482-2023-11-10",
+      "source_group_candidate": "2501",
+      "image": {
+        "archive_member": "train/images/2501_08_56_18_005482-2023-11-10.jpg",
+        "sha256": "a5b2946885f975d287703b2c5a5cd43ec2b4927d0270795f4d1c2f806c65ee59",
+        "size": 470702
+      }
+    },
+    {
+      "id": "2501_08_56_20_510518-2023-11-10",
+      "source_group_candidate": "2501",
+      "image": {
+        "archive_member": "train/images/2501_08_56_20_510518-2023-11-10.jpg",
+        "sha256": "718f6afbdcf3da07b141688a276261604fc72a116efe7856829096d309e3d8ce",
+        "size": 473518
+      }
+    },
+    {
+      "id": "2501_08_56_29_217496-2023-11-10",
+      "source_group_candidate": "2501",
+      "image": {
+        "archive_member": "train/images/2501_08_56_29_217496-2023-11-10.jpg",
+        "sha256": "97cc3ae95ddcb7eadbae7b00acffefcc8c3f8c9557624a9b83ef8fc9471892f6",
+        "size": 464421
+      }
+    },
+    {
+      "id": "224_17_54_42_995746-2023-11-09",
+      "source_group_candidate": "224",
+      "image": {
+        "archive_member": "train/images/224_17_54_42_995746-2023-11-09.jpg",
+        "sha256": "c8db7807cdc84fce339f9d7b383a400a0a009a745f9b1969c0ca656efc578348",
+        "size": 825087
+      }
+    },
+    {
+      "id": "224_17_55_26_294171-2023-11-09",
+      "source_group_candidate": "224",
+      "image": {
+        "archive_member": "train/images/224_17_55_26_294171-2023-11-09.jpg",
+        "sha256": "7ffe00e2c70efb94ba4a7ba11b68f500be126b3926e87a5bd49b7d5f079578a1",
+        "size": 845606
+      }
+    },
+    {
+      "id": "224_17_55_54_880058-2023-11-09",
+      "source_group_candidate": "224",
+      "image": {
+        "archive_member": "train/images/224_17_55_54_880058-2023-11-09.jpg",
+        "sha256": "a9ba27364f668ab9ce6a1f4d75251377a0b56339b879baf24b42bb0512eb167b",
+        "size": 855082
+      }
+    },
+    {
+      "id": "223_09_14_09_089529-2023-11-10",
+      "source_group_candidate": "223",
+      "image": {
+        "archive_member": "train/images/223_09_14_09_089529-2023-11-10.jpg",
+        "sha256": "bfe759b3a8f5717cc887f98b9ca103a87eb56906eb07d6193412925b0c7a114b",
+        "size": 1305852
+      }
+    },
+    {
+      "id": "223_09_14_12_268083-2023-11-10",
+      "source_group_candidate": "223",
+      "image": {
+        "archive_member": "train/images/223_09_14_12_268083-2023-11-10.jpg",
+        "sha256": "5c5c7ecbf4db17e4f9756cfee9b33eb7a5229111ff44cae0f921c111eb80966c",
+        "size": 1303664
+      }
+    },
+    {
+      "id": "1629_14_47_34_541619-2023-11-09",
+      "source_group_candidate": "1629",
+      "image": {
+        "archive_member": "train/images/1629_14_47_34_541619-2023-11-09.jpg",
+        "sha256": "13992f946644b51d00ced3de16f9403877d53c31c40e9d88df19db446d672eae",
+        "size": 1274951
+      }
+    }
+  ]
+}

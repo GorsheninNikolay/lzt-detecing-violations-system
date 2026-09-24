@@ -1,0 +1,44 @@
+{
+  "schema_revision": "evaluation-freeze-decision-v1",
+  "status": "accepted",
+  "manifest_hash": "bbc767cb2af37b88c09447dddea9123f0a3287c8e41cd0204df8d36c0b3459c6",
+  "inventory_evidence": [
+    {
+      "name": "admission",
+      "sha256": "91312b59ae1c61ac146d42dd1d138658ab77f906338066b2d1d1deb250bef521"
+    },
+    {
+      "name": "contract",
+      "sha256": "d9f83522925c47eea2fa3d8467f044db6a588fb028bc7c2339f0d1be2457dd6c"
+    },
+    {
+      "name": "development_acceptance",
+      "sha256": "201a8b3e86daca6b5fbc5b8665ceaff16603b12355d7b707fbceb7af7be990b9"
+    },
+    {
+      "name": "held_out_evaluation",
+      "sha256": "7707796e5669ad0b8aa16c6971647afcb2ed23a992ae7db46a6fbb19899aa967"
+    },
+    {
+      "name": "historical_comparison",
+      "sha256": "5417b7cdd42ee7e18bf687c79a4fe4b3ae310cd2ab39b37afcc8f4733bdaeae3"
+    },
+    {
+      "name": "training",
+      "sha256": "bea73783980b6ecf65738d9072ec624a568791c0dca714baf59cff3b3600126e"
+    },
+    {
+      "name": "validation",
+      "sha256": "d4334273d65e1169d096947a42cd3e7998006543aea5b85943990c52cc90489d"
+    }
+  ],
+  "errors": [],
+  "reserved_frame_count": 11,
+  "reserved_groups": [
+    "237",
+    "648",
+    "kaggle-construction-equipment:source-prefix:237",
+    "kaggle-construction-equipment:source-prefix:648"
+  ],
+  "verification": "Accepted revision and decision read back from isolated local PostgreSQL; target runtime installation not verified."
+}

@@ -1,7 +1,101 @@
 {
   "schema_revision": "exclusion-inventory-v1",
   "tier": "held_out_evaluation",
-  "reserved_source_groups": [],
-  "fixtures": [],
-  "note": "No fixtures assigned in this tier at Story 1.2 admission; update before assigning any source group."
+  "reserved_source_groups": [
+    "237",
+    "648",
+    "kaggle-construction-equipment:source-prefix:237",
+    "kaggle-construction-equipment:source-prefix:648"
+  ],
+  "fixtures": [
+    {
+      "manifest_hash": "bbc767cb2af37b88c09447dddea9123f0a3287c8e41cd0204df8d36c0b3459c6",
+      "source_group": "648",
+      "source_site_camera_time_sequence_group": "kaggle-construction-equipment:source-prefix:648",
+      "image": {
+        "sha256": "3a92873a0b2a65f561431d0a9e4376a11f1fe16483e25853be30cb533b936c4d"
+      }
+    },
+    {
+      "manifest_hash": "bbc767cb2af37b88c09447dddea9123f0a3287c8e41cd0204df8d36c0b3459c6",
+      "source_group": "648",
+      "source_site_camera_time_sequence_group": "kaggle-construction-equipment:source-prefix:648",
+      "image": {
+        "sha256": "4e5885330ae96c9fb668dd9e1643d966c6431a74b2034f212890302887c0110e"
+      }
+    },
+    {
+      "manifest_hash": "bbc767cb2af37b88c09447dddea9123f0a3287c8e41cd0204df8d36c0b3459c6",
+      "source_group": "648",
+      "source_site_camera_time_sequence_group": "kaggle-construction-equipment:source-prefix:648",
+      "image": {
+        "sha256": "e4b44dc1eb8e6469e371d5ed3fdf588d67de1271b166c96ecd9f6a7156fe0242"
+      }
+    },
+    {
+      "manifest_hash": "bbc767cb2af37b88c09447dddea9123f0a3287c8e41cd0204df8d36c0b3459c6",
+      "source_group": "648",
+      "source_site_camera_time_sequence_group": "kaggle-construction-equipment:source-prefix:648",
+      "image": {
+        "sha256": "b93d35c78a4d513159c8b492e5a18af4fa96ee2cdff0e15bc53df6cb6581b689"
+      }
+    },
+    {
+      "manifest_hash": "bbc767cb2af37b88c09447dddea9123f0a3287c8e41cd0204df8d36c0b3459c6",
+      "source_group": "648",
+      "source_site_camera_time_sequence_group": "kaggle-construction-equipment:source-prefix:648",
+      "image": {
+        "sha256": "41a68a6a020119979f0a9b9138110745589c9bf8df3a96ee5e8f3239f6784a81"
+      }
+    },
+    {
+      "manifest_hash": "bbc767cb2af37b88c09447dddea9123f0a3287c8e41cd0204df8d36c0b3459c6",
+      "source_group": "648",
+      "source_site_camera_time_sequence_group": "kaggle-construction-equipment:source-prefix:648",
+      "image": {
+        "sha256": "e8136ff03a43e7f3658057baa5a2b0166b5c50a069ba2fc57f558f98f6b12e39"
+      }
+    },
+    {
+      "manifest_hash": "bbc767cb2af37b88c09447dddea9123f0a3287c8e41cd0204df8d36c0b3459c6",
+      "source_group": "648",
+      "source_site_camera_time_sequence_group": "kaggle-construction-equipment:source-prefix:648",
+      "image": {
+        "sha256": "eaf00eb4320d5dae093d044790c604f152624be29cec260854e2417bfb80ca6c"
+      }
+    },
+    {
+      "manifest_hash": "bbc767cb2af37b88c09447dddea9123f0a3287c8e41cd0204df8d36c0b3459c6",
+      "source_group": "648",
+      "source_site_camera_time_sequence_group": "kaggle-construction-equipment:source-prefix:648",
+      "image": {
+        "sha256": "7a1eb6609f4a714f0e7b7b33eaa7818f16ddb6e1c4a1ffc62a78862b9035e39d"
+      }
+    },
+    {
+      "manifest_hash": "bbc767cb2af37b88c09447dddea9123f0a3287c8e41cd0204df8d36c0b3459c6",
+      "source_group": "237",
+      "source_site_camera_time_sequence_group": "kaggle-construction-equipment:source-prefix:237",
+      "image": {
+        "sha256": "616c825b10e783e974a3bd5d48beb6107603f78bcc522068b31601ebf5fe41ea"
+      }
+    },
+    {
+      "manifest_hash": "bbc767cb2af37b88c09447dddea9123f0a3287c8e41cd0204df8d36c0b3459c6",
+      "source_group": "237",
+      "source_site_camera_time_sequence_group": "kaggle-construction-equipment:source-prefix:237",
+      "image": {
+        "sha256": "ce484f8c6caf51123527bc99ecea18ad1bd1748b320973eace886a12601acbcd"
+      }
+    },
+    {
+      "manifest_hash": "bbc767cb2af37b88c09447dddea9123f0a3287c8e41cd0204df8d36c0b3459c6",
+      "source_group": "237",
+      "source_site_camera_time_sequence_group": "kaggle-construction-equipment:source-prefix:237",
+      "image": {
+        "sha256": "ab329284b3f5f7caa335e1194539ebf1a03b59ac077898eb452ab98c7ce1e527"
+      }
+    }
+  ],
+  "note": "Story 4.1 held-out v1 hashes and conservative source groups are reserved; see evaluation/freeze-decision-v1.json."
 }

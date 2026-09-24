@@ -1,0 +1,113 @@
+{
+  "review_schema": "story-4-1-human-review-v1",
+  "created_at": "2026-09-24T19:10:27.731Z",
+  "frames": [
+    {
+      "ordinal": 0,
+      "scenario": "single_both",
+      "id": "648_07_33_54_619011-2023-11-10",
+      "excavator": "Да",
+      "dump_truck": "Да",
+      "usable": "Да",
+      "note": ""
+    },
+    {
+      "ordinal": 1,
+      "scenario": "single_excavator",
+      "id": "648_07_16_43_397007-2023-11-10",
+      "excavator": "Да",
+      "dump_truck": "Нет",
+      "usable": "Да",
+      "note": ""
+    },
+    {
+      "ordinal": 2,
+      "scenario": "positive_series",
+      "id": "648_08_15_24_542473-2023-11-10",
+      "excavator": "Да",
+      "dump_truck": "Да",
+      "usable": "Да",
+      "same_area": "Да",
+      "note": ""
+    },
+    {
+      "ordinal": 3,
+      "scenario": "positive_series",
+      "id": "648_08_15_46_190803-2023-11-10",
+      "excavator": "Да",
+      "dump_truck": "Да",
+      "usable": "Да",
+      "same_area": "Да",
+      "note": ""
+    },
+    {
+      "ordinal": 4,
+      "scenario": "positive_series",
+      "id": "648_08_16_17_892116-2023-11-10",
+      "excavator": "Да",
+      "dump_truck": "Да",
+      "usable": "Да",
+      "same_area": "Да",
+      "note": ""
+    },
+    {
+      "ordinal": 5,
+      "scenario": "check_request_series",
+      "id": "648_09_00_30_886261-2023-11-10",
+      "excavator": "Да",
+      "dump_truck": "Нет",
+      "usable": "Да",
+      "same_area": "Да",
+      "note": ""
+    },
+    {
+      "ordinal": 6,
+      "scenario": "check_request_series",
+      "id": "648_09_00_39_146540-2023-11-10",
+      "excavator": "Да",
+      "dump_truck": "Нет",
+      "usable": "Да",
+      "same_area": "Да",
+      "note": ""
+    },
+    {
+      "ordinal": 7,
+      "scenario": "check_request_series",
+      "id": "648_09_00_44_139915-2023-11-10",
+      "excavator": "Да",
+      "dump_truck": "Нет",
+      "usable": "Да",
+      "same_area": "Да",
+      "note": ""
+    },
+    {
+      "ordinal": 8,
+      "scenario": "insufficient_series",
+      "id": "237_10_20_46_949410-2023-09-22",
+      "excavator": "Нет",
+      "dump_truck": "Нет",
+      "usable": "Да",
+      "same_area": "Нет",
+      "note": ""
+    },
+    {
+      "ordinal": 9,
+      "scenario": "insufficient_series",
+      "id": "237_10_20_59_421857-2023-09-22",
+      "excavator": "Нет",
+      "dump_truck": "Нет",
+      "usable": "Да",
+      "same_area": "Нет",
+      "note": ""
+    },
+    {
+      "ordinal": 10,
+      "scenario": "out_of_scope",
+      "id": "237_10_21_02_784879-2023-09-22",
+      "excavator": "Нет",
+      "dump_truck": "Нет",
+      "usable": "Да",
+      "note": ""
+    }
+  ]
+}

@@ -1,0 +1,35 @@
+{
+  "schema_revision": "evaluation-owner-attestation-v1",
+  "recorded_on": "2026-09-24",
+  "source": "owner confirmations in the Story 4.1 conversation; not a signed rights grant",
+  "human_review": {
+    "file": "human-review-2026-09-24.json",
+    "sha256": "4b533249dee92ebf8f3293e211e98b5b1c2649929a0f49f15802933d0336a129",
+    "owner_confirmed_all_11": true,
+    "source_export_sha256": "14f2b6be0c420b073a63b468a5481514a3fa5a2ca7998bb48d85f08ef43fc4da"
+  },
+  "non_use": {
+    "confirmed": true,
+    "scope": "These new 11 images were not used in this project for training, validation, observer admission, development tests, or previous model comparisons outside known repository files."
+  },
+  "prototype_use_and_cloud_upload": {
+    "approved": true,
+    "scope": "These exact new 11 images for prototype evaluation and cloud upload.",
+    "basis": "Kaggle dataset declares CC0; original capture and camera ownership remain unverified.",
+    "caveat": "Owner accepted use with the stated provenance uncertainty; this record does not establish third-party chain of title."
+  },
+  "source_archive_sha256": "215e3364701c60dcb9ebf12081083a14822b36da3ebd29484f641c8e98e88169",
+  "selected_image_sha256": [
+    "3a92873a0b2a65f561431d0a9e4376a11f1fe16483e25853be30cb533b936c4d",
+    "4e5885330ae96c9fb668dd9e1643d966c6431a74b2034f212890302887c0110e",
+    "e4b44dc1eb8e6469e371d5ed3fdf588d67de1271b166c96ecd9f6a7156fe0242",
+    "b93d35c78a4d513159c8b492e5a18af4fa96ee2cdff0e15bc53df6cb6581b689",
+    "41a68a6a020119979f0a9b9138110745589c9bf8df3a96ee5e8f3239f6784a81",
+    "e8136ff03a43e7f3658057baa5a2b0166b5c50a069ba2fc57f558f98f6b12e39",
+    "eaf00eb4320d5dae093d044790c604f152624be29cec260854e2417bfb80ca6c",
+    "7a1eb6609f4a714f0e7b7b33eaa7818f16ddb6e1c4a1ffc62a78862b9035e39d",
+    "616c825b10e783e974a3bd5d48beb6107603f78bcc522068b31601ebf5fe41ea",
+    "ce484f8c6caf51123527bc99ecea18ad1bd1748b320973eace886a12601acbcd",
+    "ab329284b3f5f7caa335e1194539ebf1a03b59ac077898eb452ab98c7ce1e527"
+  ]
+}

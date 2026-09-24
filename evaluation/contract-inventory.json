@@ -1,0 +1,7 @@
+{
+  "schema_revision": "exclusion-inventory-v1",
+  "tier": "contract",
+  "reserved_source_groups": [],
+  "fixtures": [],
+  "note": "No external contract fixtures are recorded in this repository. Owner non-use attestation remains required."
+}
