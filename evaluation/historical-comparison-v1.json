@@ -4,13 +4,124 @@
   "source_archive_sha256": "215e3364701c60dcb9ebf12081083a14822b36da3ebd29484f641c8e98e88169",
   "frames": [
     {
+      "cohort": "initial_comparison",
+      "id": "1626_15_06_18_898289-2023-11-09",
+      "source_group_candidate": "1626",
+      "image": {
+        "archive_member": "valid/images/1626_15_06_18_898289-2023-11-09.jpg",
+        "sha256": "87409562ee727490f0791ebbfbe2d5e2e0ae65cf462fb77fbcd5819795dabd5d",
+        "size": 2188543
+      }
+    },
+    {
+      "cohort": "initial_comparison",
+      "id": "1231_15_26_28_442592-2023-11-09",
+      "source_group_candidate": "1231",
+      "image": {
+        "archive_member": "train/images/1231_15_26_28_442592-2023-11-09.jpg",
+        "sha256": "afcbec7b9fbcbd354e7cf6f77d3c18e1c236267354a0151885a84e6b0c78d260",
+        "size": 1078483
+      }
+    },
+    {
+      "cohort": "initial_comparison",
+      "id": "238_10_38_13_280077-2023-09-22",
+      "source_group_candidate": "238",
+      "image": {
+        "archive_member": "train/images/238_10_38_13_280077-2023-09-22.jpg",
+        "sha256": "53823acff97c4c13845d181fe0642f64b6f80f25dd884f7421037ca9ebbfe619",
+        "size": 1019421
+      }
+    },
+    {
+      "cohort": "initial_comparison",
+      "id": "238_10_38_13_846358-2023-09-22",
+      "source_group_candidate": "238",
+      "image": {
+        "archive_member": "train/images/238_10_38_13_846358-2023-09-22.jpg",
+        "sha256": "384fba0a27ecf8e54c5eefceeeb5ece6fe6f5abfa1747ec92285104323586305",
+        "size": 1024803
+      }
+    },
+    {
+      "cohort": "initial_comparison",
+      "id": "238_10_38_15_094767-2023-09-22",
+      "source_group_candidate": "238",
+      "image": {
+        "archive_member": "train/images/238_10_38_15_094767-2023-09-22.jpg",
+        "sha256": "b082c59de661f02a7c02480090a0f34841d7f3ecff75c9d93329638034ec2cad",
+        "size": 1018307
+      }
+    },
+    {
+      "cohort": "initial_comparison",
+      "id": "1624_08_00_34_256477-2023-11-10",
+      "source_group_candidate": "1624",
+      "image": {
+        "archive_member": "train/images/1624_08_00_34_256477-2023-11-10.jpg",
+        "sha256": "53959e468a0d24c756415694a2d23a8e97ab2ce7c867453c4f8933d60ca28054",
+        "size": 2346223
+      }
+    },
+    {
+      "cohort": "initial_comparison",
+      "id": "1624_08_00_44_761471-2023-11-10",
+      "source_group_candidate": "1624",
+      "image": {
+        "archive_member": "train/images/1624_08_00_44_761471-2023-11-10.jpg",
+        "sha256": "c287db0518d2290da808a62b7e529a6e191c350863c2deac9bd9b47d25a65ee2",
+        "size": 2346957
+      }
+    },
+    {
+      "cohort": "initial_comparison",
+      "id": "1624_08_00_51_744872-2023-11-10",
+      "source_group_candidate": "1624",
+      "image": {
+        "archive_member": "train/images/1624_08_00_51_744872-2023-11-10.jpg",
+        "sha256": "aedbd201f651f65f450f834e73bb9425891e1a150522b6dcd0caed2e8e76fa59",
+        "size": 2340345
+      }
+    },
+    {
+      "cohort": "initial_comparison",
+      "id": "227_04_56_23_695394-2023-11-10",
+      "source_group_candidate": "227",
+      "image": {
+        "archive_member": "train/images/227_04_56_23_695394-2023-11-10.jpg",
+        "sha256": "3e9a4894b829bff22721ddc2ad2145e0909372b5c391b7b5d2339f5febdfdcf4",
+        "size": 724515
+      }
+    },
+    {
+      "cohort": "initial_comparison",
+      "id": "227_04_59_07_646152-2023-11-10",
+      "source_group_candidate": "227",
+      "image": {
+        "archive_member": "train/images/227_04_59_07_646152-2023-11-10.jpg",
+        "sha256": "fb227c99fbbb60a452c7c6059c7eab402c8ef93a2fc702bc04de09f5fc00629f",
+        "size": 690200
+      }
+    },
+    {
+      "cohort": "initial_comparison",
+      "id": "1821_07_25_53_183875-2023-11-10",
+      "source_group_candidate": "1821",
+      "image": {
+        "archive_member": "train/images/1821_07_25_53_183875-2023-11-10.jpg",
+        "sha256": "ade899097a43b540c4dd4a6b359517051387904c3aea15cf47dd952ccf57d74e",
+        "size": 1531008
+      }
+    },
+    {
       "id": "1319_14_35_47_388270-2023-11-09",
       "source_group_candidate": "1319",
       "image": {
         "archive_member": "valid/images/1319_14_35_47_388270-2023-11-09.jpg",
         "sha256": "679888d8d0cfeb0d1eb4cc8c96869f519f6c7903b2b4356cea5076938b1bb4e4",
         "size": 1628458
-      }
+      },
+      "cohort": "final_comparison"
     },
     {
       "id": "212_09_29_44_479633-2023-11-10",
@@ -19,7 +130,8 @@
         "archive_member": "train/images/212_09_29_44_479633-2023-11-10.jpg",
         "sha256": "aa39a7852774cf1b82b8625b5064febb7ed272780a7857f61dcd6a80cc3e0a6a",
         "size": 1019967
-      }
+      },
+      "cohort": "final_comparison"
     },
     {
       "id": "2501_08_56_18_005482-2023-11-10",
@@ -28,7 +140,8 @@
         "archive_member": "train/images/2501_08_56_18_005482-2023-11-10.jpg",
         "sha256": "a5b2946885f975d287703b2c5a5cd43ec2b4927d0270795f4d1c2f806c65ee59",
         "size": 470702
-      }
+      },
+      "cohort": "final_comparison"
     },
     {
       "id": "2501_08_56_20_510518-2023-11-10",
@@ -37,7 +150,8 @@
         "archive_member": "train/images/2501_08_56_20_510518-2023-11-10.jpg",
         "sha256": "718f6afbdcf3da07b141688a276261604fc72a116efe7856829096d309e3d8ce",
         "size": 473518
-      }
+      },
+      "cohort": "final_comparison"
     },
     {
       "id": "2501_08_56_29_217496-2023-11-10",
@@ -46,7 +160,8 @@
         "archive_member": "train/images/2501_08_56_29_217496-2023-11-10.jpg",
         "sha256": "97cc3ae95ddcb7eadbae7b00acffefcc8c3f8c9557624a9b83ef8fc9471892f6",
         "size": 464421
-      }
+      },
+      "cohort": "final_comparison"
     },
     {
       "id": "224_17_54_42_995746-2023-11-09",
@@ -55,7 +170,8 @@
         "archive_member": "train/images/224_17_54_42_995746-2023-11-09.jpg",
         "sha256": "c8db7807cdc84fce339f9d7b383a400a0a009a745f9b1969c0ca656efc578348",
         "size": 825087
-      }
+      },
+      "cohort": "final_comparison"
     },
     {
       "id": "224_17_55_26_294171-2023-11-09",
@@ -64,7 +180,8 @@
         "archive_member": "train/images/224_17_55_26_294171-2023-11-09.jpg",
         "sha256": "7ffe00e2c70efb94ba4a7ba11b68f500be126b3926e87a5bd49b7d5f079578a1",
         "size": 845606
-      }
+      },
+      "cohort": "final_comparison"
     },
     {
       "id": "224_17_55_54_880058-2023-11-09",
@@ -73,7 +190,8 @@
         "archive_member": "train/images/224_17_55_54_880058-2023-11-09.jpg",
         "sha256": "a9ba27364f668ab9ce6a1f4d75251377a0b56339b879baf24b42bb0512eb167b",
         "size": 855082
-      }
+      },
+      "cohort": "final_comparison"
     },
     {
       "id": "223_09_14_09_089529-2023-11-10",
@@ -82,7 +200,8 @@
         "archive_member": "train/images/223_09_14_09_089529-2023-11-10.jpg",
         "sha256": "bfe759b3a8f5717cc887f98b9ca103a87eb56906eb07d6193412925b0c7a114b",
         "size": 1305852
-      }
+      },
+      "cohort": "final_comparison"
     },
     {
       "id": "223_09_14_12_268083-2023-11-10",
@@ -91,7 +210,8 @@
         "archive_member": "train/images/223_09_14_12_268083-2023-11-10.jpg",
         "sha256": "5c5c7ecbf4db17e4f9756cfee9b33eb7a5229111ff44cae0f921c111eb80966c",
         "size": 1303664
-      }
+      },
+      "cohort": "final_comparison"
     },
     {
       "id": "1629_14_47_34_541619-2023-11-09",
@@ -100,7 +220,24 @@
         "archive_member": "train/images/1629_14_47_34_541619-2023-11-09.jpg",
         "sha256": "13992f946644b51d00ced3de16f9403877d53c31c40e9d88df19db446d672eae",
         "size": 1274951
-      }
+      },
+      "cohort": "final_comparison"
+    }
+  ],
+  "cohorts": {
+    "initial_comparison": 11,
+    "final_comparison": 11
+  },
+  "source_manifest_evidence": [
+    {
+      "cohort": "initial_comparison",
+      "canonical_sha256": "273605101391060d156ac2e3ce27181db1bb5d15beefbec153c516a78f0de05b",
+      "source": "repository revision 9e512546b9b6d320b6a3fe9e0583dd189108192f, evaluation/held-out-v1.json"
+    },
+    {
+      "cohort": "final_comparison",
+      "canonical_sha256": "2f56282cc78dd7267f144ff5104f051bcbb1c91a90505b840bfe51a4d9bdbf16",
+      "source": "final-held-out-v1.json from the 2026-09-24 local comparison worktree"
     }
   ]
 }

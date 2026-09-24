@@ -17,11 +17,11 @@
     },
     {
       "name": "held_out_evaluation",
-      "sha256": "7707796e5669ad0b8aa16c6971647afcb2ed23a992ae7db46a6fbb19899aa967"
+      "sha256": "e9a612a06a79482089092354a3d7f807d17cad7a97cdc85d1a92fd548ecae1f7"
     },
     {
       "name": "historical_comparison",
-      "sha256": "5417b7cdd42ee7e18bf687c79a4fe4b3ae310cd2ab39b37afcc8f4733bdaeae3"
+      "sha256": "f119b1a4fcb07d735b1dbf620650bf53f4a551426a8ad8b60f5f7d5d73427497"
     },
     {
       "name": "training",
@@ -40,5 +40,5 @@
     "kaggle-construction-equipment:source-prefix:237",
     "kaggle-construction-equipment:source-prefix:648"
   ],
-  "verification": "Accepted revision and decision read back from isolated local PostgreSQL; target runtime installation not verified."
+  "verification": "Accepted revision and decision read back from isolated local PostgreSQL after both historical comparison cohorts were included; target runtime installation not verified."
 }

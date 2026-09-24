@@ -8,4 +8,6 @@ The accepted revision and its eleven reserved fixtures were read back from an is
 
 After migrating the intended application database, install the revision through `cd backend && uv run evidence-evaluation freeze --archive /private/tmp/kaggle-construction-equipment.zip` with `DATABASE_URL` set for that database. The command returns the persisted revision ID and refuses an incomplete or overlapping set.
 
-`historical-comparison-v1.json` records the later eleven-frame set already used for local and cloud comparison. It is excluded from a new held-out revision and is not a pre-campaign freeze.
+`historical-comparison-v1.json` records both earlier eleven-frame cohorts used during local and cloud comparison. Both are excluded from the new held-out revision; neither is a pre-campaign freeze.
+
+Required verification of the checked-in set uses `EVALUATION_ARCHIVE_PATH=/private/tmp/kaggle-construction-equipment.zip` with `tests/test_evaluation_set.py` and an isolated migrated `TEST_DATABASE_URL`. The acceptance test skips when the archive path is absent, so a run without that variable does not verify this frozen source set.

@@ -5,8 +5,17 @@ created: '2026-09-24'
 status: 'done'
 route: 'dispatch'
 review_loop_iteration: 0
+followup_review_recommended: false
 baseline_commit: '9e512546b9b6d320b6a3fe9e0583dd189108192f'
 context: []
+deferred:
+  - summary: >-
+      Bind evaluation reports to a real report identity when Story 4.5 adds the report owner.
+    evidence: |-
+      The current report-binding table accepts any UUID because no EvaluationReport table exists yet. There is no production caller; Story 4.5 must define and verify the report identity before writing these bindings.
+    location: >-
+      backend/app/adapters/postgres.py:bind_evaluation_report
+    severity: 'medium (unverified)'
 ---
 
 <frozen-after-approval reason="human-owned intent — do not modify unless human renegotiates">
@@ -99,8 +108,45 @@ context: []
 | Verification 2 | low / reject | Same root as Blind 1: conservative reservation before an uncertain DB commit is recoverable by retry and avoids exposure. |
 | Verification 3 | medium / patch | Same root as Blind 6: require concrete per-frame context and sufficiency evidence. |
 
+### 2026-09-24 — Follow-up review pass
+- verdicts: 15 findings — high 0, medium 8, low 2, false 4, maybe-false 1
+- findings:
+  - `[medium]` `[defer]` Blind 1: the archive is only in `/private/tmp` — carried from the earlier Blind 13 row; private durable publication remains the Story 4.4 prerequisite already recorded in `deferred-work.md`.
+  - `[false]` `[reject]` Blind 2: the accepted record explicitly says it was read back from isolated local PostgreSQL and that target runtime installation is unverified; it does not claim availability to application reports.
+  - `[low]` `[reject]` Blind 3: the original owner export cannot retroactively contain a hash, but the retained derived review binds every answer to an image hash and to the unmodified raw export hash. Requiring a second human review to regenerate the raw file adds little here.
+  - `[medium]` `[patch]` Blind 4: ID sorting alone allowed a renamed member to disguise ordering; the gate now matches image and label stems to ID and uses archive-member identities for series order.
+  - `[medium]` `[patch]` Blind 5: image and label members were independently hashed but could be paired under unrelated names; the same-stem check now rejects that pairing.
+  - `[low]` `[reject]` Blind 6: arbitrary future notes could pass, but all eleven checked-in notes are scenario-specific and structured context plus owner review constrain the current freeze. Semantic validation of free prose would add speculative complexity.
+  - `[false]` `[reject]` Blind 7: the out-of-scope case tests an unsupported `crane` request and its `not_analyzed` outcome, both validated in the scenario and context; crane pixels are not required.
+  - `[false]` `[reject]` Blind 8: the group value itself says `source-prefix`, and both manifest and README disclose that exact camera/site identity is unknown; no exact-camera claim is made.
+  - `[medium]` `[patch]` Blind 9: the history omitted the earlier eleven-frame cohort. It now records both eleven-frame cohorts, and the gate verifies counts, unique identities, and referenced archive bytes.
+  - `[maybe-false]` `[defer]` Blind 10: the report-binding table has no report foreign key because Story 4.5 has not introduced the report table and no production caller uses the method. Story 4.5 must define the report identity before writing bindings; an orphan in a future integration would be medium severity.
+  - `[medium]` `[patch]` Edge 1: a source prefix could disagree with archive members and review evidence; the gate now requires consistent ID, member stems, candidate prefix, and group-evidence prefix.
+  - `[medium]` `[patch]` Edge 2: string-valued reserved groups were iterated character by character; the gate now rejects malformed lists and fixture rows.
+  - `[medium]` `[patch]` Edge 3: same root as Blind 9; exact cohort counts and all 22 archive references are checked before acceptance.
+  - `[medium]` `[patch]` Verification 1: the checked-in-set acceptance test skips without its archive. The required verification command now names `EVALUATION_ARCHIVE_PATH`, and the follow-up run exercised it with the pinned archive.
+  - `[false]` `[reject]` Intent alignment: the user's workflow question was answered directly, and this follow-up run reviewed the existing completed Story 4.1 spec; domain tests were never presented as proof of the workflow explanation.
+
+## Auto Run Result
+
+Status: done after a follow-up review pass.
+
+Summary: The freeze gate now checks member/source identity and both previously compared eleven-frame cohorts. The accepted manifest remains unchanged; its decision was read back again from a clean isolated PostgreSQL with the complete historical inventory.
+
+Changed files:
+- `backend/app/domain/evaluation_set.py` — rejects mismatched member/group identities and incomplete historical/exclusion data.
+- `backend/tests/test_evaluation_set.py` — covers the new rejection paths and the real archived manifest.
+- `evaluation/historical-comparison-v1.json` — retains both prior eleven-frame cohorts and source-manifest hashes.
+- `evaluation/freeze-decision-v1.json` — binds the follow-up readback to the revised historical inventory.
+- `evaluation/README.md` — documents both cohorts and the archive-enabled verification command.
+- `_bmad-output/implementation-artifacts/spec-4-1-freeze-held-out-evaluation-set-2.md` — records review triage, verification, and residual limits.
+
+Review: 7 medium patch findings fixed; 1 medium archive-storage item carried as deferred, 1 unverified medium report-binding item deferred, 2 low findings rejected for disproportionate fixes, and 4 false findings rejected with reasons above. Follow-up review recommended: false; this pass patched no high finding.
+
+Verification: `EVALUATION_ARCHIVE_PATH=/private/tmp/kaggle-construction-equipment.zip` with an isolated migrated `TEST_DATABASE_URL` ran the focused evaluation/admission/rule tests: 26 passed. An accepted eleven-frame revision was read back from a new isolated PostgreSQL against all 22 historical frames; the source manifest hash remained `bbc767cb2af37b88c09447dddea9123f0a3287c8e41cd0204df8d36c0b3459c6`. Deployment and application-database installation remain unverified.
+
 ## Verification
 
 **Commands:**
-- `cd backend && uv run pytest tests/test_evaluation_set.py` — expected: freeze, rejection, and immutability cases pass against the real persistence contract.
+- `cd backend && EVALUATION_ARCHIVE_PATH=/private/tmp/kaggle-construction-equipment.zip uv run pytest tests/test_evaluation_set.py` with an isolated migrated `TEST_DATABASE_URL` — expected: synthetic and checked-in freeze, rejection, and immutability cases pass against the real persistence contract.
 - `cd backend && uv run alembic upgrade head` — expected: evaluation revision schema applies to a disposable database.

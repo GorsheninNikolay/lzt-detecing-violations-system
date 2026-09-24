@@ -20,6 +20,7 @@ SCENARIOS = (
     + ["out_of_scope"]
 )
 TIERS = {"training", "validation", "contract", "development_acceptance", "held_out_evaluation"}
+HISTORICAL_COHORTS = {"initial_comparison": 11, "final_comparison": 11}
 EXPECTED_SCENARIOS = {
     "single_both": ("observations_only", ["excavator", "dump_truck"]),
     "single_excavator": ("observations_only", ["excavator", "dump_truck"]),
@@ -80,9 +81,15 @@ def _inspect_evaluation_set(manifest_path: Path, archive_path: Path, inventory_p
         if inventory.get("schema_revision") != "exclusion-inventory-v1" or tier in tiers:
             errors.append({"code": "inventory_invalid", "tier": tier})
         tiers.add(tier)
-        for group in inventory.get("reserved_source_groups", []):
+        reserved_groups = inventory.get("reserved_source_groups")
+        fixtures = inventory.get("fixtures")
+        if (not isinstance(reserved_groups, list) or any(not isinstance(group, str) or not group.strip() for group in reserved_groups)
+                or not isinstance(fixtures, list) or any(not isinstance(item, dict) for item in fixtures)):
+            errors.append({"code": "inventory_invalid", "tier": tier})
+            continue
+        for group in reserved_groups:
             occupied_groups.setdefault(group, set()).add(tier)
-        for item in inventory.get("fixtures", []):
+        for item in fixtures:
             for group in (item.get("source_group"), item.get("source_site_camera_time_sequence_group")):
                 if group:
                     occupied_groups.setdefault(group, set()).add(tier)
@@ -104,8 +111,29 @@ def _inspect_evaluation_set(manifest_path: Path, archive_path: Path, inventory_p
             historical = material
             if material.get("source_archive_sha256") != manifest.get("source_archive_sha256"):
                 errors.append({"code": "historical_archive_mismatch"})
+            historical_frames = material.get("frames")
+            source_evidence = material.get("source_manifest_evidence")
+            if (material.get("schema_revision") != "historical-comparison-v1"
+                    or material.get("cohorts") != HISTORICAL_COHORTS
+                    or not isinstance(historical_frames, list) or len(historical_frames) != sum(HISTORICAL_COHORTS.values())
+                    or any(not isinstance(frame, dict) for frame in historical_frames)
+                    or any(sum(frame.get("cohort") == cohort for frame in historical_frames) != count
+                           for cohort, count in HISTORICAL_COHORTS.items())
+                    or len({frame.get("id") for frame in historical_frames}) != len(historical_frames)
+                    or len({frame.get("image", {}).get("sha256") for frame in historical_frames}) != len(historical_frames)
+                    or not isinstance(source_evidence, list) or len(source_evidence) != len(HISTORICAL_COHORTS)
+                    or {item.get("cohort") for item in source_evidence if isinstance(item, dict)} != set(HISTORICAL_COHORTS)
+                    or any(not isinstance(item, dict) or not isinstance(item.get("canonical_sha256"), str)
+                           or len(item["canonical_sha256"]) != 64
+                           or any(char not in "0123456789abcdef" for char in item["canonical_sha256"])
+                           for item in source_evidence)):
+                errors.append({"code": "historical_manifest_invalid"})
         evidence.append({"name": name, "sha256": canonical_hash(material)})
-        for group in material.get("reserved_source_groups", []):
+        reserved_groups = material.get("reserved_source_groups", [])
+        if not isinstance(reserved_groups, list) or any(not isinstance(group, str) or not group.strip() for group in reserved_groups):
+            errors.append({"code": "material_invalid", "name": name})
+            reserved_groups = []
+        for group in reserved_groups:
             occupied_groups.setdefault(group, set()).add(name)
         for item in material.get("fixtures", material.get("frames", [])):
             for group in (item.get("source_group"), item.get("source_group_candidate"),
@@ -128,8 +156,8 @@ def _inspect_evaluation_set(manifest_path: Path, archive_path: Path, inventory_p
         errors.append({"code": "scenario_contract_invalid"})
     for name in ("positive_series", "check_request_series", "insufficient_series"):
         selected = [frame for frame in frames if frame.get("scenario") == name]
-        ids = [frame.get("id") for frame in selected]
-        if any(not isinstance(frame_id, str) for frame_id in ids) or ids != sorted(ids) or len(ids) != len(set(ids)):
+        member_ids = [Path(frame.get("image", {}).get("archive_member", "")).stem for frame in selected]
+        if member_ids != sorted(member_ids) or len(member_ids) != len(set(member_ids)):
             errors.append({"code": "series_order_invalid", "scenario": name})
         if name != "insufficient_series" and len({frame.get("context", {}).get("observation_area")
                                                    for frame in selected if isinstance(frame.get("context"), dict)}) != 1:
@@ -288,11 +316,19 @@ def _inspect_evaluation_set(manifest_path: Path, archive_path: Path, inventory_p
                 errors.append({"code": "scenario_label_mismatch", "ordinal": ordinal})
             verified_group = frame.get("source_site_camera_time_sequence_group")
             candidate_group = frame.get("source_group_candidate")
+            frame_id = frame.get("id")
+            image_member = frame.get("image", {}).get("archive_member", "")
+            label_member = frame.get("label", {}).get("archive_member", "")
+            if (not isinstance(frame_id, str) or not isinstance(image_member, str) or not isinstance(label_member, str)
+                    or Path(image_member).stem != frame_id or Path(label_member).stem != frame_id):
+                errors.append({"code": "frame_member_identity_mismatch", "ordinal": ordinal})
+            if not isinstance(frame_id, str) or not isinstance(candidate_group, str) or candidate_group != frame_id.split("_", 1)[0]:
+                errors.append({"code": "group_candidate_invalid", "ordinal": ordinal})
+            if group_evidence.get("conservative_source_prefix") != candidate_group:
+                errors.append({"code": "group_evidence_mismatch", "ordinal": ordinal})
             if not isinstance(verified_group, str) or not verified_group.strip():
                 errors.append({"code": "missing_evidence", "ordinal": ordinal,
                                "field": "source_site_camera_time_sequence_group"})
-            if candidate_group is not None and (not isinstance(candidate_group, str) or not candidate_group.strip()):
-                errors.append({"code": "group_candidate_invalid", "ordinal": ordinal})
             for group in sorted({value for value in (verified_group, candidate_group) if isinstance(value, str) and value}):
                 for tier in sorted(occupied_groups.get(group, set()) - {"held_out_evaluation"}):
                     errors.append({"code": "group_overlap", "ordinal": ordinal, "tier": tier, "identity": group})

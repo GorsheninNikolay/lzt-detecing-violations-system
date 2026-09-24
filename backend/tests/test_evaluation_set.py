@@ -27,6 +27,7 @@ def evidence(tmp_path, salt=b"", group_prefix="site-camera-series"):
     tmp_path.mkdir(parents=True, exist_ok=True)
     archive = tmp_path / "source.zip"
     frames = []
+    historical_frames = []
     with zipfile.ZipFile(archive, "w") as output:
         for ordinal, scenario in enumerate(SCENARIOS):
             color = tuple(hashlib.sha256(salt + bytes([ordinal])).digest()[:3])
@@ -34,13 +35,15 @@ def evidence(tmp_path, salt=b"", group_prefix="site-camera-series"):
             Image.new("RGB", (2, 2), color).save(image, format="JPEG")
             payload = image.getvalue()
             label = b""
-            output.writestr(f"images/{ordinal}.jpg", payload)
-            output.writestr(f"labels/{ordinal}.txt", label)
-            frames.append({"ordinal": ordinal, "id": str(ordinal), "scenario": scenario,
+            frame_id = f"100_{ordinal:02d}"
+            output.writestr(f"images/{frame_id}.jpg", payload)
+            output.writestr(f"labels/{frame_id}.txt", label)
+            frames.append({"ordinal": ordinal, "id": frame_id, "scenario": scenario,
+                "source_group_candidate": "100",
                 "source_site_camera_time_sequence_group": f"{group_prefix}-{ordinal // 3}",
                 "group_evidence": {"same_area_response": ("Да" if scenario in ("positive_series", "check_request_series") else
                                                           "Нет" if scenario == "insufficient_series" else None),
-                                   "source": "owner verified source record"},
+                                   "source": "owner verified source record", "conservative_source_prefix": "100"},
                 "context": {"analysis_intent": "excavation_rule" if scenario.endswith("_series") else "observations_only",
                             "requested_classes": EXPECTED_SCENARIOS[scenario][1],
                             "expected_outcome": EXPECTED_SCENARIOS[scenario][0],
@@ -52,8 +55,16 @@ def evidence(tmp_path, salt=b"", group_prefix="site-camera-series"):
                 "adjudicator": "human owner", "adjudicated_at": "2026-09-24", "usable": True,
                 "manual_labels": {"excavator": "yes" if scenario not in ("insufficient_series", "out_of_scope") else "no",
                                   "dump_truck": "yes" if scenario in ("single_both", "positive_series") else "no"},
-                "image": {"archive_member": f"images/{ordinal}.jpg", "sha256": hashlib.sha256(payload).hexdigest(), "size": len(payload)},
-                "label": {"archive_member": f"labels/{ordinal}.txt", "sha256": hashlib.sha256(label).hexdigest(), "size": 0}})
+                "image": {"archive_member": f"images/{frame_id}.jpg", "sha256": hashlib.sha256(payload).hexdigest(), "size": len(payload)},
+                "label": {"archive_member": f"labels/{frame_id}.txt", "sha256": hashlib.sha256(label).hexdigest(), "size": 0}})
+        for ordinal in range(22):
+            cohort = "initial_comparison" if ordinal < 11 else "final_comparison"
+            frame_id = f"900_{ordinal:02d}"
+            payload = b"historical" + salt + bytes([ordinal])
+            member = f"history/{frame_id}.jpg"
+            output.writestr(member, payload)
+            historical_frames.append({"cohort": cohort, "id": frame_id, "source_group_candidate": "900",
+                "image": {"archive_member": member, "sha256": hashlib.sha256(payload).hexdigest(), "size": len(payload)}})
     manifest = {"schema_revision": "held-out-evaluation-v1", "source_archive_sha256": hashlib.sha256(archive.read_bytes()).hexdigest(),
         "cloud_upload_authorization": {"granted": True, "evidence": "owner authorized provider upload"},
         "source_non_use_attestation": {"confirmed": True, "evidence": "owner checked all model training sources"},
@@ -100,7 +111,12 @@ def evidence(tmp_path, salt=b"", group_prefix="site-camera-series"):
     contract.write_text(json.dumps({"schema_revision": "exclusion-inventory-v1", "tier": "contract",
                                     "reserved_source_groups": [], "fixtures": []}))
     historical = tmp_path / "historical.json"
-    historical.write_text(json.dumps({"source_archive_sha256": manifest["source_archive_sha256"], "frames": []}))
+    historical.write_text(json.dumps({"schema_revision": "historical-comparison-v1",
+        "source_archive_sha256": manifest["source_archive_sha256"],
+        "cohorts": {"initial_comparison": 11, "final_comparison": 11},
+        "source_manifest_evidence": [{"cohort": cohort, "canonical_sha256": "a" * 64}
+                                     for cohort in ("initial_comparison", "final_comparison")],
+        "frames": historical_frames}))
     return manifest, manifest_path, archive, inventories, contract, admission, historical
 
 
@@ -194,8 +210,8 @@ def test_malformed_manifest_records_rejection(database, tmp_path):
     assert decision["status"] == "rejected" and revision is None
     assert len(decision["manifest_hash"]) == 64
     with database.engine.connect() as connection:
-        assert connection.execute(text("SELECT status FROM evaluation_freeze_decisions WHERE manifest_hash = :hash"),
-                                  {"hash": decision["manifest_hash"]}).scalar_one() == "rejected"
+        assert "rejected" in connection.execute(text("SELECT status FROM evaluation_freeze_decisions WHERE manifest_hash = :hash"),
+                                                 {"hash": decision["manifest_hash"]}).scalars().all()
 
 
 def test_review_image_hash_and_export_binding(tmp_path):
@@ -229,7 +245,8 @@ def test_series_area_order_and_context_contract(tmp_path):
     parts = evidence(tmp_path)
     parts[0]["scenarios"]["positive_series"]["expected_outcome"] = "check_requested"
     parts[0]["frames"][2]["context"]["requested_classes"] = ["excavator"]
-    parts[0]["frames"][3]["id"] = "0-before-series"
+    parts[0]["frames"][2]["image"]["archive_member"], parts[0]["frames"][3]["image"]["archive_member"] = (
+        parts[0]["frames"][3]["image"]["archive_member"], parts[0]["frames"][2]["image"]["archive_member"])
     parts[1].write_text(json.dumps(parts[0]))
     codes = {error["code"] for error in inspect(parts)["errors"]}
     assert {"scenario_contract_invalid", "frame_context_invalid", "series_order_invalid"} <= codes
@@ -285,9 +302,45 @@ def test_invalid_jpeg_zip_and_malformed_evidence_reject_without_exception(tmp_pa
 
 def test_historical_member_hash_checked_against_archive(tmp_path):
     parts = evidence(tmp_path)
-    parts[6].write_text(json.dumps({"source_archive_sha256": parts[0]["source_archive_sha256"],
-        "frames": [{"id": "prior", "image": {**parts[0]["frames"][0]["image"], "sha256": "0" * 64}}]}))
+    historical = json.loads(parts[6].read_text())
+    historical["frames"][0]["image"]["sha256"] = "0" * 64
+    parts[6].write_text(json.dumps(historical))
     assert any(error["code"] == "historical_content_mismatch" for error in inspect(parts)["errors"])
+
+
+def test_historical_cohorts_must_be_complete(tmp_path):
+    parts = evidence(tmp_path)
+    historical = json.loads(parts[6].read_text())
+    historical["frames"].pop()
+    parts[6].write_text(json.dumps(historical))
+    assert any(error["code"] == "historical_manifest_invalid" for error in inspect(parts)["errors"])
+
+
+@pytest.mark.parametrize("bad_field", ["reserved_string", "reserved_nonstring", "fixtures_string"])
+def test_malformed_exclusion_inventory_rejected(tmp_path, bad_field):
+    parts = evidence(tmp_path)
+    inventory = json.loads(parts[3][0].read_text())
+    if bad_field == "reserved_string":
+        inventory["reserved_source_groups"] = "100"
+    elif bad_field == "reserved_nonstring":
+        inventory["reserved_source_groups"] = [100]
+    else:
+        inventory["fixtures"] = "invalid"
+    parts[3][0].write_text(json.dumps(inventory))
+    decision = inspect(parts)
+    assert decision["status"] == "rejected"
+    assert any(error["code"] == "inventory_invalid" and error.get("tier") == "training"
+               for error in decision["errors"])
+
+
+def test_frame_member_and_source_prefix_identity(tmp_path):
+    parts = evidence(tmp_path)
+    parts[0]["frames"][0]["id"] = "101_00"
+    parts[0]["frames"][1]["source_group_candidate"] = "999"
+    parts[0]["frames"][2]["group_evidence"]["conservative_source_prefix"] = "999"
+    parts[1].write_text(json.dumps(parts[0]))
+    codes = {error["code"] for error in inspect(parts)["errors"]}
+    assert {"frame_member_identity_mismatch", "group_candidate_invalid", "group_evidence_mismatch"} <= codes
 
 
 def test_contract_inventory_overlap(tmp_path):
@@ -331,7 +384,8 @@ def test_revision_and_report_binding_are_immutable(database, tmp_path):
     held_out = json.loads(parts[3][-1].read_text())
     assert len(held_out["fixtures"]) == 11
     assert {item["manifest_hash"] for item in held_out["fixtures"]} == {decision["manifest_hash"]}
-    assert {item["source_group"] for item in held_out["fixtures"]} == {
+    assert {item["source_group"] for item in held_out["fixtures"]} == {"100"}
+    assert {item["source_site_camera_time_sequence_group"] for item in held_out["fixtures"]} == {
         item["source_site_camera_time_sequence_group"] for item in parts[0]["frames"]}
     report = uuid.uuid4()
     database.bind_evaluation_report(report, first)
