@@ -12,10 +12,13 @@ INPUT_RUB_PER_1000 = Decimal("0.2")
 CACHED_RUB_PER_1000 = Decimal("0.05")
 OUTPUT_RUB_PER_1000 = Decimal("0.3")
 PROMPT = (
-    'Inspect this construction-site image. Reply with JSON only: '
-    '{"excavator": true or false, "dump_truck": true or false}. '
-    'Mark a class true only if it is visibly present. Do not infer hidden equipment.'
+    'Inspect this construction-site image. Mark each class true only if it is visibly present. '
+    'Do not infer hidden equipment. Return the two requested booleans.'
 )
+RESPONSE_FORMAT = {"type": "json_schema", "name": "construction_presence", "strict": True,
+                   "schema": {"type": "object", "properties": {
+                       "excavator": {"type": "boolean"}, "dump_truck": {"type": "boolean"}},
+                       "required": ["excavator", "dump_truck"], "additionalProperties": False}}
 
 
 class CloudObserverError(RuntimeError):
@@ -64,7 +67,7 @@ def normalize_response(payload: dict, model_uri: str, latency_ms: float) -> dict
 def observe(image: bytes, folder_id: str, api_key: str, timeout_seconds: float = 60) -> dict:
     model_uri = f"gpt://{folder_id}/{MODEL}"
     body = json.dumps({
-        "model": model_uri, "store": False,
+        "model": model_uri, "store": False, "text": {"format": RESPONSE_FORMAT},
         "input": [{"role": "user", "content": [
             {"type": "input_text", "text": PROMPT},
             {"type": "input_image", "image_url": "data:image/jpeg;base64," + base64.b64encode(image).decode(),
@@ -80,8 +83,8 @@ def observe(image: bytes, folder_id: str, api_key: str, timeout_seconds: float =
     try:
         with request.urlopen(http_request, timeout=timeout_seconds) as response:
             payload = json.load(response)
-    except error.HTTPError:
-        raise CloudObserverError("observer_http_error") from None
+    except error.HTTPError as exc:
+        raise CloudObserverError(f"observer_http_{exc.code}") from None
     except (TimeoutError, error.URLError):
         raise CloudObserverError("observer_timeout_or_transport_failed") from None
     except (ValueError, UnicodeError):

@@ -12,11 +12,14 @@ MODEL = "gpt://folder/qwen3.6-35b-a3b"
 def test_closed_states_usage_and_cost():
     result = normalize_response({
         "id": "response-1", "status": "completed", "model": MODEL,
-        "output_text": '{"excavator":true,"dump_truck":false}',
-        "usage": {"input_tokens": 1500, "output_tokens": 100},
+        "output": [{"type": "reasoning", "content": []}, {"type": "message", "content": [
+            {"type": "output_text", "text": '{"excavator":true,"dump_truck":false}'}]}],
+        "usage": {"input_tokens": 1500, "input_tokens_details": {"cached_tokens": 500},
+                  "output_tokens": 100},
     }, MODEL, 125)
     assert result["states"] == {"excavator": "detected", "dump_truck": "not_detected_in_frame"}
-    assert result["estimated_cost_rub"] == "0.33"
+    assert result["estimated_cost_rub"] == "0.255"
+    assert result["usage"]["cached_tokens"] == 500
 
 
 def test_invalid_response_is_terminal():
