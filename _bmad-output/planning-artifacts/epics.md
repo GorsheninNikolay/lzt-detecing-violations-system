@@ -114,7 +114,7 @@ NFR13: Every candidate must have a reproducible locked environment, exact adapte
 
 NFR14: Local candidate admission requires a complete ordinary-laptop Apple M3 Pro CPU-only smoke on a separate admission set; accelerator profiles are optional separate revisions and cannot silently fall back to CPU.
 
-NFR15: Live cloud execution requires current customer-account evidence for Russian availability, paid commercial entitlement, accepted data and retention terms, quota, returned model identity, and a strict-schema canary; provider failure has no hidden fallback.
+NFR15: The bounded cloud prototype requires current evidence from the intended owner's active paid Yandex Cloud account for model access, quota, applicable commercial and data-processing/retention terms, exact image authorization, returned model identity, and a strict-schema image canary; provider failure has no hidden fallback. Any later customer account or real-site imagery requires its own rights and data gates.
 
 NFR16: The application must remain usable at 320 CSS pixels, at 200% browser zoom, and on laptop, tablet, and phone layouts without two-dimensional page scrolling except inside the zoomable evidence canvas.
 
@@ -159,13 +159,13 @@ NFR22: The initial PolicyProfile must accept every supported image that decodes,
 - Permit a deterministic test observer only in test composition and reject it as a runtime, demonstration, admission, or comparison profile; test persistence still uses PostgreSQL and the real artifact-store contract rather than SQLite or an alternate repository implementation.
 - Keep Epic 1 contract/admission fixtures and Epic 2 development acceptance fixtures outside the held-out evaluation set and outside candidate tuning after evaluation freeze.
 - Before freezing an EvaluationSetRevision, reject any content-checksum overlap or source/site/camera/time-sequence group overlap with training, validation, contract, admission, or development acceptance fixtures.
-- Start the required comparison with admitted Grounding DINO Tiny CPU and paid corporate GigaChat-2-Max profiles; RF-DETR stays conditional on an independently approved rights-clear corpus, and Kimi stays outside the campaign until all Russia, commercial, payment, and data gates pass.
+- Start the required comparison with admitted Grounding DINO Tiny CPU and Yandex AI Studio Qwen3.6 35B profiles on the accepted Story 4.1 evaluation revision; RF-DETR stays conditional on an independently approved rights-clear corpus, and Kimi stays outside the campaign until all Russia, commercial, payment, and data gates pass.
 - Freeze evaluation, policy, rule, taxonomy, preprocessing, profiles, timeouts, concurrency `1`, SDK retries `0`, fixtures, candidates, and three repeat matrices before starting a comparison campaign.
 - Execute comparison cells in deterministic `(campaign_id, repeat_ordinal, fixture_ordinal, candidate_ordinal)` order, one at a time; retain every error and timeout in immutable denominators.
 - Generate an EvaluationReport with one `pass|fail|not_evaluated` evidence row per readiness criterion; derive overall readiness as `incomplete`, `fail`, or `pass` without a model winner score.
 - Keep provider selection and `ActiveObserverConfiguration` publication out of the delivered MVP; an initial interactive profile comes from validated runtime configuration.
 - Pin Grounding DINO Tiny to revision `e08274d3760f8fcfc53dcbb9ca3ed0a29fa9c40e`; its required admission profile is Apple M3 Pro CPU-only with locked artifacts and offline smoke.
-- Gate GigaChat use on the future customer's paid corporate account, commercial and data terms, quota, served-identity readback, strict-schema canary, and verified upload-delete behavior.
+- Gate Qwen3.6 use on the owner's active paid Yandex Cloud account, applicable commercial and data terms, quota, exact authorized-image hashes, served-identity readback, and a strict-schema image canary. Record request data controls without claiming provider deletion; later customer accounts and real-site images require separate approval.
 - Treat RF-DETR Nano `rfdetr==1.10.0` at `0f432b6` as non-blocking until a rights-clear two-class corpus, group-disjoint split, sampled label QA, locks, and CPU smoke are approved; exclude YOLO from delivered-MVP implementation absent a separate license decision.
 - Expose only committed backend stage state and backend-derived outcome wording through the API; the web client must not infer rule results or stage completion.
 
@@ -913,20 +913,20 @@ So that local and cloud results can be compared under the same evidence contract
 
 **Acceptance Criteria:**
 
-**Given** the future customer's paid corporate GigaChat account
+**Given** the intended owner's active paid Yandex Cloud account and a declared approved prototype image set
 **When** the admission gates are evaluated
-**Then** Russia availability, commercial entitlement, data-processing and retention terms, quota, model entitlement, and returned identity are evidenced from that account
-**And** failure of any gate keeps the profile draft and blocks real construction-image upload. (NFR15)
+**Then** current Qwen3.6 access, quota, applicable commercial and data-processing/retention terms, request data controls, and exact image rights and authorization are evidenced from that account
+**And** failure of any gate keeps the profile draft and blocks image upload. (NFR15)
 
-**Given** approved input data and a bounded canary
-**When** `GigaChat-2-Max` is invoked
-**Then** upload, strict-schema image response, served-model identity, and provider file deletion are verified through the ordinary invocation and artifact contracts
-**And** timeout, malformed output, or missing identity remains an admission failure rather than an inferred absence.
+**Given** an approved canary image and a bounded invocation
+**When** the exact Yandex AI Studio Qwen3.6 profile is called
+**Then** strict two-class output, provider response/request identity, served-model URI, request data controls, and private input and native artifacts are verified through the ordinary invocation and artifact contracts
+**And** timeout, malformed output, missing identity, or unauthorized input remains an admission failure rather than an inferred absence; `store=false` does not establish provider deletion.
 
 **Given** admission succeeds
 **When** a new immutable profile revision is created
-**Then** it records requested and returned model identity, adapter and prompt revisions, runtime limits, commercial/data evidence, and enabled authorization
-**And** the moving model alias is disclosed as an identity gap rather than presented as an immutable pin.
+**Then** it records requested and returned model URI, adapter, prompt, schema, reasoning and temperature revisions, runtime limits, account/data evidence, allowed image hashes, and enabled authorization
+**And** any hosted-model revision that cannot be pinned is disclosed as an identity gap.
 
 ### Story 4.3: Freeze a Complete Comparison Campaign
 
@@ -936,10 +936,10 @@ So that failures and missing cells cannot disappear from the result.
 
 **Acceptance Criteria:**
 
-**Given** admitted, enabled Grounding DINO Tiny CPU and GigaChat profiles plus a frozen EvaluationSetRevision
+**Given** admitted, enabled Grounding DINO Tiny CPU and Qwen3.6 profiles plus the accepted Story 4.1 EvaluationSetRevision
 **When** I start the required campaign
 **Then** one atomic manifest freezes evaluation, policy, rule, taxonomy, preprocessing, profile revisions, timeouts, concurrency `1`, SDK retries `0`, candidate and fixture ordinals, and all three repeat matrices
-**And** no RF-DETR, Kimi, hybrid, or unadmitted profile enters by implicit fallback. (FR27)
+**And** the Qwen profile's authorized hashes include every campaign input, while no RF-DETR, Kimi, hybrid, or unadmitted profile enters by implicit fallback. (FR27)
 
 **Given** the campaign manifest
 **When** planned cells are materialized
