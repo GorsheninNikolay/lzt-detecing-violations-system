@@ -86,12 +86,12 @@ action_items:
     ref: "_bmad-output/implementation-artifacts/epic-1-retro-2026-09-23.md"
   - id: "epic-1-retro-verify-rendered-ui"
     epic: 1
-    action: "F6: Obtain permitted rendered-browser evidence for 320px, 200% zoom,
-      dialog focus and real source-image loading; GUI work remains prohibited in this
-      session."
+    action: "F6 complete: Headless local-fixture evidence covers 320px and 200%-equivalent
+      rendering, emulated touch input, dialog focus, and source-image loading; no live
+      backend, production, or physical-device verification is claimed."
     owner: "QA owner / Gorshenin-nik"
-    status: open
-    ref: "_bmad-output/implementation-artifacts/epic-1-retro-2026-09-23.md"
+    status: done
+    ref: "_bmad-output/implementation-artifacts/spec-f6-verify-rendered-ui.md"
   - id: "epic-1-retro-verify-indexeddb-recovery"
     epic: 1
     action: "F7 (deferred): Verify quota-triggered IndexedDB persistence, reload recovery

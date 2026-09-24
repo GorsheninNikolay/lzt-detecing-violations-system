@@ -8,14 +8,7 @@ review_loop_iteration: 0
 followup_review_recommended: true
 context: []
 warnings: []
-deferred:
-  - summary: >-
-      Rendered 320 CSS pixel, 200% zoom, text spacing, and touch behavior remains unverified.
-    evidence: |-
-      Component tests run in jsdom and cannot measure layout or physical targets. The user's working agreement prohibits opening or controlling GUI applications; a permitted browser review would settle this.
-    location: >-
-      web/src/styles.css
-    severity: medium (unverified)
+deferred: []
 ---
 
 <intent-contract>
@@ -121,6 +114,12 @@ Implemented the Russian responsive New Analysis form for one JPEG or an ordered 
 
 Files changed: `web/package.json` and `web/package-lock.json` pin the client dependencies; `web/index.html`, `web/vite.config.ts`, `web/tsconfig.json`, and `web/src/vite-env.d.ts` establish the app; `web/src/App.tsx`, `web/src/main.tsx`, and `web/src/styles.css` implement its behavior and full-night shell; `web/src/App.test.tsx` covers user-facing submission and recovery; `web/README.md`, `README.md`, and `.gitignore` document and support local use; `sprint-status.yaml` records completion.
 
-Review: 23 findings across four layers: 16 medium and 5 low patched, 1 false rejected because the CSS minimum equals the specified 320 CSS pixel viewport, and 1 maybe-false layout concern deferred pending a permitted rendered-browser check. The patched medium findings include concurrent selection, uncertain-response identity, source order, route state, and validation tests. Follow-up review recommended: true, because actual rendered 320 CSS pixel/200% zoom behavior and large-request IndexedDB recovery remain unverified. No GUI was opened under the user's working agreement.
+Review: 23 findings across four layers: 16 medium and 5 low patched, 1 false rejected because the CSS minimum equals the specified 320 CSS pixel viewport, and 1 maybe-false layout concern deferred pending a permitted rendered-browser check. The patched medium findings include concurrent selection, uncertain-response identity, source order, route state, and validation tests. Follow-up review recommended: true for that review pass due to multiple patched medium findings. F6 responsive evidence is recorded below; large-request IndexedDB recovery remains unverified. No GUI was opened under the user's working agreement.
 
-Verification: `npm ci`, `npm test -- --run` (11 passed), and `npm run build` passed. The full backend suite passed `43 passed in 60.75s` against the isolated test PostgreSQL/MinIO configuration. `git diff --check` and YAML frontmatter parsing passed. React 19.3.0 and Vite 8.3.0 from the architecture document returned npm 404, so available pinned React 19.1.1 and Vite 8.2.2 were used; TypeScript 6.0.3 and Radix Themes 3.3.0 are pinned. No deployed browser or visual interaction was verified.
+Verification: `npm ci`, `npm test -- --run` (11 passed), and `npm run build` passed. The full backend suite passed `43 passed in 60.75s` against the isolated test PostgreSQL/MinIO configuration. `git diff --check` and YAML frontmatter parsing passed. React 19.3.0 and Vite 8.3.0 from the architecture document returned npm 404, so available pinned React 19.1.1 and Vite 8.2.2 were used; TypeScript 6.0.3 and Radix Themes 3.3.0 are pinned. At that story verification time no rendered browser was checked; the later local headless F6 evidence is recorded below.
+
+## Follow-up Verification — 2026-09-24
+
+The rendered responsive deferral is resolved by headless Chromium evidence. At 320 CSS pixels (device scale 1), the document remained 320 pixels wide; navigation, associated form labels, image picker, and submit control fit the viewport width, and the text-spacing layout had no clipped content. A Playwright `hasTouch` tap produced a touch pointer event and focused the scenario field; this emulates touch input and does not verify a physical device. At 640 CSS pixels and device scale 2, the screenshot rendered at 1280 pixels; text-spacing overrides were measured at 0.12em letter spacing, 0.16em word spacing, 1.5 line height, and 2em paragraph spacing, with no horizontal overflow or clipping and all visible targets at least 44 by 44 CSS pixels within the viewport.
+
+Evidence: [F6 browser report](epic-1-retro-evidence-2026-09-24/report.md), [320 CSS-pixel screenshot](epic-1-retro-evidence-2026-09-24/f6-phone-320-css.png), [640 CSS-pixel / 2x screenshot](epic-1-retro-evidence-2026-09-24/f6-200-equivalent-form-640-css-dsf2.png). This is local headless rendering and touch emulation; browser-toolbar zoom, physical-device touch, and production behavior were not verified.
