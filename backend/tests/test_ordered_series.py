@@ -1,6 +1,8 @@
 import asyncio
 import base64
+import hashlib
 import json
+import io
 import threading
 from concurrent.futures import ThreadPoolExecutor
 import uuid
@@ -12,10 +14,12 @@ from alembic import command
 from alembic.config import Config as AlembicConfig
 from botocore.exceptions import ClientError
 from httpx import ASGITransport, AsyncClient
+from PIL import Image, ImageDraw
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import make_url
 from sqlalchemy.exc import IntegrityError
 
+from app.adapters import postgres
 from app.adapters.artifacts import ArtifactGateError, ArtifactStore
 from app.adapters.postgres import AdmissionStoreError, PostgresStore
 from app.application import executor, submission
@@ -212,6 +216,45 @@ def test_populated_single_image_upgrade_preserves_associations(integration, monk
         admin.dispose()
 
 
+@pytest.mark.parametrize("branch,column", [
+    ("0005_retry", "retry_of_run_id"),
+    ("0007_run_history", "retry_predecessor_id"),
+])
+def test_retry_branch_upgrade_preserves_lineage(integration, monkeypatch, branch, column):
+    config, _, _ = integration
+    database_name = f"retry_upgrade_{uuid.uuid4().hex}"
+    database_url = make_url(config.database_url).set(database=database_name).render_as_string(hide_password=False)
+    admin = create_engine(config.database_url, isolation_level="AUTOCOMMIT")
+    migrations = AlembicConfig(str(BACKEND / "alembic.ini"))
+    migrations.set_main_option("script_location", str(BACKEND / "migrations"))
+    migrations.set_main_option("path_separator", "os")
+    try:
+        with admin.connect() as connection:
+            connection.exec_driver_sql(f'CREATE DATABASE "{database_name}"')
+        monkeypatch.setenv("DATABASE_URL", database_url)
+        command.upgrade(migrations, branch)
+        engine = create_engine(database_url)
+        try:
+            source, successor = uuid.uuid4(), uuid.uuid4()
+            with engine.begin() as connection:
+                connection.execute(text("INSERT INTO analysis_runs (id, state, purpose) VALUES (:id, 'failed', 'ordinary')"),
+                                   {"id": source})
+                connection.execute(text(f"""INSERT INTO analysis_runs (id, state, purpose, {column})
+                    VALUES (:id, 'queued', 'ordinary', :source)"""), {"id": successor, "source": source})
+            command.upgrade(migrations, "head")
+            with engine.connect() as connection:
+                assert connection.execute(text("SELECT retry_predecessor_id FROM analysis_runs WHERE id = :id"),
+                                          {"id": successor}).scalar_one() == source
+                assert not connection.execute(text("""SELECT 1 FROM information_schema.columns
+                    WHERE table_name = 'analysis_runs' AND column_name = 'retry_of_run_id'""")).first()
+        finally:
+            engine.dispose()
+    finally:
+        with admin.connect() as connection:
+            connection.exec_driver_sql(f'DROP DATABASE IF EXISTS "{database_name}" WITH (FORCE)')
+        admin.dispose()
+
+
 def body(*images):
     return {"intent": "observation_only", "scenario": "equipment_check",
             "observation_area": "north_gate", "period": "2026-09-23T12:00:00+03:00",
@@ -227,6 +270,24 @@ def test_stage_binding_is_explicit_and_changes_request_identity():
     assert context["stage_id"] == "excavation" and bound_hash != legacy_hash
     with pytest.raises(submission.SubmissionError, match="invalid_stage_id"):
         submission.validate_request({**request, "stage_id": "foundation"})
+
+
+@pytest.mark.parametrize("series", [False, True])
+def test_observation_stage_id_reuses_published_request_hash(series):
+    image = jpeg((1, 2, 3))
+    request = body(image, image) if series else {
+        **{key: value for key, value in body(image).items() if key != "images_base64"},
+        "image_base64": base64.b64encode(image).decode(),
+    }
+    request["stage_id"] = "excavation"
+    _, context, requested, actual_hash = submission.validate_images(request, series)
+    legacy_identity = {
+        "context": context,
+        "requested_classes": sorted(requested),
+        "image_sha256": [hashlib.sha256(image).hexdigest()] * 2 if series else hashlib.sha256(image).hexdigest(),
+    }
+    canonical = json.dumps(legacy_identity, sort_keys=True, separators=(",", ":"))
+    assert actual_hash == hashlib.sha256(canonical.encode()).hexdigest()
 
 
 def test_stage_summary_route_returns_stable_error():
@@ -256,17 +317,18 @@ def test_stage_summary_separates_projection_and_newer_lifecycle(isolated_admissi
             for run_id, purpose, state, context, age in (
                 (legacy, "ordinary", "succeeded", {}, 10),
                 (admission, "profile_admission", "succeeded", {"stage_id": "excavation"}, 9),
-                (result, "ordinary", "succeeded", {"stage_id": "excavation"}, 98),
+                (result, "ordinary", "succeeded", {}, 98),
                 (no_projection, "ordinary", "succeeded", {"stage_id": "excavation"}, 97),
                 *((run_id, "ordinary", "failed", {"stage_id": "excavation"}, 96 - index)
                   for index, run_id in enumerate(newer)),
             ):
                 connection.execute(text("""INSERT INTO analysis_runs
-                    (id, purpose, state, request_context, created_at)
-                    VALUES (:id, :purpose, :state, CAST(:context AS jsonb),
+                    (id, purpose, state, request_context, stage_key, created_at)
+                    VALUES (:id, :purpose, :state, CAST(:context AS jsonb), :stage,
                     '2026-09-24T10:00:00Z'::timestamptz - (:age * interval '1 minute'))"""),
                     {"id": run_id, "purpose": purpose, "state": state,
-                     "context": json.dumps(context), "age": age})
+                     "context": json.dumps(context), "stage": "excavation" if run_id == result else None,
+                     "age": age})
             for run_id in (legacy, admission, result):
                 connection.execute(text("""INSERT INTO result_projections (run_id, outcome, snapshot)
                     VALUES (:id, 'observations_only', '{"outcome":"observations_only"}'::jsonb)"""), {"id": run_id})
@@ -288,7 +350,7 @@ def test_failed_retry_is_linear_and_keeps_source(isolated_admission_database, in
     store, artifacts = PostgresStore(isolated_admission_database), ArtifactStore(config)
     parent, profile = uuid.uuid4(), uuid.uuid4()
     snapshot = {"model_files": {"model.safetensors": "a" * 64},
-                "runtime": {"per_image_timeout_seconds": 2}}
+                "runtime": {"per_image_timeout_seconds": 2, "batch_timeout_seconds": 10}}
     with store.engine.begin() as connection:
         connection.execute(text("INSERT INTO observer_profiles (id, status, profile_hash, snapshot) VALUES (:id, 'draft', :hash, '{}'::jsonb)"),
                            {"id": parent, "hash": uuid.uuid4().hex})
@@ -334,12 +396,19 @@ def test_failed_retry_is_linear_and_keeps_source(isolated_admission_database, in
             assert successors[0] == successors[1]
             successor = successors[0]
             assert (await client.post(f"/runs/{source}/retry")).json()["run_id"] == str(successor)
+            assert (await client.get(f"/runs/{successor}")).json()["retry_predecessor_id"] == str(source)
             assert (await client.get(f"/runs/{successor}")).json()["retry_of_run_id"] == str(source)
             assert (await client.get(f"/runs/{successor}")).json()["retry_eligible"] is False
             history = (await client.get("/runs")).json()["runs"]
-            assert len(history) == 2 and next(item for item in history if item["id"] == str(source))["successor_run_id"] == str(successor)
+            assert len(history) == 2 and next(item for item in history if item["id"] == str(source))["retry_successor_id"] == str(successor)
+            assert next(item for item in history if item["id"] == str(source))["successor_run_id"] == str(successor)
+            assert next(item for item in history if item["id"] == str(successor))["retry_of_run_id"] == str(source)
             predecessor = (await client.get(f"/runs/{source}")).json()
             descendant = (await client.get(f"/runs/{successor}")).json()
+            assert predecessor["successor_run_id"] == predecessor["retry_successor_id"] == str(successor)
+            assert descendant["retry_of_run_id"] == descendant["retry_predecessor_id"] == str(source)
+            assert predecessor["retry_of_run_id"] is None
+            assert descendant["successor_run_id"] is None
             assert predecessor["inputs"] == original["inputs"]
             assert predecessor["stages"] == original["stages"]
             assert predecessor["error_code"] == original["error_code"]
@@ -385,7 +454,7 @@ def test_failed_retry_is_linear_and_keeps_source(isolated_admission_database, in
             with store.engine.begin() as connection:
                 connection.execute(text("UPDATE analysis_runs SET state = 'failed' WHERE id = :id"), {"id": successor})
             third = (await client.post(f"/runs/{successor}/retry")).json()["run_id"]
-            assert (await client.get(f"/runs/{third}")).json()["retry_of_run_id"] == str(successor)
+            assert (await client.get(f"/runs/{third}")).json()["retry_predecessor_id"] == str(successor)
             assert (await client.post(f"/runs/{uuid.uuid4()}/retry")).status_code == 404
             admission_run = uuid.uuid4()
             with store.engine.begin() as connection:
@@ -441,6 +510,14 @@ def test_failed_retry_is_linear_and_keeps_source(isolated_admission_database, in
     store.close()
 
 
+def jpeg_with_size(width, height, color):
+    image = Image.new("RGB", (width, height), color)
+    ImageDraw.Draw(image).rectangle((0, 0, 8, 8), fill=(220, 240, 250))
+    output = io.BytesIO()
+    image.save(output, format="JPEG")
+    return output.getvalue()
+
+
 def test_ordered_series_http_postgres_s3(isolated_admission_database, integration, monkeypatch):
     config, _, _ = integration
     config = Config(isolated_admission_database, config.s3_endpoint, config.s3_bucket,
@@ -455,7 +532,7 @@ def test_ordered_series_http_postgres_s3(isolated_admission_database, integratio
         missing_bucket.read_verified(f"sha256/{absent_digest}", absent_digest, 1)
     parent, profile = uuid.uuid4(), uuid.uuid4()
     snapshot = {"model_files": {"model.safetensors": "a" * 64},
-                "runtime": {"per_image_timeout_seconds": 2}}
+                "runtime": {"per_image_timeout_seconds": 2, "batch_timeout_seconds": 600}}
     with store.engine.begin() as connection:
         connection.execute(text("INSERT INTO observer_profiles (id, status, profile_hash, snapshot) VALUES (:id, 'draft', :hash, '{}'::jsonb)"),
                            {"id": parent, "hash": uuid.uuid4().hex})
@@ -473,19 +550,25 @@ def test_ordered_series_http_postgres_s3(isolated_admission_database, integratio
     loop.store, loop.artifacts, loop.snapshot_dir = store, artifacts, "unused"
     loop.runtime_binding = profile, 1
     app.state.claim_loop = loop
-    first, second, black = jpeg((12, 120, 220)), jpeg((33, 111, 222)), jpeg((0, 0, 0))
+    first, second, low_range = jpeg((12, 120, 220)), jpeg((33, 111, 222)), jpeg((0, 0, 0))
+    small = jpeg_with_size(32, 48, (20, 40, 60))
     calls = 0
+    observed_images = []
 
-    def observed(*_):
+    def observed(*args):
         nonlocal calls
+        image_bytes = args[2]
+        observed_images.append(image_bytes)
         calls += 1
+        with Image.open(io.BytesIO(image_bytes)) as image:
+            image_size = list(image.size)
         return {"states": {"excavator": "detected" if calls % 2 else "not_detected_in_frame",
                            "dump_truck": "not_detected_in_frame"},
                 "returned_model_identity": f"checkpoint-sha256:{'a' * 64}", "actual_device": "cpu",
                 "latency_ms": 1.0, "peak_memory_bytes": 1024,
                 "native": {"detections": ([{"label": "an excavator", "score": 0.8, "box": [1, 2, 3, 4]}]
                                           if calls % 2 else []),
-                           "image_size": [96, 96]}}
+                           "image_size": image_size}}
 
     monkeypatch.setattr(executor, "_observe_bounded", observed)
 
@@ -529,18 +612,18 @@ def test_ordered_series_http_postgres_s3(isolated_admission_database, integratio
                     {"run": run}).all()
             assert [artifacts.read_verified(*ref) for ref in refs] == [first, second]
             checking, allow_check = threading.Event(), threading.Event()
-            original_assess = executor._unassessable
-            assessed = 0
+            original_decode = executor._decode_image
+            decoded = 0
 
-            def pause_second_assessment(image):
-                nonlocal assessed
-                assessed += 1
-                if assessed == 2:
+            def pause_second_decode(image):
+                nonlocal decoded
+                decoded += 1
+                if decoded == 2:
                     checking.set()
                     assert allow_check.wait(30)
-                return original_assess(image)
+                return original_decode(image)
 
-            monkeypatch.setattr(executor, "_unassessable", pause_second_assessment)
+            monkeypatch.setattr(executor, "_decode_image", pause_second_decode)
             work = store.claim_ordinary(profile, 1, 30)
             execution = asyncio.create_task(loop._execute(work, 1))
             try:
@@ -574,10 +657,11 @@ def test_ordered_series_http_postgres_s3(isolated_admission_database, integratio
             finally:
                 allow_observation.set()
             await execution
-            monkeypatch.setattr(executor, "_unassessable", original_assess)
+            monkeypatch.setattr(executor, "_decode_image", original_decode)
             monkeypatch.setattr(executor, "_observe_bounded", observed)
             done = (await client.get(f"/runs/{run}")).json()
             assert done["state"] == "succeeded" and done["outcome"] == "observations_only", done["error_code"]
+            assert observed_images[:2] == [first, second]
             assert done["result_projection"]["series"]["usable_input_ids"] == [item["input_id"] for item in done["inputs"]]
             assert done["result_projection"]["series"]["usable_count"] == 2
             assert done["result_projection"]["series"]["excavator_supporting_input_ids"] == [done["inputs"][0]["input_id"]]
@@ -619,6 +703,17 @@ def test_ordered_series_http_postgres_s3(isolated_admission_database, integratio
                 assert {item["invocation_id"] for item in done["observations"] if item["ordinal"] == ordinal} == {str(invocation_id)}
             assert all(artifacts.read_verified(*ref) for ref in native_refs)
 
+            def assert_completed_invocations(run_id, expected_input_count):
+                with store.engine.connect() as connection:
+                    rows = connection.execute(text("""SELECT i.input_id AS run_input_id, i.sha256,
+                        v.input_id AS invocation_input_id, v.input_sha256, v.state
+                        FROM run_inputs i LEFT JOIN observer_invocations v
+                        ON i.run_id = v.run_id AND i.input_id = v.input_id
+                        WHERE i.run_id = :run ORDER BY i.ordinal"""), {"run": run_id}).all()
+                assert len(rows) == expected_input_count
+                assert all(row.invocation_input_id == row.run_input_id and row.input_sha256 == row.sha256
+                           and row.state == "completed" for row in rows)
+
             same = await client.post("/runs/series", headers={"Idempotency-Key": uuid.uuid4().hex}, json=body(first, first))
             same_run = uuid.UUID(same.json()["run_id"])
             await loop._execute(store.claim_ordinary(profile, 1, 30), 1)
@@ -630,27 +725,38 @@ def test_ordered_series_http_postgres_s3(isolated_admission_database, integratio
             assert equal["result_projection"]["series"]["input_order"] == [item["input_id"] for item in equal["inputs"]]
             assert {item["source_artifact_id"] for item in equal["observations"]} == {
                 item["artifact_id"] for item in equal["inputs"]}
+            assert_completed_invocations(same_run, 2)
 
-            mixed = await client.post("/runs/series", headers={"Idempotency-Key": uuid.uuid4().hex}, json=body(first, black))
+            observed_start = len(observed_images)
+            small_series = await client.post("/runs/series", headers={"Idempotency-Key": uuid.uuid4().hex},
+                                             json=body(small, second))
+            small_series_run = uuid.UUID(small_series.json()["run_id"])
+            await loop._execute(store.claim_ordinary(profile, 1, 30), 1)
+            small_done = (await client.get(f"/runs/{small_series_run}")).json()
+            assert small_done["state"] == "succeeded" and small_done["result_projection"]["series"]["usable_count"] == 2
+            assert observed_images[observed_start:observed_start + 2] == [small, second]
+            assert_completed_invocations(small_series_run, 2)
+
+            observed_start = len(observed_images)
+            mixed = await client.post("/runs/series", headers={"Idempotency-Key": uuid.uuid4().hex}, json=body(first, low_range))
             mixed_run = uuid.UUID(mixed.json()["run_id"])
             await loop._execute(store.claim_ordinary(profile, 1, 30), 1)
             result = (await client.get(f"/runs/{mixed_run}")).json()
             assert result["state"] == "succeeded" and result["outcome"] == "observations_only"
-            assert all(item["state"] == "insufficient_data" and item["reason"] == "frame_unassessable"
-                       for item in result["observations"] if item["ordinal"] == 1)
-            assert "absence" not in str(result)
-            assert result["result_projection"]["series"]["usable_count"] == 1
-            assert result["result_projection"]["series"]["dump_truck_persistence_text"] is None
+            assert observed_images[observed_start:observed_start + 2] == [first, low_range]
+            assert result["result_projection"]["series"]["usable_count"] == 2
+            assert_completed_invocations(mixed_run, 2)
 
-            all_black = await client.post("/runs/series", headers={"Idempotency-Key": uuid.uuid4().hex},
-                                          json=body(black, black))
-            all_black_run = uuid.UUID(all_black.json()["run_id"])
+            observed_start = len(observed_images)
+            all_low_range = await client.post("/runs/series", headers={"Idempotency-Key": uuid.uuid4().hex},
+                                              json=body(low_range, low_range))
+            all_low_range_run = uuid.UUID(all_low_range.json()["run_id"])
             await loop._execute(store.claim_ordinary(profile, 1, 30), 1)
-            all_black_done = (await client.get(f"/runs/{all_black_run}")).json()
-            assert all_black_done["state"] == "succeeded"
-            assert all_black_done["stages"][2]["reason"] == "no_assessable_frame_or_supported_class"
-            assert all(item["state"] == "insufficient_data" for item in all_black_done["observations"])
-            assert all_black_done["result_projection"]["series"]["usable_count"] == 0
+            all_low_range_done = (await client.get(f"/runs/{all_low_range_run}")).json()
+            assert all_low_range_done["state"] == "succeeded"
+            assert all_low_range_done["result_projection"]["series"]["usable_count"] == 2
+            assert observed_images[observed_start:observed_start + 2] == [low_range, low_range]
+            assert_completed_invocations(all_low_range_run, 2)
 
             failing = await client.post("/runs/series", headers={"Idempotency-Key": uuid.uuid4().hex}, json=body(first, second))
             failing_run = uuid.UUID(failing.json()["run_id"])
@@ -740,6 +846,167 @@ def test_ordered_series_http_postgres_s3(isolated_admission_database, integratio
                                           {"run": preflight_run}).scalars().all()[1:] == [
                                               "failed", "skipped", "skipped", "skipped", "skipped"]
             monkeypatch.setattr(artifacts, "read_verified", original_read)
+
+            snapshot["runtime"]["batch_timeout_seconds"] = 3
+            clock = [0.0]
+            monkeypatch.setattr(executor, "monotonic", lambda: clock[0])
+            original_monotonic = postgres.monotonic
+            monkeypatch.setattr(postgres, "monotonic", lambda: clock[0])
+            allowances = []
+
+            def consume_first_frame(*args):
+                allowances.append(args[-1])
+                if len(allowances) == 1:
+                    clock[0] = 1.5
+                return observed(*args)
+
+            monkeypatch.setattr(executor, "_observe_bounded", consume_first_frame)
+            within = await client.post("/runs/series", headers={"Idempotency-Key": uuid.uuid4().hex},
+                                       json=body(first, second))
+            within_run = uuid.UUID(within.json()["run_id"])
+            snapshot["runtime"]["batch_timeout_seconds"] = 600
+            await loop._execute(store.claim_ordinary(profile, 1, 30), 1)
+            snapshot["runtime"]["batch_timeout_seconds"] = 3
+            within_result = (await client.get(f"/runs/{within_run}")).json()
+            assert within_result["state"] == "succeeded"
+            assert len(within_result["observations"]) == 4
+            assert allowances == pytest.approx([2, 1.5])
+
+            clock[0] = 0
+            allowances.clear()
+            timeout = await client.post("/runs/series", headers={"Idempotency-Key": uuid.uuid4().hex},
+                                        json=body(first, second))
+            timeout_run = uuid.UUID(timeout.json()["run_id"])
+
+            def exhaust_second_frame(*args):
+                result = consume_first_frame(*args)
+                if len(allowances) == 2:
+                    clock[0] = 3
+                return result
+
+            monkeypatch.setattr(executor, "_observe_bounded", exhaust_second_frame)
+            await loop._execute(store.claim_ordinary(profile, 1, 30), 1)
+            timeout_result = (await client.get(f"/runs/{timeout_run}")).json()
+            assert timeout_result["state"] == "failed" and timeout_result["error_code"] == "observer_timeout"
+            assert timeout_result["outcome"] is None and timeout_result["result_projection"] is None
+            assert len(timeout_result["observations"]) == 2
+            assert allowances == pytest.approx([2, 1.5])
+
+            monkeypatch.setattr(executor, "_observe_bounded", consume_first_frame)
+            clock[0] = 0
+            allowances.clear()
+            native_publish = artifacts.publish_final
+            published = 0
+
+            def expire_during_publication(*args):
+                nonlocal published
+                result = native_publish(*args)
+                published += 1
+                if published == 2:
+                    clock[0] = 3
+                return result
+
+            expired = await client.post("/runs/series", headers={"Idempotency-Key": uuid.uuid4().hex},
+                                        json=body(first, second))
+            expired_run = uuid.UUID(expired.json()["run_id"])
+            monkeypatch.setattr(artifacts, "publish_final", expire_during_publication)
+            await loop._execute(store.claim_ordinary(profile, 1, 30), 1)
+            expired_result = (await client.get(f"/runs/{expired_run}")).json()
+            assert expired_result["state"] == "failed" and expired_result["error_code"] == "observer_timeout"
+            assert expired_result["outcome"] is None and expired_result["result_projection"] is None
+            assert len(expired_result["observations"]) == 2
+            assert allowances == pytest.approx([2, 1.5])
+            with store.engine.connect() as connection:
+                assert connection.execute(text("SELECT count(*) FROM result_projections WHERE run_id = :run"),
+                                          {"run": expired_run}).scalar_one() == 0
+            monkeypatch.setattr(artifacts, "publish_final", native_publish)
+
+            clock[0] = 0
+            allowances.clear()
+            preflight = await client.post("/runs/series", headers={"Idempotency-Key": uuid.uuid4().hex},
+                                          json=body(first, second))
+            preflight_run = uuid.UUID(preflight.json()["run_id"])
+            preflight_work = store.claim_ordinary(profile, 1, 30)
+
+            def expire_during_preflight(key, digest, size):
+                image = original_read(key, digest, size)
+                if key == preflight_work["frames"][1]["key"]:
+                    clock[0] = 3
+                return image
+
+            monkeypatch.setattr(artifacts, "read_verified", expire_during_preflight)
+            await loop._execute(preflight_work, 1)
+            preflight_expired = (await client.get(f"/runs/{preflight_run}")).json()
+            assert preflight_expired["state"] == "failed" and preflight_expired["error_code"] == "observer_timeout"
+            assert preflight_expired["observations"] == [] and preflight_expired["result_projection"] is None
+            with store.engine.connect() as connection:
+                assert connection.execute(text("SELECT count(*) FROM result_projections WHERE run_id = :run"),
+                                          {"run": preflight_run}).scalar_one() == 0
+            monkeypatch.setattr(artifacts, "read_verified", original_read)
+
+            clock[0] = 0
+            delayed = await client.post("/runs/series", headers={"Idempotency-Key": uuid.uuid4().hex},
+                                        json=body(first, second))
+            delayed_run = uuid.UUID(delayed.json()["run_id"])
+            monkeypatch.setattr(executor, "_observe_bounded", observed)
+            original_verified = store.publication_content_verified
+            started, release, completed = threading.Event(), threading.Event(), threading.Event()
+
+            def nearly_expired(*args):
+                result = original_verified(*args)
+                clock[0] = 2.95
+                return result
+
+            def delayed_publish(*args):
+                started.set()
+                assert release.wait(5)
+                result = native_publish(*args)
+                clock[0] = 3
+                completed.set()
+                return result
+
+            monkeypatch.setattr(store, "publication_content_verified", nearly_expired)
+            monkeypatch.setattr(artifacts, "publish_final", delayed_publish)
+            execution = asyncio.create_task(loop._execute(store.claim_ordinary(profile, 1, 30), 1))
+            try:
+                assert await asyncio.to_thread(started.wait, 5)
+                await asyncio.sleep(0.1)
+                assert not execution.done()
+                assert (await client.get(f"/runs/{delayed_run}")).json()["state"] == "running"
+            finally:
+                release.set()
+                await execution
+            delayed_result = (await client.get(f"/runs/{delayed_run}")).json()
+            assert completed.is_set()
+            assert delayed_result["state"] == "failed" and delayed_result["error_code"] == "observer_timeout"
+            assert delayed_result["result_projection"] is None
+            monkeypatch.setattr(store, "publication_content_verified", original_verified)
+            monkeypatch.setattr(artifacts, "publish_final", native_publish)
+
+            clock[0] = 0
+            allowances.clear()
+            final = await client.post("/runs/series", headers={"Idempotency-Key": uuid.uuid4().hex},
+                                      json=body(first, second))
+            final_run = uuid.UUID(final.json()["run_id"])
+            monkeypatch.setattr(executor, "_observe_bounded", observed)
+            completion_checks = 0
+
+            def expire_in_completion():
+                nonlocal completion_checks
+                completion_checks += 1
+                return 3 if completion_checks == 2 else 0
+
+            monkeypatch.setattr(postgres, "monotonic", expire_in_completion)
+            await loop._execute(store.claim_ordinary(profile, 1, 30), 1)
+            final_expired = (await client.get(f"/runs/{final_run}")).json()
+            assert completion_checks == 2
+            assert final_expired["state"] == "failed" and final_expired["error_code"] == "observer_timeout"
+            assert len(final_expired["observations"]) == 2 and final_expired["result_projection"] is None
+            with store.engine.connect() as connection:
+                assert connection.execute(text("SELECT count(*) FROM result_projections WHERE run_id = :run"),
+                                          {"run": final_run}).scalar_one() == 0
+            monkeypatch.setattr(postgres, "monotonic", original_monotonic)
+            snapshot["runtime"]["batch_timeout_seconds"] = 600
 
             owner_key, foreign_key = "x", "x:1"
             _, _, owner_intent, _ = store.begin_submission(owner_key, uuid.uuid4().hex, "image/jpeg")

@@ -5,7 +5,7 @@ created: '2026-09-23'
 status: 'done'
 baseline_revision: '94fca60067d582844ba70cd60147029622d7daea'
 review_loop_iteration: 0
-followup_review_recommended: true
+followup_review_recommended: false
 context: []
 warnings: []
 deferred:
@@ -89,6 +89,22 @@ deferred:
 
 ## Review Triage Log
 
+### 2026-09-23 — Follow-up review
+- verdicts: 12 findings — high 0, medium 9, low 1, false 0, maybe-false 2
+- findings:
+  - `[medium]` `[defer]` Startup on another instance can fail a live publisher — carried: startup still performs full cleanup; cross-instance ownership is absent and already deferred above.
+  - `[medium]` `[defer]` A dead publisher can retain a publishing key until startup — carried: runtime has no durable ownership or expiry signal to distinguish it from a live publisher.
+  - `[medium]` `[defer]` Abandoned pre-run objects are not inspected at runtime — carried: the same missing ownership signal prevents safe cleanup; startup still inspects them.
+  - `[medium]` `[defer]` An unrelated run-bound intent can fail a runtime pass — carried: the run-bound scan predates F1 and remains an existing gate.
+  - `[maybe-false]` `[defer]` A concurrent run-row lock might abort reconciliation — no harmful interleaving was demonstrated; an instrumented lock-contention test would settle it.
+  - `[low]` `[reject]` Series preflight makes a second artifact read — no material cost or failure was measured, and this belongs to the already completed F5 change.
+  - `[medium]` `[defer]` Series preflight lacks a batch deadline — this is tracked as the open F8 action item.
+  - `[maybe-false]` `[defer]` IndexedDB deletion could strand a stored request — the reviewer did not demonstrate a reachable cleanup failure; a forced browser storage failure would settle it under F7.
+  - `[medium]` `[defer]` Storage access can throw during client cleanup — this is outside the F1 backend change and needs a frontend failure test.
+  - `[medium]` `[defer]` Vite routing lacks an automated HTTP proxy check — the F2 work has one-time HTTP evidence, while a repeatable proxy check remains useful.
+  - `[medium]` `[defer]` Dead-publisher retry can stay pending — carried duplicate report of the existing ownership limitation.
+  - `[medium]` `[defer]` Vite proxy rewrite lacks regression coverage — duplicate verification-gap report; F2 has one-time HTTP evidence.
+
 ### 2026-09-23 — Review pass
 - verdicts: 11 findings — high 0, medium 6, low 2, false 2, maybe-false 1
 - findings:
@@ -127,3 +143,5 @@ Review: two medium findings patched (post-execution test gap and unsafe shared-o
 Verification: `backend/.venv/bin/python /private/tmp/epic1_verify.py tests` — 71 passed in 65.56s; `git diff --check` — passed. GUI, deployment, and production runtime were not exercised. No commit or push was made; the user's pre-existing retrospective and evidence remain uncommitted and unchanged.
 
 Follow-up verification on 2026-09-23: the F1 patch was applied to a clean temporary clone on branch `fix/epic-1-retro-protect-live-submissions` and checked against isolated PostgreSQL database `epic1_f1_test` and MinIO bucket `epic1-f1-test`. Focused runtime single/series upload interleavings, startup interruption cleanup, runtime/startup integrity gates, and lease recovery: **14 passed in 2.21s**. `git diff --check` passed. No GUI or production environment was used.
+
+Current follow-up verification on 2026-09-23 at `7b5b3b6`: the existing F1 runtime filter and both claim-loop call sites were read back; the concurrent single and series tests still assert accepted publication, preserved intents, and same-key retry after recovery. `backend/.venv/bin/python /private/tmp/epic1_verify.py tests` passed **71 tests in 68.60s** against local PostgreSQL and MinIO; `git diff --check` passed. No F1 code change was needed in this pass. The F1 sprint item was set to `in-progress` for this verification and restored to `done` only after it passed. F6 remains open because rendered UI acceptance requires GUI operation, which this run prohibits.

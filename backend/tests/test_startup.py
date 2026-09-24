@@ -22,6 +22,7 @@ from sqlalchemy.engine import make_url
 
 from app.adapters.artifacts import ArtifactGateError, ArtifactStore
 from app.adapters.postgres import DatabaseGateError, LOCK_ID, PostgresStore, ReconciliationGateError, RecoveryGateError
+from app.application.executor import ClaimLoop
 from app.config import Config, ConfigurationError
 from app.main import create_app
 
@@ -43,6 +44,49 @@ def test_live_while_readiness_pending():
             response = await client.get("/health/ready")
             assert response.status_code == 503
             assert response.json() == {"ready": False, "code": "startup_pending"}
+
+    asyncio.run(check())
+
+
+def test_claim_loop_stop_drains_started_execution(monkeypatch):
+    class Store:
+        claimed = False
+
+        def fail_unauthorized_queued(self):
+            pass
+
+        def recover(self):
+            return False
+
+        def claim_ordinary(self, *_):
+            if self.claimed:
+                return None
+            self.claimed = True
+            return {"id": uuid.uuid4()}
+
+    async def check():
+        ready, started, release = asyncio.Event(), asyncio.Event(), asyncio.Event()
+        ready.set()
+        loop = ClaimLoop()
+        loop.store = Store()
+        loop.runtime_binding = uuid.uuid4(), 1
+
+        async def execute(*_):
+            started.set()
+            await release.wait()
+
+        monkeypatch.setattr(loop, "_execute", execute)
+        loop.start(ready, object(), "unused")
+        try:
+            await asyncio.wait_for(started.wait(), 5)
+            stopping = asyncio.create_task(loop.stop())
+            await asyncio.sleep(0)
+            assert not stopping.done()
+            assert not ready.is_set()
+        finally:
+            release.set()
+        await stopping
+        assert loop.task.done()
 
     asyncio.run(check())
 
@@ -122,6 +166,16 @@ def integration(database):
             raise
         artifacts.client.create_bucket(Bucket=bucket)
     yield config, database, artifacts
+
+
+def test_adapter_io_timeouts(integration):
+    _, store, artifacts = integration
+    with store.engine.connect() as connection:
+        settings = dict(connection.execute(text("""SELECT name, setting::int FROM pg_settings
+            WHERE name IN ('statement_timeout', 'lock_timeout')""")).all())
+    assert settings == {"statement_timeout": 30000, "lock_timeout": 5000}
+    assert artifacts.client.meta.config.connect_timeout == 5
+    assert artifacts.client.meta.config.read_timeout == 30
 
 
 def test_database_head_smoke_and_reconciliation(database):

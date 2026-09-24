@@ -1,0 +1,17 @@
+{
+  "source_group": "synthetic-development-positive-no-check",
+  "context": {
+    "scenario": "excavation",
+    "observation_area": "north",
+    "period": "2026-09-23T12:00:00+03:00"
+  },
+  "usable_input_ids": ["frame-0", "frame-1", "frame-2"],
+  "observations": [
+    {"input_id": "frame-0", "class_name": "excavator", "state": "detected"},
+    {"input_id": "frame-0", "class_name": "dump_truck", "state": "not_detected_in_frame"},
+    {"input_id": "frame-1", "class_name": "excavator", "state": "not_detected_in_frame"},
+    {"input_id": "frame-1", "class_name": "dump_truck", "state": "not_detected_in_frame"},
+    {"input_id": "frame-2", "class_name": "excavator", "state": "not_detected_in_frame"},
+    {"input_id": "frame-2", "class_name": "dump_truck", "state": "detected"}
+  ]
+}

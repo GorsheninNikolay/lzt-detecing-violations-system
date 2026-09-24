@@ -17,9 +17,9 @@ deferred:
       web/src/App.tsx:215
     severity: medium (unverified)
   - summary: >-
-      Joined browser-to-backend behavior and rendered keyboard and zoom behavior remain unverified.
+      Joined live browser-to-backend behavior remains unverified.
     evidence: |-
-      The checked UI tests mock HTTP and the backend tests use ASGI with PostgreSQL/S3. A permitted rendered end-to-end inspection would settle focus, 200% zoom and joined behavior; the user's working agreement prohibits GUI use.
+      F6 headless Chromium evidence verifies responsive rendering, keyboard focus, and decoding of the bundled JPEG through a local run fixture, but it does not exercise a real backend artifact route. A permitted headless browser run against the local service would settle the join.
     location: >-
       web/src/App.tsx
     severity: medium (unverified)
@@ -175,6 +175,6 @@ Implemented a source-bound result in the Run Workspace. A succeeded observation-
 
 Files changed: `backend/app/adapters/postgres.py` persists and reads the series projection and resolves run-owned artifacts; `backend/app/adapters/artifacts.py` classifies verified corruption, missing objects, and storage outages; `backend/app/main.py` serves verified artifact bytes; `web/src/App.tsx` and `web/src/styles.css` provide the result, thumbnails, series, and accessible viewer; `backend/tests/test_ordered_series.py` and `web/src/App.test.tsx` cover the API and visible behaviors; `sprint-status.yaml` records Story 1.7 as done.
 
-Review: three passes triaged 45 findings. The final pass patched 9 medium entries representing 10 findings, rejected the unobserved-input claim because partial result rows intentionally represent committed observations, and rejected eager native loading because no material user harm was demonstrated. Two previously recorded unverified items remain deferred: maximum-series mobile memory behavior and joined rendered-browser behavior. Follow-up review recommended: true after multiple medium patches; a permitted real-browser check of source loading, focus, zoom, and maximum-series memory is the specific remaining risk.
+Review: three passes triaged 45 findings. The final pass patched 9 medium entries representing 10 findings, rejected the unobserved-input claim because partial result rows intentionally represent committed observations, and rejected eager native loading because no material user harm was demonstrated. Two unverified items remain deferred: maximum-series mobile memory behavior and joined live browser-to-backend behavior. Follow-up review recommended: true after multiple medium patches; F6 later verified local rendered source loading, focus, and 200%-equivalent sizing in headless Chromium.
 
-Verification: the complete backend suite passed 45/45 against isolated local PostgreSQL and MinIO with the pinned CPU snapshot; `backend/tests/test_ordered_series.py` passed 6/6; web tests passed 22/22; web build and `git diff --check` passed. GUI inspection was prohibited by the user's working agreement, so rendered responsive behavior and end-to-end browser interaction were not verified.
+Verification: the complete backend suite passed 45/45 against isolated local PostgreSQL and MinIO with the pinned CPU snapshot; `backend/tests/test_ordered_series.py` passed 6/6; web tests passed 22/22; web build and `git diff --check` passed. The later F6 headless Chromium run verifies rendered layout, dialog focus, and JPEG decoding through a local API fixture; no GUI was used, and live backend/browser integration remains unverified.

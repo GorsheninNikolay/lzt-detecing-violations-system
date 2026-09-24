@@ -133,3 +133,7 @@ Review: four spec-level issues corrected (locking, history paging, historical ti
 Follow-up review recommended: true. Four medium findings were triaged as patches, including the sprint synchronization, and the rendered browser-to-server flow remains unverified under the no-GUI instruction.
 
 Verification: 18 backend integration tests passed against isolated PostgreSQL/S3; 32 web tests passed; web production build, Python compilation, and diff whitespace checks passed. Remote migration/deployment and rendered browser behavior were not checked.
+
+## Branch Integration Readback — 2026-09-24
+
+The Code Map above records the branch state when Story 3.2 was built. The merged tree also contains completed Story 3.1 history. Its shared paged history exposes retry lineage, and the merged migration retains the single canonical `retry_predecessor_id` while preserving upgrades from both branch heads.

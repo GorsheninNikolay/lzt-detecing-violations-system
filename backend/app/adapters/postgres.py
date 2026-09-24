@@ -6,11 +6,13 @@ import json
 import math
 import uuid
 from pathlib import Path
+from time import monotonic
 
 from app.domain.observations import CLASSES, STAGES, normalized_states
 from app.profiles import grounding_dino
 from app.profiles.grounding_dino import canonical_bytes, digest
 from app.adapters.artifacts import ArtifactGateError, ArtifactStore
+from app.domain.rule import RULE, RULE_POLICY, evaluate_rule
 
 
 class DatabaseGateError(RuntimeError):
@@ -34,7 +36,8 @@ LOCK_ID = 804298270113
 
 class PostgresStore:
     def __init__(self, url: str):
-        self.engine: Engine = create_engine(url, pool_pre_ping=True)
+        self.engine: Engine = create_engine(url, pool_pre_ping=True,
+            connect_args={"connect_timeout": 5, "options": "-c statement_timeout=30000 -c lock_timeout=5000"})
 
     def close(self) -> None:
         self.engine.dispose()
@@ -486,21 +489,25 @@ class PostgresStore:
                 WHERE idempotency_key = :key AND state = 'publishing'"""), {"key": key, "code": code})
 
     def commit_submission(self, key: str, profile_id: uuid.UUID, revision: int, snapshot: dict,
-                          context: dict, requested_classes: list[str], image_hash: str, image_size: int) -> uuid.UUID:
+                          context: dict, requested_classes: list[str], image_hash: str, image_size: int,
+                          intent: str = "observation_only", stage: str | None = None) -> uuid.UUID:
         with self.engine.connect() as connection:
             intent_id = connection.execute(text("SELECT intent_id FROM submission_requests WHERE idempotency_key = :key"), {"key": key}).scalar_one()
         return self.commit_series_submission(key, profile_id, revision, snapshot, context, requested_classes,
-                                             [(intent_id, image_hash, image_size)])
+                                             [(intent_id, image_hash, image_size)], intent, stage)
 
     def commit_series_submission(self, key: str, profile_id: uuid.UUID, revision: int, snapshot: dict,
                                  context: dict, requested_classes: list[str],
-                                 manifest: list[tuple[uuid.UUID, str, int]]) -> uuid.UUID:
+                                 manifest: list[tuple[uuid.UUID, str, int]],
+                                 intent: str = "observation_only", stage: str | None = None) -> uuid.UUID:
         run_id = uuid.uuid4()
         with self.engine.begin() as connection:
             request = connection.execute(text("""SELECT * FROM submission_requests
                 WHERE idempotency_key = :key FOR UPDATE"""), {"key": key}).one()
             if request.state != "publishing":
                 raise AdmissionStoreError("submission_state_changed")
+            if intent not in ("observation_only", "rule_evaluation") or (intent == "rule_evaluation" and stage != "excavation"):
+                raise AdmissionStoreError("rule_not_applicable")
             authorization = connection.execute(text("""SELECT p.status, a.state, a.revision FROM observer_profiles p
                 JOIN profile_authorizations a ON a.profile_id = p.id WHERE p.id = :id FOR UPDATE OF a"""),
                 {"id": profile_id}).one_or_none()
@@ -508,31 +515,35 @@ class PostgresStore:
                 raise AdmissionStoreError("profile_unauthorized")
             if not manifest or manifest[0][0] != request.intent_id or len({item[0] for item in manifest}) != len(manifest):
                 raise AdmissionStoreError("publication_incomplete")
-            intents = []
+            publications = []
             for intent_id, image_hash, image_size in manifest:
-                intent = connection.execute(text("""SELECT sha256, size, final_key FROM publication_intents
+                publication = connection.execute(text("""SELECT sha256, size, final_key FROM publication_intents
                     WHERE id = :id AND submission_key = :key AND run_id IS NULL
                       AND state = 'object_published' FOR UPDATE"""),
                     {"id": intent_id, "key": key}).one_or_none()
-                if not intent or intent.sha256 != image_hash or intent.size != image_size or intent.final_key != f"sha256/{image_hash}":
+                if not publication or publication.sha256 != image_hash or publication.size != image_size or publication.final_key != f"sha256/{image_hash}":
                     raise AdmissionStoreError("publication_incomplete")
-                intents.append(intent)
+                publications.append(publication)
             connection.execute(text("""INSERT INTO analysis_runs
                 (id, state, purpose, profile_id, authorization_revision, binding_kind, profile_snapshot,
-                 request_context, policy_snapshot, taxonomy_snapshot, requested_classes)
+                 request_context, policy_snapshot, rule_snapshot, analysis_intent, stage_key,
+                 taxonomy_snapshot, requested_classes)
                 VALUES (:run, 'queued', 'ordinary', :profile, :revision, 'admitted_profile',
                     CAST(:snapshot AS jsonb), CAST(:context AS jsonb), CAST(:policy AS jsonb),
+                    CAST(:rule AS jsonb), :intent, :stage,
                     CAST(:taxonomy AS jsonb), CAST(:classes AS jsonb))"""),
                 {"run": run_id, "profile": profile_id, "revision": revision,
                  "snapshot": json.dumps(snapshot), "context": json.dumps(context),
-                 "policy": json.dumps({"intent": "observation_only", "revision": "observations-only-v1"}),
+                 "policy": json.dumps({"intent": intent, **(RULE_POLICY if intent == "rule_evaluation" else {"revision": "observations-only-v1"})}),
+                 "rule": json.dumps(RULE) if intent == "rule_evaluation" else None,
+                 "intent": intent, "stage": stage,
                  "taxonomy": json.dumps({"portable_classes": list(CLASSES), "revision": "presence-only-v1"}),
                  "classes": json.dumps(requested_classes)})
-            for ordinal, ((intent_id, image_hash, image_size), intent) in enumerate(zip(manifest, intents)):
+            for ordinal, ((intent_id, image_hash, image_size), publication) in enumerate(zip(manifest, publications)):
                 artifact_id = uuid.uuid4()
                 connection.execute(text("""INSERT INTO artifact_metadata (id, run_id, intent_id, key, sha256, size, media_type)
                     VALUES (:id, :run, :intent, :key, :hash, :size, 'image/jpeg')"""),
-                    {"id": artifact_id, "run": run_id, "intent": intent_id, "key": intent.final_key,
+                    {"id": artifact_id, "run": run_id, "intent": intent_id, "key": publication.final_key,
                      "hash": image_hash, "size": image_size})
                 connection.execute(text("""INSERT INTO run_inputs (run_id, ordinal, sha256, size, context, artifact_id)
                     VALUES (:run, :ordinal, :hash, :size, CAST(:context AS jsonb), :artifact)"""),
@@ -613,7 +624,7 @@ class PostgresStore:
 
     def finish_ordinary(self, run_id: uuid.UUID, owner: str, revision: int, invocation: uuid.UUID | None,
                         result: dict | None, native_intent: uuid.UUID | None, observations: list[dict],
-                        input_id: uuid.UUID | None = None) -> None:
+                        input_id: uuid.UUID | None = None, batch_deadline: float | None = None) -> None:
         with self.engine.begin() as connection:
             row = connection.execute(text("""SELECT r.profile_snapshot, r.state, r.lease_owner,
                 r.lease_expires_at > clock_timestamp() AS live, r.authorization_revision,
@@ -676,6 +687,8 @@ class PostgresStore:
             completed = connection.execute(text("""SELECT count(DISTINCT input_id) FROM observations
                 WHERE run_id = :run"""), {"run": run_id}).scalar_one()
             if completed != inputs:
+                if batch_deadline is not None and monotonic() >= batch_deadline:
+                    raise RuntimeError("observer_timeout")
                 return
             if connection.execute(text("SELECT count(*) FROM observations WHERE run_id = :run"),
                                   {"run": run_id}).scalar_one() != inputs * len(expected_classes):
@@ -693,7 +706,11 @@ class PostgresStore:
                 WHERE run_id = :run AND ordinal = 3"""),
                 {"run": run_id, "state": "succeeded" if inputs > 1 else "skipped",
                  "reason": None if inputs > 1 else "not_applicable"})
-            connection.execute(text("UPDATE analysis_stages SET state = 'skipped', reason = 'not_applicable' WHERE run_id = :run AND ordinal = 4"), {"run": run_id})
+            binding = connection.execute(text("SELECT analysis_intent, policy_snapshot, rule_snapshot, request_context FROM analysis_runs WHERE id = :run"),
+                                         {"run": run_id}).one()
+            connection.execute(text("UPDATE analysis_stages SET state = :state, reason = :reason WHERE run_id = :run AND ordinal = 4"),
+                               {"run": run_id, "state": "succeeded" if binding.analysis_intent == "rule_evaluation" else "skipped",
+                                "reason": None if binding.analysis_intent == "rule_evaluation" else "not_applicable"})
             connection.execute(text("UPDATE analysis_stages SET state = 'running' WHERE run_id = :run AND ordinal = 5"), {"run": run_id})
             evidence = connection.execute(text("""SELECT i.input_id, i.ordinal, o.class_name, o.state, o.reason,
                 o.source_artifact_id, o.invocation_id FROM run_inputs i JOIN observations o
@@ -702,7 +719,9 @@ class PostgresStore:
             usable = connection.execute(text("""SELECT i.input_id FROM run_inputs i JOIN observer_invocations v
                 ON v.run_id = i.run_id AND v.input_id = i.input_id AND v.state = 'completed'
                 WHERE i.run_id = :run ORDER BY i.ordinal"""), {"run": run_id}).scalars().all()
-            usable_ids = [str(item) for item in usable]
+            unassessable_ids = {str(item["input_id"]) for item in evidence
+                                if item["state"] == "insufficient_data"}
+            usable_ids = [str(item) for item in usable if str(item) not in unassessable_ids]
             excavator_ids = [str(item["input_id"]) for item in evidence
                              if item["class_name"] == "excavator" and item["state"] == "detected"]
             dump_truck_ids = [str(item["input_id"]) for item in evidence
@@ -723,15 +742,21 @@ class PostgresStore:
                  "source_artifact_id": str(item["source_artifact_id"]),
                  "invocation_id": str(item["invocation_id"]) if item["invocation_id"] else None}
                 for item in evidence], "series": series}
+            if binding.analysis_intent == "rule_evaluation":
+                projection.update(evaluate_rule(projection["frames"], usable_ids,
+                                                binding.policy_snapshot, binding.rule_snapshot,
+                                                binding.request_context))
             connection.execute(text("""INSERT INTO result_projections (run_id, outcome, snapshot)
-                VALUES (:run, 'observations_only', CAST(:snapshot AS jsonb))"""),
-                {"run": run_id, "snapshot": json.dumps(projection)})
+                VALUES (:run, :outcome, CAST(:snapshot AS jsonb))"""),
+                {"run": run_id, "outcome": projection["outcome"], "snapshot": json.dumps(projection)})
             connection.execute(text("UPDATE analysis_stages SET state = 'succeeded' WHERE run_id = :run AND ordinal = 5"), {"run": run_id})
             changed = connection.execute(text("""UPDATE analysis_runs SET state = 'succeeded', lease_owner = NULL,
                 lease_expires_at = NULL WHERE id = :run AND state = 'running' AND lease_owner = :owner
                 AND lease_expires_at > clock_timestamp()"""), {"run": run_id, "owner": owner})
             if changed.rowcount != 1:
                 raise AdmissionStoreError("ordinary_completion_rejected")
+            if batch_deadline is not None and monotonic() >= batch_deadline:
+                raise RuntimeError("observer_timeout")
 
     def fail_ordinary(self, run_id: uuid.UUID, owner: str, code: str) -> None:
         with self.engine.begin() as connection:
@@ -758,13 +783,14 @@ class PostgresStore:
 
     def read_ordinary(self, run_id: uuid.UUID) -> dict | None:
         with self.engine.connect().execution_options(isolation_level="REPEATABLE READ") as connection:
-            row = connection.execute(text("""SELECT id, state, error_code, request_context, requested_classes,
-                retry_of_run_id, created_at, profile_id, authorization_revision
-                FROM analysis_runs WHERE id = :id AND purpose = 'ordinary'"""), {"id": run_id}).one_or_none()
+            row = connection.execute(text("""SELECT r.id, r.state, r.error_code, r.request_context, r.requested_classes,
+                r.created_at, r.profile_id, r.authorization_revision, r.binding_kind, r.profile_snapshot,
+                r.taxonomy_snapshot, r.analysis_intent, r.stage_key, r.policy_snapshot, r.rule_snapshot,
+                r.retry_predecessor_id, successor.id AS retry_successor_id
+                FROM analysis_runs r LEFT JOIN analysis_runs successor ON successor.retry_predecessor_id = r.id
+                WHERE r.id = :id AND r.purpose = 'ordinary'"""), {"id": run_id}).one_or_none()
             if not row:
                 return None
-            successor = connection.execute(text("SELECT id FROM analysis_runs WHERE retry_of_run_id = :id"),
-                                           {"id": run_id}).scalar_one_or_none()
             stages = connection.execute(text("SELECT name, state, reason FROM analysis_stages WHERE run_id = :id ORDER BY ordinal"), {"id": run_id}).mappings().all()
             inputs = connection.execute(text("""SELECT input_id, ordinal, sha256, size, artifact_id
                 FROM run_inputs WHERE run_id = :id ORDER BY ordinal"""), {"id": run_id}).mappings().all()
@@ -779,12 +805,19 @@ class PostgresStore:
                 JOIN run_inputs r ON r.input_id = i.input_id
                 WHERE i.run_id = :id ORDER BY r.ordinal"""), {"id": run_id}).mappings().all()
             return {"run_id": str(row.id), "state": row.state, "error_code": row.error_code,
-                    "retry_of_run_id": str(row.retry_of_run_id) if row.retry_of_run_id else None,
-                    "successor_run_id": str(successor) if successor else None,
                     "created_at": row.created_at.isoformat() if row.created_at else None,
+                    "context": row.request_context, "requested_classes": row.requested_classes,
                     "profile_id": str(row.profile_id) if row.profile_id else None,
                     "authorization_revision": row.authorization_revision,
-                    "context": row.request_context, "requested_classes": row.requested_classes,
+                    "binding_kind": row.binding_kind, "profile_snapshot": row.profile_snapshot,
+                    "taxonomy_snapshot": row.taxonomy_snapshot,
+                    "intent": row.analysis_intent or "observation_only",
+                    "stage": row.stage_key or (row.request_context or {}).get("stage_id"),
+                    "retry_predecessor_id": str(row.retry_predecessor_id) if row.retry_predecessor_id else None,
+                    "retry_successor_id": str(row.retry_successor_id) if row.retry_successor_id else None,
+                    "retry_of_run_id": str(row.retry_predecessor_id) if row.retry_predecessor_id else None,
+                    "successor_run_id": str(row.retry_successor_id) if row.retry_successor_id else None,
+                    "policy_snapshot": row.policy_snapshot, "rule_snapshot": row.rule_snapshot,
                     "stages": [dict(item) for item in stages],
                     "inputs": [{**item, "input_id": str(item["input_id"]),
                                 "artifact_id": str(item["artifact_id"]) if item["artifact_id"] else None}
@@ -805,29 +838,37 @@ class PostgresStore:
 
     def list_ordinary(self, offset: int = 0) -> dict:
         with self.engine.connect() as connection:
-            rows = connection.execute(text("""SELECT r.id, r.state, r.created_at, r.retry_of_run_id,
-                s.id AS successor_run_id FROM analysis_runs r
-                LEFT JOIN analysis_runs s ON s.retry_of_run_id = r.id
+            rows = connection.execute(text("""SELECT r.id, r.state, r.created_at,
+                COALESCE(r.stage_key, r.request_context->>'stage_id') AS stage,
+                r.analysis_intent, r.retry_predecessor_id, s.id AS retry_successor_id,
+                CASE WHEN r.state = 'succeeded' THEN p.outcome END AS outcome
+                FROM analysis_runs r
+                LEFT JOIN analysis_runs s ON s.retry_predecessor_id = r.id
+                LEFT JOIN result_projections p ON p.run_id = r.id
                 WHERE r.purpose = 'ordinary' ORDER BY r.created_at DESC NULLS LAST, r.id DESC
                 LIMIT 51 OFFSET :offset"""), {"offset": offset}).mappings().all()
-            return {"runs": [{**row, "id": str(row["id"]),
-                     "created_at": row["created_at"].isoformat() if row["created_at"] else None,
-                     "retry_of_run_id": str(row["retry_of_run_id"]) if row["retry_of_run_id"] else None,
-                     "successor_run_id": str(row["successor_run_id"]) if row["successor_run_id"] else None}
-                    for row in rows[:50]], "next_offset": offset + 50 if len(rows) > 50 else None}
+        return {"runs": [{"id": str(row.id), "run_id": str(row.id), "state": row.state,
+                 "created_at": row.created_at.isoformat() if row.created_at else None,
+                 "stage": row.stage, "intent": row.analysis_intent or "observation_only",
+                 "outcome": row.outcome,
+                 "retry_predecessor_id": str(row.retry_predecessor_id) if row.retry_predecessor_id else None,
+                 "retry_successor_id": str(row.retry_successor_id) if row.retry_successor_id else None,
+                 "retry_of_run_id": str(row.retry_predecessor_id) if row.retry_predecessor_id else None,
+                 "successor_run_id": str(row.retry_successor_id) if row.retry_successor_id else None}
+                for row in rows[:50]], "next_offset": offset + 50 if len(rows) > 50 else None}
 
     def stage_summary(self) -> dict:
         with self.engine.connect().execution_options(isolation_level="REPEATABLE READ") as connection:
             rows = connection.execute(text("""WITH latest_run AS (
                     SELECT r.id, r.state, r.created_at, NULL::jsonb AS snapshot, 'run' AS kind
                     FROM analysis_runs r
-                    WHERE r.purpose = 'ordinary' AND r.request_context->>'stage_id' = 'excavation'
+                    WHERE r.purpose = 'ordinary' AND (r.stage_key = 'excavation' OR (r.stage_key IS NULL AND r.request_context->>'stage_id' = 'excavation'))
                     ORDER BY r.created_at DESC NULLS LAST, r.id DESC LIMIT 1
                 ), latest_result AS (
                     SELECT r.id, r.state, r.created_at, p.snapshot, 'result' AS kind
                     FROM analysis_runs r JOIN result_projections p ON p.run_id = r.id
                     WHERE r.purpose = 'ordinary' AND r.state = 'succeeded'
-                      AND r.request_context->>'stage_id' = 'excavation'
+                      AND (r.stage_key = 'excavation' OR (r.stage_key IS NULL AND r.request_context->>'stage_id' = 'excavation'))
                     ORDER BY r.created_at DESC NULLS LAST, r.id DESC LIMIT 1
                 ) SELECT * FROM latest_run UNION ALL SELECT * FROM latest_result""")).mappings().all()
         result = next((row for row in rows if row["kind"] == "result"), None)
@@ -864,7 +905,7 @@ class PostgresStore:
                 raise AdmissionStoreError("run_not_found")
             if preliminary["state"] != "failed":
                 raise AdmissionStoreError("retry_ineligible")
-            existing = connection.execute(text("SELECT id FROM analysis_runs WHERE retry_of_run_id = :id"),
+            existing = connection.execute(text("SELECT id FROM analysis_runs WHERE retry_predecessor_id = :id"),
                                           {"id": source_id}).scalar_one_or_none()
             if existing:
                 return existing
@@ -886,7 +927,7 @@ class PostgresStore:
                 raise AdmissionStoreError("run_not_found")
             if source["state"] != "failed":
                 raise AdmissionStoreError("retry_ineligible")
-            successor = connection.execute(text("SELECT id FROM analysis_runs WHERE retry_of_run_id = :id"),
+            successor = connection.execute(text("SELECT id FROM analysis_runs WHERE retry_predecessor_id = :id"),
                                            {"id": source_id}).scalar_one_or_none()
             if successor:
                 return successor
@@ -904,12 +945,15 @@ class PostgresStore:
             run_id = uuid.uuid4()
             connection.execute(text("""INSERT INTO analysis_runs
                 (id, state, purpose, profile_id, authorization_revision, binding_kind, profile_snapshot,
-                 request_context, policy_snapshot, taxonomy_snapshot, requested_classes, retry_of_run_id)
+                 request_context, policy_snapshot, rule_snapshot, analysis_intent, stage_key,
+                 taxonomy_snapshot, requested_classes, retry_predecessor_id)
                 VALUES (:id, 'queued', 'ordinary', :profile, :revision, 'admitted_profile',
                     CAST(:snapshot AS jsonb), CAST(:context AS jsonb), CAST(:policy AS jsonb),
-                    CAST(:taxonomy AS jsonb), CAST(:classes AS jsonb), :source)"""),
+                    CAST(:rule AS jsonb), :intent, :stage, CAST(:taxonomy AS jsonb), CAST(:classes AS jsonb), :source)"""),
                 {"id": run_id, "profile": profile_id, "revision": revision, "snapshot": json.dumps(snapshot),
                  "context": json.dumps(source["request_context"]), "policy": json.dumps(source["policy_snapshot"]),
+                 "rule": json.dumps(source["rule_snapshot"]) if source["rule_snapshot"] is not None else None,
+                 "intent": source["analysis_intent"] or "observation_only", "stage": source["stage_key"],
                  "taxonomy": json.dumps(source["taxonomy_snapshot"]), "classes": json.dumps(source["requested_classes"]),
                  "source": source_id})
             for item in inputs:

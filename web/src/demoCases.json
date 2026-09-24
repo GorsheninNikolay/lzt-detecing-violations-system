@@ -1,0 +1,78 @@
+{
+  "cases": [
+    {
+      "id": "truck",
+      "label": "Самосвал в серии",
+      "stage": "excavation",
+      "intent": "rule_evaluation",
+      "scenario": "Наблюдение за техникой при земляных работах",
+      "observationArea": "Участок серии 87–90 (заявленная зона)",
+      "period": "2024-01-21T12:00",
+      "periodTimeIllustrative": true,
+      "sourceArchive": "artifacts/dataset/Строительная_техника.zip",
+      "sourceGroup": "organizer-archive-site-85-94",
+      "ruleRevision": "rule-34a0c9535d378f7482cac065e0d474e7b33a4fb545beee1922b962a837b9d97d",
+      "expectedOutcome": "no_check",
+      "frames": [
+        {
+          "sourceMember": "Строительная_техника/Screenshot_87.png",
+          "originalSha256": "a0b8d744d9aeef74a88230ac28a5a69137c2d26085a3862e30598de4699880ce",
+          "path": "/demo/Screenshot_87.jpg",
+          "sha256": "057ae16749a6a50c522b750ae9cf02bc3a168a89e26d3a263ffb2d9ce394de0c",
+          "displayedDate": null
+        },
+        {
+          "sourceMember": "Строительная_техника/Screenshot_89.png",
+          "originalSha256": "bfbb99aff81bb774b2d22c7531714f6027293a2bff131d21e4a9afcb9aad5e1f",
+          "path": "/demo/Screenshot_89.jpg",
+          "sha256": "64bd60a1370e356c675a0343beeb9c05945b52dc39feeef1d41811a05508db06",
+          "displayedDate": "2024-01-21"
+        },
+        {
+          "sourceMember": "Строительная_техника/Screenshot_90.png",
+          "originalSha256": "dc7b133138670798d99e98c930f92ba845081769fa927930371d6bcd9bb33703",
+          "path": "/demo/Screenshot_90.jpg",
+          "sha256": "f33bde68126bc3a2deddc019dee369846176ae748788864cafbbede9ab3418a2",
+          "displayedDate": "2024-01-21"
+        }
+      ]
+    },
+    {
+      "id": "persistent_non_detection",
+      "label": "Самосвал не обнаружен в серии",
+      "stage": "excavation",
+      "intent": "rule_evaluation",
+      "scenario": "Наблюдение за техникой при земляных работах",
+      "observationArea": "Участок серии 23–26 (заявленная зона)",
+      "period": "2024-01-24T12:00",
+      "periodTimeIllustrative": true,
+      "sourceArchive": "artifacts/dataset/Строительная_техника.zip",
+      "sourceGroup": "organizer-archive-site-22-26",
+      "ruleRevision": "rule-34a0c9535d378f7482cac065e0d474e7b33a4fb545beee1922b962a837b9d97d",
+      "expectedOutcome": "check_requested",
+      "frames": [
+        {
+          "sourceMember": "Строительная_техника/Screenshot_23.png",
+          "originalSha256": "f03313fd866605aed702c598c0fa534f385eb4db615fc1d4c93964b1ce90e81b",
+          "path": "/demo/Screenshot_23.jpg",
+          "sha256": "2dadb850e7a78cca8691763df50d1096d441b7837b1334a26e95d612123aaf9a",
+          "displayedDate": "2024-01-24"
+        },
+        {
+          "sourceMember": "Строительная_техника/Screenshot_25.png",
+          "originalSha256": "409b0df5a36aea6015bb9f703c73928863d96ad9f31d4f06db7919fb454b5305",
+          "path": "/demo/Screenshot_25.jpg",
+          "sha256": "14dc6b81d967bf2200118fb0ec1a3e6f1b03447b8a03a97854f8b4409ec4578d",
+          "displayedDate": "2024-01-24"
+        },
+        {
+          "sourceMember": "Строительная_техника/Screenshot_26.png",
+          "originalSha256": "9f208089c6e3e9d6576036bfd9eff91b5685ea4a1ec85837144a606ee96c447b",
+          "path": "/demo/Screenshot_26.jpg",
+          "sha256": "ef01fff0f4d191ab175e1278537d908cc61fe8d2b5eb32edb727ed860d35ea14",
+          "displayedDate": "2024-01-24"
+        }
+      ]
+    }
+  ]
+}

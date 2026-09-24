@@ -122,3 +122,7 @@ Files changed: `backend/app/application/submission.py` validates and hashes opti
 Review: 15 findings. Patched 11 medium and 2 low findings, including visible binding, lifecycle wording, refresh/timeout, not-found behavior, and stronger database tests. Deferred two unverified dependencies: Epic 2 rule outcomes and rendered browser/phone behavior. No findings were rejected. Follow-up review is recommended because several medium patches touched navigation and polling; a rendered browser pass remains unverified under the no-GUI instruction.
 
 Verification: `backend/tests/test_ordered_series.py` passed 11/11 against a fresh isolated PostgreSQL database and MinIO bucket; `npm test -- --run` passed 40/40; `npm run build` passed; `git diff --check` passed. Browser rendering and deployment were not checked.
+
+## Branch Integration Readback — 2026-09-24
+
+The deferred Epic 2 rule-outcome note above describes the branch state when Story 3.3 was built. The merged tree includes Epic 2 rule evaluation and its projection outcomes; the stage summary reads those persisted outcomes. The merged backend suite passed 107 tests with one skip, and the web suite passed 75 tests. Rendered browser and deployed behavior remain unverified.

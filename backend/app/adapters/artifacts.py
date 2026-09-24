@@ -18,7 +18,8 @@ class ArtifactStore:
         self.client = boto3.client(
             "s3", endpoint_url=config.s3_endpoint, aws_access_key_id=config.s3_access_key,
             aws_secret_access_key=config.s3_secret_key, region_name=config.s3_region,
-            config=BotoConfig(s3={"addressing_style": "path"}, retries={"max_attempts": 1}),
+            config=BotoConfig(s3={"addressing_style": "path"}, retries={"max_attempts": 1},
+                              connect_timeout=5, read_timeout=30),
         )
 
     def _verify(self, key: str, expected_digest: str, expected_size: int) -> None:

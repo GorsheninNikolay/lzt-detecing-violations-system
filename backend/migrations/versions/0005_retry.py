@@ -12,7 +12,7 @@ depends_on = None
 
 def upgrade() -> None:
     op.add_column("analysis_runs", sa.Column("retry_of_run_id", UUID(as_uuid=True), sa.ForeignKey("analysis_runs.id")))
-    op.add_column("analysis_runs", sa.Column("created_at", sa.DateTime(timezone=True)))
+    op.execute("ALTER TABLE analysis_runs ADD COLUMN IF NOT EXISTS created_at timestamptz")
     op.alter_column("analysis_runs", "created_at", server_default=sa.text("clock_timestamp()"))
     op.create_unique_constraint("analysis_runs_retry_of_run_id_key", "analysis_runs", ["retry_of_run_id"])
     op.create_index("analysis_runs_ordinary_created_at_idx", "analysis_runs", ["created_at"],

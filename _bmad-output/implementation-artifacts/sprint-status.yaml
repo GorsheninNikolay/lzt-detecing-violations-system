@@ -4,7 +4,7 @@
 # Retrospective: optional, done
 # Action item: open, in-progress, done
 generated: 09-22-2026 21:57
-last_updated: 09-24-2026 19:20
+last_updated: 09-24-2026 20:37
 project: lzt-detecing-violations-system
 project_key: NOKEY
 tracking_system: file-system
@@ -22,18 +22,18 @@ development_status:
   1-8-recover-interrupted-runs-and-artifact-publication: done
   epic-1-retrospective: done
 
-  epic-2: backlog
-  2-1-choose-an-applicable-analysis-intent: backlog
-  2-2-apply-immutable-evidence-and-rule-revisions: backlog
-  2-3-produce-the-positive-no-check-result: backlog
-  2-4-request-a-check-only-for-persistent-non-detection: backlog
-  2-5-inspect-evidence-and-rule-provenance: backlog
-  2-6-run-included-demonstration-cases: backlog
-  2-7-cover-insufficient-and-out-of-scope-journeys: backlog
+  epic-2: done
+  2-1-choose-an-applicable-analysis-intent: done
+  2-2-apply-immutable-evidence-and-rule-revisions: done
+  2-3-produce-the-positive-no-check-result: done
+  2-4-request-a-check-only-for-persistent-non-detection: done
+  2-5-inspect-evidence-and-rule-provenance: done
+  2-6-run-included-demonstration-cases: done
+  2-7-cover-insufficient-and-out-of-scope-journeys: done
   epic-2-retrospective: optional
 
   epic-3: in-progress
-  3-1-reopen-analyses-and-their-evidence: backlog
+  3-1-reopen-analyses-and-their-evidence: done
   3-2-retry-a-failed-run-as-a-linked-successor: done
   3-3-navigate-evidence-backed-stage-status: done
   3-4-explain-the-prototype-and-its-limits: backlog
@@ -75,7 +75,7 @@ action_items:
     action: "F4: Remove unsupported usability thresholds or propose an evidenced immutable
       PolicyProfile; persist the complete applied policy."
     owner: "Backend maintainer and product owner"
-    status: open
+    status: done
     ref: "_bmad-output/implementation-artifacts/epic-1-retro-2026-09-23.md"
   - id: "epic-1-retro-truthful-series-stage"
     epic: 1
@@ -86,30 +86,30 @@ action_items:
     ref: "_bmad-output/implementation-artifacts/epic-1-retro-2026-09-23.md"
   - id: "epic-1-retro-verify-rendered-ui"
     epic: 1
-    action: "F6: Obtain permitted rendered-browser evidence for 320px, 200% zoom,
-      dialog focus and real source-image loading; GUI work remains prohibited in this
-      session."
+    action: "F6 complete: Headless local-fixture evidence covers 320px and 200%-equivalent
+      rendering, emulated touch input, dialog focus, and source-image loading; no live
+      backend, production, or physical-device verification is claimed."
     owner: "QA owner / Gorshenin-nik"
-    status: open
-    ref: "_bmad-output/implementation-artifacts/epic-1-retro-2026-09-23.md"
+    status: done
+    ref: "_bmad-output/implementation-artifacts/spec-f6-verify-rendered-ui.md"
   - id: "epic-1-retro-verify-indexeddb-recovery"
     epic: 1
     action: "F7 (deferred): Verify quota-triggered IndexedDB persistence, reload recovery
       and cleanup of the exact request/key."
     owner: "Frontend maintainer"
-    status: open
+    status: done
     ref: "_bmad-output/implementation-artifacts/epic-1-retro-2026-09-23.md"
   - id: "epic-1-retro-enforce-batch-deadline"
     epic: 1
     action: "F8 (deferred): Enforce the snapshotted batch deadline across ordered-series
       execution and test remaining-budget exhaustion."
     owner: "Backend maintainer"
-    status: open
+    status: done
     ref: "_bmad-output/implementation-artifacts/epic-1-retro-2026-09-23.md"
   - id: "epic-1-retro-bound-submit-wait"
     epic: 1
     action: "F9 (deferred): Bound stalled submission fetch and expose safe same-key
       retry without losing durable request state."
     owner: "Frontend maintainer"
-    status: open
+    status: done
     ref: "_bmad-output/implementation-artifacts/epic-1-retro-2026-09-23.md"

@@ -13,6 +13,7 @@ from app.adapters.artifacts import ArtifactGateError, ArtifactStore
 from app.adapters.postgres import AdmissionStoreError, DatabaseGateError, PostgresStore, ReconciliationGateError, RecoveryGateError
 from app.application.executor import ClaimLoop
 from app.application.submission import SubmissionError, submit, submit_series
+from app.domain.rule import ANALYSIS_CHOICES
 from app.config import Config
 from app.profiles.grounding_dino import verify_snapshot
 
@@ -117,6 +118,10 @@ def create_app() -> FastAPI:
         result = {"ready": state.ready.is_set(), "code": state.code}
         return JSONResponse(result, status_code=200 if result["ready"] else 503)
 
+    @app.get("/analysis-choices")
+    def analysis_choices() -> dict:
+        return ANALYSIS_CHOICES
+
     @app.post("/runs/single-image")
     @app.post("/runs/series")
     async def submit_single_image(request: Request) -> JSONResponse:
@@ -173,7 +178,7 @@ def create_app() -> FastAPI:
         if run:
             binding = app.state.claim_loop.runtime_binding
             run["retry_eligible"] = False
-            if run["state"] == "failed" and not run["successor_run_id"] and binding and app.state.readiness.ready.is_set():
+            if run["state"] == "failed" and not run["retry_successor_id"] and binding and app.state.readiness.ready.is_set():
                 try:
                     snapshot, _ = await asyncio.to_thread(app.state.store.require_authorized, binding[0], binding[1])
                     await asyncio.to_thread(verify_snapshot, Path(app.state.claim_loop.snapshot_dir), snapshot["model_files"])
@@ -202,8 +207,8 @@ def create_app() -> FastAPI:
             return JSONResponse({"code": "run_not_found"}, status_code=404)
         if source["state"] != "failed":
             return JSONResponse({"code": "retry_ineligible"}, status_code=409)
-        if source["successor_run_id"]:
-            return JSONResponse({"run_id": source["successor_run_id"]}, status_code=202)
+        if source["retry_successor_id"]:
+            return JSONResponse({"run_id": source["retry_successor_id"]}, status_code=202)
         if not app.state.readiness.ready.is_set():
             return JSONResponse({"code": "service_not_ready"}, status_code=503)
         binding = app.state.claim_loop.runtime_binding
