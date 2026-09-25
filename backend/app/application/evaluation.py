@@ -1,13 +1,16 @@
 """Operator commands for held-out revisions and byte-free comparison plans."""
 
 import argparse
+import asyncio
 import json
 import uuid
 from pathlib import Path
 
 from app.adapters.postgres import AdmissionStoreError, EvaluationStoreError, PostgresStore
-from app.config import Config
+from app.adapters.artifacts import ArtifactStore, ArtifactGateError
+from app.config import Config, ConfigurationError
 from app.domain.comparison_campaign import CampaignGateError
+from app.application.executor import execute_comparison_campaign
 
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -24,10 +27,16 @@ def main() -> None:
     campaign.add_argument("--cloud-profile", type=uuid.UUID, required=True)
     readback = subcommands.add_parser("read-campaign")
     readback.add_argument("--campaign", type=uuid.UUID, required=True)
+    accounting = subcommands.add_parser("campaign-accounting")
+    accounting.add_argument("--campaign", type=uuid.UUID, required=True)
+    execute = subcommands.add_parser("execute-campaign")
+    execute.add_argument("--campaign", type=uuid.UUID, required=True)
+    execute.add_argument("--archive", type=Path, required=True)
     args = parser.parse_args()
-    store = PostgresStore(Config.database_url_from_env())
+    store = None
     try:
         try:
+            store = PostgresStore(Config.database_url_from_env())
             if args.command == "freeze":
                 decision, revision_id = store.freeze_evaluation_set(
                     ROOT / "evaluation/held-out-v1.json", args.archive,
@@ -43,16 +52,28 @@ def main() -> None:
                     args.local_profile, args.cloud_profile)
                 result = store.read_comparison_campaign(campaign_id)
                 exit_code = 0
+            elif args.command == "execute-campaign":
+                config = Config.from_env()
+                result = asyncio.run(execute_comparison_campaign(store, ArtifactStore(config),
+                    args.campaign, args.archive, config.observer_snapshot_dir))
+                exit_code = 0
+            elif args.command == "campaign-accounting":
+                result = store.read_comparison_campaign(args.campaign)["accounting"]
+                exit_code = 0
             else:
                 result = store.read_comparison_campaign(args.campaign)
                 exit_code = 0
-        except (AdmissionStoreError, CampaignGateError, EvaluationStoreError) as exc:
+        except (AdmissionStoreError, CampaignGateError, EvaluationStoreError,
+                ArtifactGateError, ConfigurationError) as exc:
             result, exit_code = {"status": "rejected", "error": str(exc)}, 1
+        except Exception:
+            result, exit_code = {"status": "rejected", "error": "campaign_execution_failed"}, 1
         print(json.dumps(result))
         if exit_code:
             parser.exit(exit_code)
     finally:
-        store.close()
+        if store is not None:
+            store.close()
 
 
 if __name__ == "__main__":

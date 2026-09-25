@@ -169,21 +169,292 @@ class PostgresStore:
             return campaign_id
 
     def read_comparison_campaign(self, campaign_id: uuid.UUID) -> dict:
-        with self.engine.begin() as connection:
+        with self.engine.connect().execution_options(isolation_level="REPEATABLE READ") as connection:
             row = connection.execute(text("""SELECT revision_number, evaluation_revision_id, manifest_hash, manifest
                 FROM comparison_campaigns WHERE id = :id"""), {"id": campaign_id}).one_or_none()
             if not row:
                 raise CampaignGateError("campaign_missing")
             cells = connection.execute(text("""SELECT c.repeat_ordinal, c.fixture_ordinal, c.candidate_ordinal,
-                c.run_id, r.state FROM comparison_cells c JOIN analysis_runs r ON r.id = c.run_id
+                c.run_id, r.state, r.error_code,
+                (SELECT count(*) FROM run_inputs i WHERE i.run_id = r.id) AS input_count,
+                (SELECT count(*) FROM observer_invocations v WHERE v.run_id = r.id) AS invocation_count,
+                (SELECT count(*) FROM observations o WHERE o.run_id = r.id) AS observation_count,
+                (SELECT count(*) FROM result_projections p WHERE p.run_id = r.id) AS projection_count,
+                (SELECT coalesce(jsonb_agg(i.input_id ORDER BY i.ordinal), '[]'::jsonb)
+                    FROM run_inputs i WHERE i.run_id = r.id) AS input_ids,
+                (SELECT coalesce(jsonb_agg(v.id ORDER BY i.ordinal), '[]'::jsonb)
+                    FROM observer_invocations v JOIN run_inputs i ON i.input_id = v.input_id
+                    WHERE v.run_id = r.id) AS invocation_ids,
+                (SELECT coalesce(jsonb_agg(jsonb_build_object('run_id', o.run_id,
+                    'input_id', o.input_id, 'class_name', o.class_name)
+                    ORDER BY i.ordinal, o.class_name), '[]'::jsonb)
+                    FROM observations o JOIN run_inputs i ON i.input_id = o.input_id
+                    WHERE o.run_id = r.id) AS observation_ids,
+                (SELECT coalesce(jsonb_agg(a.id ORDER BY a.id), '[]'::jsonb)
+                    FROM artifact_metadata a WHERE a.run_id = r.id) AS artifact_ids
+                FROM comparison_cells c JOIN analysis_runs r ON r.id = c.run_id
                 WHERE c.campaign_id = :id ORDER BY c.repeat_ordinal, c.fixture_ordinal, c.candidate_ordinal"""),
                 {"id": campaign_id}).all()
+            planned = row.manifest["repeats"] * len(row.manifest["fixtures"]) * len(row.manifest["candidates"])
+            succeeded = sum(item.state == "succeeded" for item in cells)
+            timed_out = sum(item.state == "failed" and item.error_code in
+                            ("observer_timeout", "campaign_timeout") for item in cells)
+            failed = sum(item.state == "failed" for item in cells) - timed_out
             return {"id": str(campaign_id), "revision_number": row.revision_number,
                     "evaluation_revision_id": str(row.evaluation_revision_id),
                     "manifest_hash": row.manifest_hash, "manifest": row.manifest,
+                    "accounting": {"planned": planned, "succeeded": succeeded, "failed": failed,
+                                   "timed_out": timed_out, "missing": planned - succeeded - failed - timed_out},
                     "cells": [{"repeat_ordinal": item.repeat_ordinal, "fixture_ordinal": item.fixture_ordinal,
                                "candidate_ordinal": item.candidate_ordinal, "run_id": str(item.run_id),
-                               "state": item.state} for item in cells]}
+                               "state": item.state, "error_code": item.error_code,
+                               "input_count": item.input_count, "invocation_count": item.invocation_count,
+                               "observation_count": item.observation_count,
+                               "projection_count": item.projection_count,
+                               "input_ids": item.input_ids, "invocation_ids": item.invocation_ids,
+                               "observation_ids": item.observation_ids,
+                               "artifact_ids": item.artifact_ids} for item in cells]}
+
+    def comparison_execution_lock(self):
+        connection = self.engine.connect()
+        if not connection.execute(text("SELECT pg_try_advisory_lock(:key)"),
+                                  {"key": LOCK_ID + 3}).scalar_one():
+            connection.close()
+            raise CampaignGateError("campaign_executor_busy")
+        connection.commit()
+        return connection
+
+    def comparison_source(self, campaign_id: uuid.UUID) -> dict:
+        with self.engine.connect() as connection:
+            row = connection.execute(text("""SELECT e.manifest FROM comparison_campaigns c
+                JOIN evaluation_set_revisions e ON e.id = c.evaluation_revision_id
+                WHERE c.id = :id"""), {"id": campaign_id}).one_or_none()
+            if not row:
+                raise CampaignGateError("campaign_missing")
+            return row.manifest
+
+    def next_comparison_cell(self, campaign_id: uuid.UUID) -> dict | None:
+        with self.engine.begin() as connection:
+            connection.execute(text("SELECT 1 FROM comparison_campaigns WHERE id = :id FOR UPDATE"),
+                               {"id": campaign_id})
+            row = connection.execute(text("""SELECT c.repeat_ordinal, c.fixture_ordinal,
+                c.candidate_ordinal, c.run_id, r.state, r.profile_snapshot,
+                r.authorization_revision, r.requested_classes
+                FROM comparison_cells c JOIN analysis_runs r ON r.id = c.run_id
+                WHERE c.campaign_id = :id AND r.state NOT IN ('succeeded', 'failed')
+                ORDER BY c.repeat_ordinal, c.fixture_ordinal, c.candidate_ordinal LIMIT 1"""),
+                {"id": campaign_id}).mappings().one_or_none()
+            return dict(row) if row else None
+
+    def require_comparison_authorized(self, run_id: uuid.UUID) -> None:
+        with self.engine.begin() as connection:
+            row = connection.execute(text("""SELECT r.profile_id, r.profile_snapshot, r.authorization_revision, a.revision,
+                a.state FROM analysis_runs r JOIN profile_authorizations a
+                ON a.profile_id = r.profile_id WHERE r.id = :id"""),
+                {"id": run_id}).one_or_none()
+            if not row or row.state != 'enabled':
+                raise CampaignGateError("profile_unauthorized")
+            if row.revision != row.authorization_revision:
+                raise CampaignGateError("authorization_revision_changed")
+            snapshot, _ = self._require_authorized(connection, row.profile_id, row.authorization_revision)
+            if snapshot != row.profile_snapshot:
+                raise CampaignGateError("profile_runtime_mismatch")
+
+    def publish_comparison_input(self, run_id: uuid.UUID, frame: dict,
+                                 payload: bytes, artifacts: ArtifactStore) -> None:
+        with self.engine.begin() as gate:
+            row = gate.execute(text("""SELECT r.profile_id, r.profile_snapshot, r.authorization_revision, a.revision, a.state
+                FROM analysis_runs r JOIN profile_authorizations a ON a.profile_id = r.profile_id
+                WHERE r.id = :run AND r.purpose = 'comparison_campaign'
+                FOR SHARE OF a"""), {"run": run_id}).one_or_none()
+            if not row or row.state != 'enabled':
+                raise CampaignGateError("profile_unauthorized")
+            if row.revision != row.authorization_revision:
+                raise CampaignGateError("authorization_revision_changed")
+            snapshot, _ = self._require_authorized(gate, row.profile_id, row.authorization_revision)
+            if snapshot != row.profile_snapshot:
+                raise CampaignGateError("profile_runtime_mismatch")
+            self._publish_comparison_input(run_id, frame, payload, artifacts)
+
+    def _publish_comparison_input(self, run_id: uuid.UUID, frame: dict,
+                                  payload: bytes, artifacts: ArtifactStore) -> None:
+        image = frame['image']
+        key = f"comparison:{run_id}:input:{frame['ordinal']}"
+        with self.engine.begin() as connection:
+            connection.execute(text("""INSERT INTO publication_intents
+                (id, run_id, idempotency_key, media_type, state)
+                VALUES (:id, :run, :key, 'image/jpeg', 'pending_upload')
+                ON CONFLICT (idempotency_key) DO NOTHING"""),
+                {"id": uuid.uuid4(), "run": run_id, "key": key})
+            intent = connection.execute(text("""SELECT id, state, sha256, size FROM publication_intents
+                WHERE idempotency_key = :key AND run_id = :run FOR UPDATE"""),
+                {"key": key, "run": run_id}).one()
+            if intent.state != 'pending_upload' and (intent.sha256 != image['sha256'] or
+                                                       intent.size != image['size']):
+                raise CampaignGateError("campaign_input_mismatch")
+        if intent.state == 'pending_upload':
+            _, digest, size = artifacts.upload_temporary(intent.id, payload, 'image/jpeg')
+            self.publication_content_verified(intent.id, digest, size, f'sha256/{digest}')
+            intent_state = 'content_verified'
+        else:
+            intent_state = intent.state
+        if intent_state == 'content_verified':
+            artifacts.publish_final(intent.id, payload, 'image/jpeg', image['sha256'], image['size'])
+            self.publication_object_published(intent.id)
+        artifacts.read_verified(f"sha256/{image['sha256']}", image['sha256'], image['size'])
+        with self.engine.begin() as connection:
+            run = connection.execute(text("SELECT state FROM analysis_runs WHERE id = :run FOR UPDATE"),
+                                     {"run": run_id}).scalar_one()
+            if run != 'planned':
+                raise CampaignGateError("campaign_input_attachment_rejected")
+            existing = connection.execute(text("SELECT sha256, size FROM run_inputs WHERE run_id = :run AND ordinal = :ordinal"),
+                                          {"run": run_id, "ordinal": frame['ordinal']}).one_or_none()
+            if existing:
+                if existing.sha256 != image['sha256'] or existing.size != image['size']:
+                    raise CampaignGateError("campaign_input_mismatch")
+                return
+            artifact_id = uuid.uuid4()
+            connection.execute(text("""INSERT INTO artifact_metadata
+                (id, run_id, intent_id, key, sha256, size, media_type)
+                VALUES (:id, :run, :intent, :key, :hash, :size, 'image/jpeg')"""),
+                {"id": artifact_id, "run": run_id, "intent": intent.id,
+                 "key": f"sha256/{image['sha256']}", "hash": image['sha256'], "size": image['size']})
+            connection.execute(text("UPDATE publication_intents SET state = 'referenced' WHERE id = :id"),
+                               {"id": intent.id})
+            connection.execute(text("""INSERT INTO run_inputs
+                (run_id, ordinal, sha256, size, context, artifact_id)
+                VALUES (:run, :ordinal, :hash, :size, CAST(:context AS jsonb), :artifact)"""),
+                {"run": run_id, "ordinal": frame['ordinal'], "hash": image['sha256'],
+                 "size": image['size'], "context": json.dumps(frame['context']), "artifact": artifact_id})
+
+    def claim_comparison_cell(self, run_id: uuid.UUID, frame_count: int,
+                              lease_seconds: int = 30) -> dict:
+        self.require_comparison_authorized(run_id)
+        owner = str(uuid.uuid4())
+        with self.engine.begin() as connection:
+            campaign = connection.execute(text("""SELECT p.id FROM comparison_campaigns p
+                JOIN comparison_cells c ON c.campaign_id = p.id WHERE c.run_id = :run
+                FOR UPDATE OF p"""), {"run": run_id}).scalar_one_or_none()
+            first = connection.execute(text("""SELECT c.run_id FROM comparison_cells c
+                JOIN analysis_runs r ON r.id = c.run_id
+                WHERE c.campaign_id = :campaign AND r.state NOT IN ('succeeded', 'failed')
+                ORDER BY c.repeat_ordinal, c.fixture_ordinal, c.candidate_ordinal LIMIT 1"""),
+                {"campaign": campaign}).scalar_one_or_none()
+            if first != run_id:
+                raise CampaignGateError("campaign_cell_out_of_order")
+            row = connection.execute(text("""SELECT state, profile_snapshot, requested_classes,
+                authorization_revision FROM analysis_runs WHERE id = :run FOR UPDATE"""),
+                {"run": run_id}).one()
+            count = connection.execute(text("SELECT count(*) FROM run_inputs WHERE run_id = :run"),
+                                       {"run": run_id}).scalar_one()
+            if row.state != 'planned' or count != frame_count:
+                raise CampaignGateError("campaign_inputs_incomplete")
+            connection.execute(text("""UPDATE analysis_runs SET state = 'running', lease_owner = :owner,
+                lease_expires_at = clock_timestamp() + (:seconds * interval '1 second') WHERE id = :run"""),
+                {"run": run_id, "owner": owner, "seconds": lease_seconds})
+            for ordinal, name in enumerate(STAGES):
+                connection.execute(text("""INSERT INTO analysis_stages (run_id, ordinal, name, state)
+                    VALUES (:run, :ordinal, :name, :state)"""),
+                    {"run": run_id, "ordinal": ordinal, "name": name,
+                     "state": 'succeeded' if ordinal == 0 else 'running' if ordinal == 1 else 'pending'})
+            frames = connection.execute(text("""SELECT i.input_id, i.ordinal, i.sha256, i.size,
+                a.key, a.id AS artifact_id FROM run_inputs i JOIN artifact_metadata a ON a.id = i.artifact_id
+                WHERE i.run_id = :run ORDER BY i.ordinal"""), {"run": run_id}).mappings().all()
+            return {"id": run_id, "owner": owner, "profile_snapshot": row.profile_snapshot,
+                    "requested_classes": row.requested_classes,
+                    "authorization_revision": row.authorization_revision,
+                    "frames": [dict(frame) for frame in frames], "campaign": True}
+
+    def renew_comparison(self, run_id: uuid.UUID, owner: str, revision: int,
+                         lease_seconds: int = 30) -> None:
+        with self.engine.begin() as connection:
+            changed = connection.execute(text("""UPDATE analysis_runs SET
+                lease_expires_at = clock_timestamp() + (:seconds * interval '1 second')
+                WHERE id = :run AND purpose = 'comparison_campaign' AND state = 'running'
+                  AND lease_owner = :owner AND lease_expires_at > clock_timestamp()
+                  AND lease_expires_at < clock_timestamp() + (:seconds * interval '1 second')"""),
+                {"run": run_id, "owner": owner, "seconds": lease_seconds})
+            if changed.rowcount != 1:
+                raise CampaignGateError("campaign_lease_rejected")
+
+    def settle_comparison_invocation(self, run_id: uuid.UUID, owner: str,
+                                     invocation_id: uuid.UUID) -> None:
+        with self.engine.begin() as connection:
+            run = connection.execute(text("""SELECT state, lease_owner,
+                lease_expires_at > clock_timestamp() AS live FROM analysis_runs
+                WHERE id = :run FOR UPDATE"""), {"run": run_id}).one_or_none()
+            if not run or run.state != 'running' or run.lease_owner != owner or not run.live:
+                raise CampaignGateError("campaign_ownership_uncertain")
+            changed = connection.execute(text("""UPDATE observer_invocations
+                SET provider_settled_at = clock_timestamp() WHERE id = :id AND run_id = :run
+                AND state = 'reserved' AND provider_settled_at IS NULL"""),
+                {"id": invocation_id, "run": run_id})
+            if changed.rowcount != 1:
+                raise CampaignGateError("campaign_invocation_settlement_rejected")
+            connection.execute(text("""UPDATE analysis_runs SET provider_safe_after = clock_timestamp()
+                WHERE id = :run AND state = 'running' AND lease_owner = :owner"""),
+                {"run": run_id, "owner": owner})
+
+    def fail_comparison_cell(self, run_id: uuid.UUID, code: str,
+                             owner: str | None = None) -> None:
+        with self.engine.begin() as connection:
+            row = connection.execute(text("""SELECT state, lease_owner,
+                lease_expires_at > clock_timestamp() AS live,
+                provider_safe_after > clock_timestamp() AS provider_active
+                FROM analysis_runs WHERE id = :run FOR UPDATE"""), {"run": run_id}).one()
+            if row.state not in ('planned', 'running'):
+                return
+            if row.state == 'running' and (row.lease_owner != owner or not row.live):
+                raise CampaignGateError("campaign_ownership_uncertain")
+            if row.provider_active:
+                raise CampaignGateError("campaign_provider_may_be_active")
+            connection.execute(text("UPDATE observer_invocations SET state = 'failed' WHERE run_id = :run AND state = 'reserved'"),
+                               {"run": run_id})
+            connection.execute(text("UPDATE analysis_stages SET state = 'failed', reason = :code WHERE run_id = :run AND state = 'running'"),
+                               {"run": run_id, "code": code})
+            connection.execute(text("UPDATE analysis_stages SET state = 'skipped', reason = 'dependency_failed' WHERE run_id = :run AND state = 'pending'"),
+                               {"run": run_id})
+            connection.execute(text("""UPDATE publication_intents SET state = 'quarantined'
+                WHERE run_id = :run AND state NOT IN ('referenced', 'failed_integrity', 'quarantined')"""),
+                {"run": run_id})
+            connection.execute(text("""UPDATE analysis_runs SET state = 'failed', error_code = :code,
+                lease_owner = NULL, lease_expires_at = NULL WHERE id = :run"""),
+                {"run": run_id, "code": code})
+
+    def require_comparison_execution_exclusive(self, campaign_id: uuid.UUID) -> None:
+        with self.engine.connect() as connection:
+            if connection.execute(text("""SELECT 1 FROM comparison_cells c
+                JOIN analysis_runs r ON r.id = c.run_id
+                WHERE c.campaign_id != :campaign AND r.state = 'running' LIMIT 1"""),
+                {"campaign": campaign_id}).first():
+                raise CampaignGateError("campaign_ownership_uncertain")
+
+    def recover_comparison_campaign(self, campaign_id: uuid.UUID) -> int:
+        with self.engine.begin() as connection:
+            connection.execute(text("SELECT 1 FROM comparison_campaigns WHERE id = :id FOR UPDATE"),
+                               {"id": campaign_id})
+            rows = connection.execute(text("""SELECT r.id, r.lease_owner, r.lease_expires_at,
+                r.provider_safe_after, clock_timestamp() AS now FROM comparison_cells c
+                JOIN analysis_runs r ON r.id = c.run_id WHERE c.campaign_id = :campaign
+                AND r.state = 'running' FOR UPDATE OF r"""), {"campaign": campaign_id}).all()
+            for row in rows:
+                if (row.lease_owner is None or row.lease_expires_at is None or
+                    row.lease_expires_at > row.now or
+                    row.provider_safe_after and row.provider_safe_after > row.now):
+                    raise CampaignGateError("campaign_ownership_uncertain")
+                connection.execute(text("UPDATE observer_invocations SET state = 'failed' WHERE run_id = :run AND state = 'reserved'"),
+                                   {"run": row.id})
+                connection.execute(text("UPDATE analysis_stages SET state = 'failed', reason = 'executor_interrupted' WHERE run_id = :run AND state = 'running'"),
+                                   {"run": row.id})
+                connection.execute(text("UPDATE analysis_stages SET state = 'skipped', reason = 'dependency_failed' WHERE run_id = :run AND state = 'pending'"),
+                                   {"run": row.id})
+                connection.execute(text("""UPDATE publication_intents SET state = 'quarantined'
+                    WHERE run_id = :run AND state NOT IN ('referenced', 'failed_integrity', 'quarantined')"""),
+                    {"run": row.id})
+                connection.execute(text("""UPDATE analysis_runs SET state = 'failed', error_code = 'executor_interrupted',
+                    lease_owner = NULL, lease_expires_at = NULL WHERE id = :run AND state = 'running'"""),
+                    {"run": row.id})
+            return len(rows)
 
     def bind_evaluation_report(self, report_id: uuid.UUID, revision_id: uuid.UUID) -> None:
         with self.engine.begin() as connection:
@@ -224,6 +495,8 @@ class PostgresStore:
                     i.media_type
                     FROM publication_intents i
                     WHERE i.state NOT IN ('referenced', 'quarantined', 'failed_integrity')
+                      AND NOT EXISTS (SELECT 1 FROM analysis_runs r
+                          WHERE r.id = i.run_id AND r.purpose = 'comparison_campaign')
                       AND (:runtime = false OR i.run_id IS NOT NULL) FOR UPDATE OF i"""),
                     {"runtime": runtime}).all()
                 observed_count = len(rows)
@@ -309,7 +582,7 @@ class PostgresStore:
         try:
             with self.engine.begin() as connection:
                 connection.execute(text("SET LOCAL lock_timeout = '1s'"))
-                rows = connection.execute(text("SELECT id, lease_owner, lease_expires_at, clock_timestamp() AS db_now FROM analysis_runs WHERE state = 'running' AND (lease_expires_at IS NULL OR lease_expires_at <= clock_timestamp()) FOR UPDATE NOWAIT")).all()
+                rows = connection.execute(text("SELECT id, lease_owner, lease_expires_at, clock_timestamp() AS db_now FROM analysis_runs WHERE state = 'running' AND purpose != 'comparison_campaign' AND (lease_expires_at IS NULL OR lease_expires_at <= clock_timestamp()) FOR UPDATE NOWAIT")).all()
                 for run_id, owner, expiry, db_now in rows:
                     if expiry is None or owner is None:
                         raise RecoveryGateError("recovery_unknown_ownership")
@@ -800,18 +1073,24 @@ class PostgresStore:
                 raise AdmissionStoreError("ordinary_lease_rejected")
 
     def reserve_ordinary(self, run_id: uuid.UUID, owner: str, revision: int, image_hash: str,
-                         call_provider: bool = True, input_id: uuid.UUID | None = None) -> uuid.UUID | None:
+                         call_provider: bool = True, input_id: uuid.UUID | None = None,
+                         campaign: bool = False) -> uuid.UUID | None:
         invocation = uuid.uuid4()
         with self.engine.begin() as connection:
             row = connection.execute(text("""SELECT r.state, r.lease_owner, r.lease_expires_at > clock_timestamp() AS live,
-                r.authorization_revision, r.profile_snapshot, a.state AS auth_state, a.revision AS auth_revision, i.sha256, i.input_id
+                r.authorization_revision, r.profile_snapshot, r.purpose,
+                a.state AS auth_state, a.revision AS auth_revision, i.sha256, i.input_id
                 FROM analysis_runs r JOIN profile_authorizations a ON a.profile_id = r.profile_id
                 JOIN run_inputs i ON i.run_id = r.id AND i.input_id = COALESCE(:input_id, (SELECT input_id FROM run_inputs WHERE run_id = :run AND ordinal = 0))
                 WHERE r.id = :run FOR UPDATE OF r, a"""), {"run": run_id, "input_id": input_id}).one_or_none()
             if (not row or row.state != "running" or row.lease_owner != owner or not row.live
-                    or row.authorization_revision != revision or row.auth_state != "enabled"
-                    or row.auth_revision != revision or row.sha256 != image_hash):
+                    or (row.purpose == 'comparison_campaign') != campaign
+                    or row.authorization_revision != revision or row.sha256 != image_hash):
                 raise AdmissionStoreError("ordinary_reservation_rejected")
+            if row.auth_state != "enabled":
+                raise AdmissionStoreError("profile_unauthorized" if campaign else "ordinary_reservation_rejected")
+            if row.auth_revision != revision:
+                raise AdmissionStoreError("authorization_revision_changed" if campaign else "ordinary_reservation_rejected")
             if row.profile_snapshot.get("kind") == "cloud_api" and image_hash not in row.profile_snapshot.get("allowed_input_sha256", []):
                 raise AdmissionStoreError("cloud_image_not_authorized")
             if row.profile_snapshot.get("kind") == "cloud_api" and call_provider:
@@ -828,6 +1107,13 @@ class PostgresStore:
             connection.execute(text("UPDATE analysis_stages SET state = 'succeeded' WHERE run_id = :run AND ordinal = 1 AND state = 'running'"), {"run": run_id})
             connection.execute(text("UPDATE analysis_stages SET state = 'running' WHERE run_id = :run AND ordinal = 2 AND state = 'pending'"), {"run": run_id})
             if call_provider:
+                if campaign:
+                    timeout = float(row.profile_snapshot['runtime']['per_image_timeout_seconds'])
+                    connection.execute(text("""UPDATE analysis_runs SET provider_safe_after =
+                        GREATEST(COALESCE(provider_safe_after, clock_timestamp()),
+                        clock_timestamp() + (:seconds * interval '1 second'))
+                        WHERE id = :run AND lease_owner = :owner"""),
+                        {"seconds": timeout + 15, "run": run_id, "owner": owner})
                 request_identity = (row.profile_snapshot["requested_model_identity"]["id"]
                                     if row.profile_snapshot.get("kind") == "cloud_api" else "local-grounding-dino-cpu")
                 connection.execute(text("""INSERT INTO observer_invocations
@@ -841,16 +1127,19 @@ class PostgresStore:
 
     def finish_ordinary(self, run_id: uuid.UUID, owner: str, revision: int, invocation: uuid.UUID | None,
                         result: dict | None, native_intent: uuid.UUID | None, observations: list[dict],
-                        input_id: uuid.UUID | None = None, batch_deadline: float | None = None) -> None:
+                        input_id: uuid.UUID | None = None, batch_deadline: float | None = None,
+                        campaign: bool = False) -> None:
         with self.engine.begin() as connection:
             row = connection.execute(text("""SELECT r.profile_snapshot, r.state, r.lease_owner,
-                r.lease_expires_at > clock_timestamp() AS live, r.authorization_revision,
+                r.lease_expires_at > clock_timestamp() AS live, r.authorization_revision, r.purpose,
                 a.state AS auth_state, a.revision AS auth_revision, i.state AS invocation_state
                 FROM analysis_runs r JOIN profile_authorizations a ON a.profile_id = r.profile_id
                 LEFT JOIN observer_invocations i ON i.run_id = r.id AND i.id = :invocation
                 WHERE r.id = :run FOR UPDATE OF r, a"""), {"run": run_id, "invocation": invocation}).one_or_none()
             if (not row or row.state != "running" or row.lease_owner != owner or not row.live
-                    or row.authorization_revision != revision or row.auth_state != "enabled" or row.auth_revision != revision):
+                    or (row.purpose == 'comparison_campaign') != campaign
+                    or row.authorization_revision != revision
+                    or (not campaign and (row.auth_state != "enabled" or row.auth_revision != revision))):
                 raise AdmissionStoreError("ordinary_completion_rejected")
             expected_classes = connection.execute(text("SELECT requested_classes FROM analysis_runs WHERE id = :run"), {"run": run_id}).scalar_one()
             source = connection.execute(text("""SELECT input_id, ordinal, artifact_id, sha256 FROM run_inputs
@@ -891,6 +1180,7 @@ class PostgresStore:
                     VALUES (:id, :run, :intent, :key, :hash, :size, :media)"""),
                     {"id": native_artifact_id, "run": run_id, "intent": native_intent, "key": intent.final_key,
                      "hash": intent.sha256, "size": intent.size, "media": intent.media_type})
+                connection.execute(text("UPDATE publication_intents SET state = 'referenced' WHERE id = :id"), {"id": native_intent})
                 connection.execute(text("""UPDATE observer_invocations SET state = 'completed',
                     returned_model_identity = :identity, returned_request_identity = :request_identity,
                     actual_device = :device, preprocessing_revision = :pre,
@@ -901,7 +1191,6 @@ class PostgresStore:
                 connection.execute(text("""UPDATE analysis_runs SET latency_ms = COALESCE(latency_ms, 0) + :latency,
                     peak_memory_bytes = GREATEST(COALESCE(peak_memory_bytes, 0), COALESCE(:memory, 0)) WHERE id = :run"""),
                     {"latency": result["latency_ms"], "memory": result["peak_memory_bytes"], "run": run_id})
-                connection.execute(text("UPDATE publication_intents SET state = 'referenced' WHERE id = :id"), {"id": native_intent})
             for observation in observations:
                 connection.execute(text("""INSERT INTO observations
                     (run_id, input_id, class_name, state, reason, input_sha256, invocation_id, source_artifact_id)

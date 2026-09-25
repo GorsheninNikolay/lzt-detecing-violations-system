@@ -13,11 +13,23 @@ from app.adapters.postgres import AdmissionStoreError
 from app.domain.comparison_campaign import CampaignGateError, build_manifest
 from app.domain.evaluation_set import canonical_hash
 from app.profiles import cloud_api, grounding_dino
-from test_startup import database
+from test_startup import database, integration
+from test_admission import isolated_admission_database
 
 
 ROOT = Path(__file__).resolve().parents[2]
 EVALUATION = json.loads((ROOT / "evaluation/held-out-v1.json").read_text())
+
+
+@pytest.fixture
+def isolated_campaign_database(isolated_admission_database):
+    from app.adapters.postgres import PostgresStore
+
+    store = PostgresStore(isolated_admission_database)
+    try:
+        yield store
+    finally:
+        store.close()
 
 
 def profiles(manifest=EVALUATION):
@@ -391,3 +403,931 @@ def test_successful_freeze_campaign_cli_uses_real_admission(database, monkeypatc
     assert uuid.UUID(result["id"])
     assert len(result["cells"]) == 36
     assert result["evaluation_revision_id"] == str(revision)
+
+class MemoryArtifacts:
+    def __init__(self):
+        self.objects = {}
+        self.uploads = []
+
+    def upload_temporary(self, intent_id, payload, media_type):
+        import hashlib
+        digest = hashlib.sha256(payload).hexdigest()
+        self.objects[f"tmp/{intent_id}"] = payload
+        self.uploads.append(intent_id)
+        return f"tmp/{intent_id}", digest, len(payload)
+
+    def publish_final(self, intent_id, payload, media_type, digest, size):
+        assert self.objects[f"tmp/{intent_id}"] == payload
+        self.objects[f"sha256/{digest}"] = payload
+        return f"sha256/{digest}"
+
+    def read_verified(self, key, digest, size):
+        import hashlib
+        payload = self.objects[key]
+        assert hashlib.sha256(payload).hexdigest() == digest and len(payload) == size
+        return payload
+
+    def inspect_reconciliation(self, key, digest=None, size=None, creator=None):
+        return "missing", None
+
+
+def execution_manifest(tmp_path):
+    import hashlib
+    import io
+    import zipfile
+    from PIL import Image
+
+    manifest = copy.deepcopy(EVALUATION)
+    members = {}
+    for frame in manifest["frames"]:
+        ordinal = frame["ordinal"]
+        image = io.BytesIO()
+        Image.new("RGB", (2, 2), (ordinal * 17, 1, 2)).save(image, format="JPEG")
+        for kind, payload in (("image", image.getvalue()), ("label", str(ordinal).encode())):
+            item = frame[kind]
+            item["sha256"] = hashlib.sha256(payload).hexdigest()
+            item["size"] = len(payload)
+            members[item["archive_member"]] = payload
+    archive = tmp_path / "private.zip"
+    with zipfile.ZipFile(archive, "w") as output:
+        for name, payload in members.items():
+            output.writestr(name, payload)
+    manifest["source_archive_sha256"] = hashlib.sha256(archive.read_bytes()).hexdigest()
+    return manifest, archive
+
+
+@pytest.mark.parametrize("timeout_first", [False, True])
+def test_complete_execution_keeps_every_cell_and_distinct_inputs(database, monkeypatch, tmp_path,
+                                                                  timeout_first, capsys):
+    import hashlib
+    import sys
+    from app.application import executor, evaluation
+    from app.profiles import cloud_api
+    from app.config import Config
+
+    manifest, archive = execution_manifest(tmp_path)
+    revision, local_id, cloud_id, local, cloud = seed(database, manifest)
+    local["model_files"] = {"model.safetensors": "a" * 64}
+    cloud["service_account_id"] = "test-service"
+    local = admit_for_test(database, local_id, local)
+    cloud = admit_for_test(database, cloud_id, cloud)
+    patch_admission(monkeypatch, database, local_id, cloud_id, local, cloud)
+    campaign = database.freeze_comparison_campaign(revision, local_id, cloud_id)
+    artifacts = MemoryArtifacts()
+    cells = database.read_comparison_campaign(campaign)["cells"]
+    keys = {uuid.UUID(cell["run_id"]): (cell["repeat_ordinal"], cell["fixture_ordinal"],
+                                         cell["candidate_ordinal"]) for cell in cells}
+    activated, provider_calls, received_hashes, current = [], [], [], [None]
+    image_hashes = {frame["image"]["sha256"] for frame in manifest["frames"]}
+    read_verified = artifacts.read_verified
+    def read_before_reservation(key, digest, size):
+        if current[0] is not None and digest in image_hashes:
+            run = next(run for run, key in keys.items() if key == current[0])
+            with database.engine.connect() as connection:
+                assert not connection.execute(text("""SELECT 1 FROM observer_invocations
+                    WHERE run_id = :run AND input_sha256 = :hash AND state = 'reserved'"""),
+                    {"run": run, "hash": digest}).first()
+        return read_verified(key, digest, size)
+    monkeypatch.setattr(artifacts, "read_verified", read_before_reservation)
+    claim = database.claim_comparison_cell
+    def record_claim(run_id, frame_count, lease_seconds=30):
+        current[0] = keys[run_id]
+        activated.append(current[0])
+        return claim(run_id, frame_count, lease_seconds)
+    monkeypatch.setattr(database, "claim_comparison_cell", record_claim)
+    def local_observe(*args):
+        provider_calls.append(current[0])
+        received_hashes.append(hashlib.sha256(args[2]).hexdigest())
+        if timeout_first and len(provider_calls) == 1:
+            raise RuntimeError("observer_timeout")
+        return {
+        "returned_model_identity": f"checkpoint-sha256:{local['model_files']['model.safetensors']}",
+        "actual_device": "cpu", "latency_ms": 1.0, "peak_memory_bytes": 1,
+        "states": {"excavator": "not_detected_in_frame", "dump_truck": "not_detected_in_frame"},
+        "native": {"detections": [], "image_size": [2, 2]}}
+    monkeypatch.setattr(executor, "_observe_bounded", local_observe)
+    monkeypatch.setattr(executor, "read_owner_gate", lambda *args: cloud["owner_evidence"])
+    monkeypatch.setattr(Config, "from_env", classmethod(lambda cls: type("ConfigStub", (), {
+        "cloud_api_key_id": "test-key", "cloud_api_key": "test-secret", "cloud_iam_token": None,
+        "observer_snapshot_dir": "unused"})()))
+    def cloud_result(self, image, timeout):
+        provider_calls.append(current[0])
+        received_hashes.append(hashlib.sha256(image).hexdigest())
+        return {
+        "returned_model_identity": cloud["requested_model_identity"]["id"],
+        "returned_request_identity": str(uuid.uuid4()), "actual_device": "remote_unreported",
+        "preprocessing_revision": cloud_api.PREPROCESSING_REVISION,
+        "latency_ms": 1.0, "peak_memory_bytes": None,
+        "states": {"excavator": "not_detected_in_frame", "dump_truck": "not_detected_in_frame"},
+        "native": {"response": {}, "provider_response": {}, "request_data_controls": {}}}
+    monkeypatch.setattr(executor, "CloudObserver", type("CloudStub", (), {
+        "__init__": lambda self, snapshot, key: None, "observe": cloud_result}))
+    monkeypatch.setattr(evaluation, "PostgresStore", lambda url: database)
+    monkeypatch.setattr(evaluation, "ArtifactStore", lambda config: artifacts)
+    monkeypatch.setattr(Config, "database_url_from_env", lambda: str(database.engine.url))
+    monkeypatch.setattr(sys, "argv", ["evidence-evaluation", "execute-campaign",
+                                      "--campaign", str(campaign), "--archive", str(archive)])
+    evaluation.main()
+    result = json.loads(capsys.readouterr().out)
+    assert result["accounting"] == {"planned": 36, "succeeded": 35 if timeout_first else 36,
+                                    "failed": 0, "timed_out": 1 if timeout_first else 0,
+                                    "missing": 0}, [
+                                        (c["fixture_ordinal"], c["candidate_ordinal"], c["error_code"])
+                                        for c in result["cells"] if c["state"] not in ("succeeded", "failed")]
+    assert [cell["state"] for cell in result["cells"]] == (
+        ["failed"] + ["succeeded"] * 35 if timeout_first else ["succeeded"] * 36)
+    assert activated == sorted(keys.values())
+    expected_calls = [key for key in activated for _ in result["manifest"]["fixtures"][key[1]]["frames"]
+                      if set(result["manifest"]["fixtures"][key[1]]["requested_classes"]) &
+                         {"excavator", "dump_truck"}]
+    assert provider_calls == expected_calls
+    assert received_hashes == [frame["image"]["sha256"] for key in activated
+        for frame in result["manifest"]["fixtures"][key[1]]["frames"]
+        if set(result["manifest"]["fixtures"][key[1]]["requested_classes"]) & {"excavator", "dump_truck"}]
+    assert all(cell["input_count"] == len(result["manifest"]["fixtures"][cell["fixture_ordinal"]]["frames"])
+               for cell in result["cells"])
+    with database.engine.connect() as connection:
+        for cell in result["cells"]:
+            run_id = uuid.UUID(cell["run_id"])
+            for key, query in (
+                ("input_ids", "SELECT input_id FROM run_inputs WHERE run_id = :run"),
+                ("invocation_ids", "SELECT id FROM observer_invocations WHERE run_id = :run"),
+                ("artifact_ids", "SELECT id FROM artifact_metadata WHERE run_id = :run"),
+            ):
+                assert set(cell[key]) == {str(value) for value in
+                    connection.execute(text(query), {"run": run_id}).scalars()}
+            observed = connection.execute(text("""SELECT input_id, class_name FROM observations
+                WHERE run_id = :run"""), {"run": run_id}).all()
+            assert {(o["input_id"], o["class_name"]) for o in cell["observation_ids"]} == {
+                (str(o.input_id), o.class_name) for o in observed}
+            assert all(o["run_id"] == cell["run_id"] for o in cell["observation_ids"])
+
+
+def test_archive_late_member_mismatch_uploads_nothing(database, monkeypatch, tmp_path):
+    import asyncio
+    from app.application.executor import execute_comparison_campaign
+
+    manifest, archive = execution_manifest(tmp_path)
+    manifest["frames"][-1]["image"]["sha256"] = "f" * 64
+    revision, local_id, cloud_id, local, cloud = seed(database, manifest)
+    patch_admission(monkeypatch, database, local_id, cloud_id, local, cloud)
+    campaign = database.freeze_comparison_campaign(revision, local_id, cloud_id)
+    artifacts = MemoryArtifacts()
+    with pytest.raises(CampaignGateError, match="archive_content_mismatch"):
+        asyncio.run(execute_comparison_campaign(database, artifacts, campaign, archive))
+    assert not artifacts.uploads
+    assert database.read_comparison_campaign(campaign)["accounting"]["missing"] == 36
+
+
+def test_recovery_refuses_live_lease_even_without_provider(database, monkeypatch):
+    revision, local_id, cloud_id, local, cloud = seed(database)
+    patch_admission(monkeypatch, database, local_id, cloud_id, local, cloud)
+    campaign = database.freeze_comparison_campaign(revision, local_id, cloud_id)
+    run_id = uuid.UUID(database.read_comparison_campaign(campaign)["cells"][0]["run_id"])
+    with database.engine.begin() as connection:
+        connection.execute(text("""UPDATE analysis_runs SET state = 'running',
+            lease_owner = 'test-owner', lease_expires_at = clock_timestamp() + interval '1 hour'
+            WHERE id = :run"""), {"run": run_id})
+    with pytest.raises(CampaignGateError, match="campaign_ownership_uncertain"):
+        database.recover_comparison_campaign(campaign)
+    assert database.next_comparison_cell(campaign)["run_id"] == run_id
+    database.fail_comparison_cell(run_id, "test_cleanup", "test-owner")
+
+
+def test_terminal_campaign_outcome_and_evidence_cannot_change(database, monkeypatch):
+    revision, local_id, cloud_id, local, cloud = seed(database)
+    patch_admission(monkeypatch, database, local_id, cloud_id, local, cloud)
+    campaign = database.freeze_comparison_campaign(revision, local_id, cloud_id)
+    run_id = uuid.UUID(database.read_comparison_campaign(campaign)["cells"][0]["run_id"])
+    database.fail_comparison_cell(run_id, "test_failure")
+    for statement in ("UPDATE analysis_runs SET error_code = 'other' WHERE id = :run",
+                      "UPDATE analysis_runs SET retry_predecessor_id = gen_random_uuid() WHERE id = :run",
+                      "INSERT INTO analysis_stages (run_id, ordinal, name, state) VALUES (:run, 0, 'input_registration', 'pending')",
+                      "INSERT INTO result_projections (run_id, outcome, snapshot) VALUES (:run, 'observations_only', '{}'::jsonb)",
+                      "INSERT INTO run_inputs (run_id, ordinal, sha256, size, context) VALUES (:run, 0, 'x', 1, '{}'::jsonb)",
+                      "INSERT INTO publication_intents (id, run_id, idempotency_key, media_type, state) VALUES (gen_random_uuid(), :run, gen_random_uuid()::text, 'image/jpeg', 'pending_upload')"):
+        with pytest.raises(Exception, match="comparison_(run|evidence|input)_immutable"):
+            with database.engine.begin() as connection:
+                connection.execute(text(statement), {"run": run_id})
+    ordinary = uuid.uuid4()
+    with database.engine.begin() as connection:
+        connection.execute(text("INSERT INTO analysis_runs (id, state, purpose) VALUES (:id, 'queued', 'ordinary')"),
+                           {"id": ordinary})
+    intent = database.create_publication_intent(ordinary, "image/jpeg", f"ordinary:{ordinary}")
+    with pytest.raises(Exception, match="comparison_evidence_immutable"):
+        with database.engine.begin() as connection:
+            connection.execute(text("UPDATE publication_intents SET run_id = :run WHERE id = :id"),
+                               {"run": run_id, "id": intent})
+
+
+def test_reserved_call_recovers_as_failed_without_reusing_cell(database, monkeypatch, tmp_path):
+    import asyncio
+    import time
+    from app.application import executor
+
+    manifest, archive = execution_manifest(tmp_path)
+    revision, local_id, cloud_id, local, cloud = seed(database, manifest)
+    local["runtime"]["per_image_timeout_seconds"] = 0.01
+    cloud["service_account_id"] = "test-service"
+    cloud = admit_for_test(database, cloud_id, cloud)
+    with database.engine.begin() as connection:
+        connection.execute(text("UPDATE observer_profiles SET snapshot = CAST(:snapshot AS jsonb) WHERE id = :id"),
+                           {"snapshot": json.dumps(local), "id": local_id})
+    patch_admission(monkeypatch, database, local_id, cloud_id, local, cloud)
+    campaign = database.freeze_comparison_campaign(revision, local_id, cloud_id)
+    cell = database.next_comparison_cell(campaign)
+    frame = database.read_comparison_campaign(campaign)["manifest"]["fixtures"][0]["frames"][0]
+    with archive.open("rb") as source:
+        from app.application.executor import _verified_campaign_archive
+        images = _verified_campaign_archive(source, database.comparison_source(campaign))
+    artifacts = MemoryArtifacts()
+    database.publish_comparison_input(cell["run_id"], frame, images[frame["ordinal"]], artifacts)
+    work = database.claim_comparison_cell(cell["run_id"], 1, lease_seconds=1)
+    invocation = database.reserve_ordinary(work["id"], work["owner"],
+        work["authorization_revision"], frame["image"]["sha256"], True,
+        work["frames"][0]["input_id"], True)
+    for statement in (
+        "UPDATE analysis_runs SET state = 'failed', lease_owner = NULL, lease_expires_at = NULL WHERE id = :run",
+        "UPDATE observer_invocations SET state = 'failed' WHERE id = :invocation",
+    ):
+        with pytest.raises(Exception, match="comparison_provider_may_be_active"):
+            with database.engine.begin() as connection:
+                connection.execute(text(statement), {"run": work["id"], "invocation": invocation})
+    with pytest.raises(Exception, match="comparison_invocation_immutable"):
+        with database.engine.begin() as connection:
+            connection.execute(text("DELETE FROM observer_invocations WHERE id = :id"), {"id": invocation})
+    with pytest.raises(Exception, match="comparison_provider_not_settled"):
+        with database.engine.begin() as connection:
+            connection.execute(text("UPDATE observer_invocations SET state = 'completed' WHERE id = :id"),
+                               {"id": invocation})
+    with pytest.raises(Exception, match="comparison_provider_may_be_active"):
+        database.fail_ordinary(work["id"], work["owner"], "ordinary_failure")
+    with pytest.raises(CampaignGateError, match="campaign_ownership_uncertain"):
+        database.fail_comparison_cell(work["id"], "stale_owner_failure", "another-owner")
+    with pytest.raises(CampaignGateError, match="campaign_ownership_uncertain"):
+        database.recover_comparison_campaign(campaign)
+    time.sleep(16)
+    assert database.recover_comparison_campaign(campaign) == 1
+    next_cell = database.next_comparison_cell(campaign)
+    assert (next_cell["repeat_ordinal"], next_cell["fixture_ordinal"], next_cell["candidate_ordinal"]) == (0, 0, 1)
+    database.publish_comparison_input(next_cell["run_id"], frame, images[frame["ordinal"]], artifacts)
+    next_work = database.claim_comparison_cell(next_cell["run_id"], 1)
+    calls = []
+    monkeypatch.setattr(executor, "read_owner_gate", lambda *args: cloud["owner_evidence"])
+    monkeypatch.setattr(executor.Config, "from_env", classmethod(lambda cls: type("ConfigStub", (), {
+        "cloud_api_key_id": "test-key", "cloud_api_key": "test-secret", "cloud_iam_token": None})()))
+    def observe(self, image, timeout):
+        calls.append(image)
+        return {"returned_model_identity": cloud["requested_model_identity"]["id"],
+                "returned_request_identity": "recovered-next-cell", "actual_device": "remote_unreported",
+                "preprocessing_revision": cloud_api.PREPROCESSING_REVISION,
+                "latency_ms": 1.0, "peak_memory_bytes": None,
+                "states": {"excavator": "not_detected_in_frame", "dump_truck": "not_detected_in_frame"},
+                "native": {}}
+    monkeypatch.setattr(executor, "CloudObserver", type("CloudStub", (), {
+        "__init__": lambda self, snapshot, key: None, "observe": observe}))
+    runner = executor.ClaimLoop()
+    runner.store, runner.artifacts = database, artifacts
+    asyncio.run(runner._execute(next_work, next_work["authorization_revision"]))
+    assert calls == [images[frame["ordinal"]]]
+    readback = database.read_comparison_campaign(campaign)
+    assert [c["state"] for c in readback["cells"][:2]] == ["failed", "succeeded"]
+    assert readback["cells"][0]["invocation_ids"] == [str(invocation)]
+    with database.engine.connect() as connection:
+        assert connection.execute(text("SELECT state FROM observer_invocations WHERE id = :id"),
+                                  {"id": invocation}).scalar_one() == "failed"
+        assert connection.execute(text("SELECT count(*) FROM observer_invocations WHERE run_id = :run"),
+                                  {"run": cell["run_id"]}).scalar_one() == 1
+
+
+def test_revocation_before_publication_sends_no_bytes(database, monkeypatch, tmp_path):
+    import asyncio
+    from app.application.executor import execute_comparison_campaign
+
+    manifest, archive = execution_manifest(tmp_path)
+    revision, local_id, cloud_id, local, cloud = seed(database, manifest)
+    patch_admission(monkeypatch, database, local_id, cloud_id, local, cloud)
+    campaign = database.freeze_comparison_campaign(revision, local_id, cloud_id)
+    with database.engine.begin() as connection:
+        connection.execute(text("UPDATE profile_authorizations SET state = 'revoked' WHERE profile_id IN (:local, :cloud)"),
+                           {"local": local_id, "cloud": cloud_id})
+    artifacts = MemoryArtifacts()
+    result = asyncio.run(execute_comparison_campaign(database, artifacts, campaign, archive))
+    assert artifacts.uploads == []
+    assert result["accounting"] == {"planned": 36, "succeeded": 0, "failed": 36,
+                                    "timed_out": 0, "missing": 0}
+    assert all(cell["error_code"] == "profile_unauthorized" for cell in result["cells"])
+
+
+@pytest.mark.parametrize("candidate", [0, 1])
+def test_reserved_call_finishes_after_authorization_revocation(database, monkeypatch, tmp_path, candidate):
+    from app.domain.observations import closed_observations
+
+    manifest, archive = execution_manifest(tmp_path)
+    revision, local_id, cloud_id, local, cloud = seed(database, manifest)
+    local["model_files"] = {"model.safetensors": "a" * 64}
+    cloud["service_account_id"] = "test-service"
+    local = admit_for_test(database, local_id, local)
+    cloud = admit_for_test(database, cloud_id, cloud)
+    patch_admission(monkeypatch, database, local_id, cloud_id, local, cloud)
+    campaign = database.freeze_comparison_campaign(revision, local_id, cloud_id)
+    cell = database.read_comparison_campaign(campaign)["cells"][candidate]
+    if candidate:
+        first = database.read_comparison_campaign(campaign)["cells"][0]
+        database.fail_comparison_cell(uuid.UUID(first["run_id"]), "test_preceding_cell_failed")
+    run_id = uuid.UUID(cell["run_id"])
+    frame = database.read_comparison_campaign(campaign)["manifest"]["fixtures"][0]["frames"][0]
+    from app.application.executor import _verified_campaign_archive
+    with archive.open("rb") as source:
+        image = _verified_campaign_archive(source, database.comparison_source(campaign))[frame["ordinal"]]
+    artifacts = MemoryArtifacts()
+    database.publish_comparison_input(run_id, frame, image, artifacts)
+    work = database.claim_comparison_cell(run_id, 1)
+    source_frame = work["frames"][0]
+    invocation = database.reserve_ordinary(run_id, work["owner"], 1, frame["image"]["sha256"],
+                                           True, source_frame["input_id"], True)
+    profile = cloud if candidate else local
+    with database.engine.begin() as connection:
+        connection.execute(text("UPDATE profile_authorizations SET state = 'revoked' WHERE profile_id = :id"),
+                           {"id": cloud_id if candidate else local_id})
+    native_intent = database.create_publication_intent(run_id, "application/json",
+                                                        f"{run_id}:native:{source_frame['input_id']}")
+    payload = b"{}"
+    _, digest, size = artifacts.upload_temporary(native_intent, payload, "application/json")
+    database.publication_content_verified(native_intent, digest, size, f"sha256/{digest}")
+    artifacts.publish_final(native_intent, payload, "application/json", digest, size)
+    database.publication_object_published(native_intent)
+    result = {"returned_model_identity": (profile["requested_model_identity"]["id"] if candidate else
+                                           f"checkpoint-sha256:{profile['model_files']['model.safetensors']}"),
+              "actual_device": "remote_unreported" if candidate else "cpu",
+              "preprocessing_revision": (cloud_api.PREPROCESSING_REVISION if candidate else
+                                         grounding_dino.PREPROCESSING_REVISION),
+              "returned_request_identity": "test-response" if candidate else None,
+              "latency_ms": 1.0, "peak_memory_bytes": None if candidate else 1}
+    observations = closed_observations({"excavator": "not_detected_in_frame",
+                                        "dump_truck": "not_detected_in_frame"},
+                                       work["requested_classes"], str(source_frame["artifact_id"]))
+    database.settle_comparison_invocation(run_id, work["owner"], invocation)
+    database.finish_ordinary(run_id, work["owner"], 1, invocation, result, native_intent,
+                             observations, source_frame["input_id"], None, True)
+    assert database.read_comparison_campaign(campaign)["cells"][candidate]["state"] == "succeeded"
+
+
+def test_timeout_accounting_keeps_manifest_denominator(database, monkeypatch):
+    revision, local_id, cloud_id, local, cloud = seed(database)
+    patch_admission(monkeypatch, database, local_id, cloud_id, local, cloud)
+    campaign = database.freeze_comparison_campaign(revision, local_id, cloud_id)
+    cells = database.read_comparison_campaign(campaign)["cells"]
+    database.fail_comparison_cell(uuid.UUID(cells[0]["run_id"]), "observer_timeout")
+    database.fail_comparison_cell(uuid.UUID(cells[1]["run_id"]), "artifact_publication_failed")
+    assert database.read_comparison_campaign(campaign)["accounting"] == {
+        "planned": 36, "succeeded": 0, "failed": 1, "timed_out": 1, "missing": 34}
+
+
+def test_ordinary_maintenance_ignores_running_campaign_and_pending_input(database, monkeypatch):
+    revision, local_id, cloud_id, local, cloud = seed(database)
+    patch_admission(monkeypatch, database, local_id, cloud_id, local, cloud)
+    campaign = database.freeze_comparison_campaign(revision, local_id, cloud_id)
+    run_id = uuid.UUID(database.read_comparison_campaign(campaign)["cells"][0]["run_id"])
+    intent = database.create_publication_intent(run_id, "image/jpeg", f"comparison:{run_id}:input:0")
+    with database.engine.begin() as connection:
+        connection.execute(text("""UPDATE analysis_runs SET state = 'running', lease_owner = 'expired-owner',
+            lease_expires_at = clock_timestamp() - interval '1 second' WHERE id = :run"""),
+            {"run": run_id})
+    assert database.recover() == 0
+    database.reconcile(MemoryArtifacts(), runtime=True)
+    with database.engine.connect() as connection:
+        assert connection.execute(text("SELECT state FROM analysis_runs WHERE id = :run"),
+                                  {"run": run_id}).scalar_one() == "running"
+        assert connection.execute(text("SELECT state FROM publication_intents WHERE id = :id"),
+                                  {"id": intent}).scalar_one() == "pending_upload"
+    assert database.recover_comparison_campaign(campaign) == 1
+
+
+def test_input_publication_adopts_stable_intent_after_restart(database, monkeypatch, tmp_path):
+    from app.application.executor import _verified_campaign_archive
+
+    manifest, archive = execution_manifest(tmp_path)
+    revision, local_id, cloud_id, local, cloud = seed(database, manifest)
+    patch_admission(monkeypatch, database, local_id, cloud_id, local, cloud)
+    campaign = database.freeze_comparison_campaign(revision, local_id, cloud_id)
+    run_id = uuid.UUID(database.read_comparison_campaign(campaign)["cells"][0]["run_id"])
+    frame = database.read_comparison_campaign(campaign)["manifest"]["fixtures"][0]["frames"][0]
+    with archive.open("rb") as source:
+        image = _verified_campaign_archive(source, database.comparison_source(campaign))[frame["ordinal"]]
+    artifacts = MemoryArtifacts()
+    key = f"comparison:{run_id}:input:{frame['ordinal']}"
+    intent = database.create_publication_intent(run_id, "image/jpeg", key)
+    _, digest, size = artifacts.upload_temporary(intent, image, "image/jpeg")
+    database.publication_content_verified(intent, digest, size, f"sha256/{digest}")
+    database.publish_comparison_input(run_id, frame, image, artifacts)
+    database.publish_comparison_input(run_id, frame, image, artifacts)
+    assert artifacts.uploads == [intent]
+    with database.engine.connect() as connection:
+        assert connection.execute(text("SELECT count(*) FROM run_inputs WHERE run_id = :run"),
+                                  {"run": run_id}).scalar_one() == 1
+        assert connection.execute(text("SELECT state FROM publication_intents WHERE id = :id"),
+                                  {"id": intent}).scalar_one() == "referenced"
+
+
+def test_campaign_cli_startup_and_accounting_errors_are_json(database, monkeypatch, capsys):
+    import sys
+    from app.application import evaluation
+
+    monkeypatch.setenv("DATABASE_URL", "invalid")
+    monkeypatch.setattr(sys, "argv", ["evidence-evaluation", "campaign-accounting",
+                                      "--campaign", str(uuid.uuid4())])
+    with pytest.raises(SystemExit) as exit_info:
+        evaluation.main()
+    assert exit_info.value.code == 1
+    assert json.loads(capsys.readouterr().out) == {"status": "rejected",
+                                                   "error": "invalid_database_dialect"}
+    revision, local_id, cloud_id, local, cloud = seed(database)
+    patch_admission(monkeypatch, database, local_id, cloud_id, local, cloud)
+    campaign = database.freeze_comparison_campaign(revision, local_id, cloud_id)
+    monkeypatch.setenv("DATABASE_URL", str(database.engine.url))
+    monkeypatch.setattr(sys, "argv", ["evidence-evaluation", "campaign-accounting",
+                                      "--campaign", str(campaign)])
+    evaluation.main()
+    assert json.loads(capsys.readouterr().out) == {"planned": 36, "succeeded": 0,
+                                                   "failed": 0, "timed_out": 0, "missing": 36}
+    monkeypatch.setattr(sys, "argv", ["evidence-evaluation", "read-campaign",
+                                      "--campaign", str(campaign)])
+    evaluation.main()
+    readback = json.loads(capsys.readouterr().out)
+    assert len(readback["cells"]) == 36
+    assert readback["accounting"]["planned"] == 36
+
+
+def test_revocation_winning_row_lock_prevents_byte_publication(database, monkeypatch, tmp_path):
+    import threading
+    import time
+    from app.application.executor import _verified_campaign_archive
+
+    manifest, archive = execution_manifest(tmp_path)
+    revision, local_id, cloud_id, local, cloud = seed(database, manifest)
+    patch_admission(monkeypatch, database, local_id, cloud_id, local, cloud)
+    campaign = database.freeze_comparison_campaign(revision, local_id, cloud_id)
+    run_id = uuid.UUID(database.read_comparison_campaign(campaign)["cells"][0]["run_id"])
+    frame = database.read_comparison_campaign(campaign)["manifest"]["fixtures"][0]["frames"][0]
+    with archive.open("rb") as source:
+        image = _verified_campaign_archive(source, database.comparison_source(campaign))[frame["ordinal"]]
+    artifacts = MemoryArtifacts()
+    attempted = threading.Event()
+
+    def publish():
+        attempted.set()
+        database.publish_comparison_input(run_id, frame, image, artifacts)
+
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        connection = database.engine.connect()
+        transaction = connection.begin()
+        try:
+            connection.execute(text("UPDATE profile_authorizations SET state = 'revoked' WHERE profile_id = :id"),
+                               {"id": local_id})
+            future = pool.submit(publish)
+            assert attempted.wait(2)
+            time.sleep(0.1)
+            assert not future.done()
+            assert artifacts.uploads == []
+            transaction.commit()
+            with pytest.raises(CampaignGateError, match="profile_unauthorized"):
+                future.result(timeout=5)
+            assert artifacts.uploads == []
+        finally:
+            if transaction.is_active:
+                transaction.rollback()
+            connection.close()
+
+
+def test_claim_requires_first_unfinished_tuple(database, monkeypatch, tmp_path):
+    from app.application.executor import _verified_campaign_archive
+
+    manifest, archive = execution_manifest(tmp_path)
+    revision, local_id, cloud_id, local, cloud = seed(database, manifest)
+    patch_admission(monkeypatch, database, local_id, cloud_id, local, cloud)
+    campaign = database.freeze_comparison_campaign(revision, local_id, cloud_id)
+    readback = database.read_comparison_campaign(campaign)
+    first, later = (uuid.UUID(c["run_id"]) for c in readback["cells"][:2])
+    frame = readback["manifest"]["fixtures"][0]["frames"][0]
+    with archive.open("rb") as source:
+        image = _verified_campaign_archive(source, database.comparison_source(campaign))[frame["ordinal"]]
+    database.publish_comparison_input(later, frame, image, MemoryArtifacts())
+    with pytest.raises(CampaignGateError, match="campaign_cell_out_of_order"):
+        database.claim_comparison_cell(later, 1)
+    assert database.next_comparison_cell(campaign)["run_id"] == first
+    database.fail_comparison_cell(first, "test_failure")
+    work = database.claim_comparison_cell(later, 1)
+    assert work["id"] == later
+    database.fail_comparison_cell(later, "test_cleanup", work["owner"])
+
+
+def test_attached_campaign_publication_is_immutable(database, monkeypatch, tmp_path):
+    from app.application.executor import _verified_campaign_archive
+
+    manifest, archive = execution_manifest(tmp_path)
+    revision, local_id, cloud_id, local, cloud = seed(database, manifest)
+    patch_admission(monkeypatch, database, local_id, cloud_id, local, cloud)
+    campaign = database.freeze_comparison_campaign(revision, local_id, cloud_id)
+    readback = database.read_comparison_campaign(campaign)
+    run_id = uuid.UUID(readback["cells"][0]["run_id"])
+    frame = readback["manifest"]["fixtures"][0]["frames"][0]
+    with archive.open("rb") as source:
+        image = _verified_campaign_archive(source, database.comparison_source(campaign))[frame["ordinal"]]
+    database.publish_comparison_input(run_id, frame, image, MemoryArtifacts())
+    with database.engine.connect() as connection:
+        artifact, intent = connection.execute(text("SELECT id, intent_id FROM artifact_metadata WHERE run_id = :run"),
+                                              {"run": run_id}).one()
+    ordinary = uuid.uuid4()
+    with database.engine.begin() as connection:
+        connection.execute(text("INSERT INTO analysis_runs (id, state, purpose) VALUES (:run, 'queued', 'ordinary')"),
+                           {"run": ordinary})
+    for statement in (
+        "UPDATE publication_intents SET state = 'quarantined' WHERE id = :intent",
+        "UPDATE publication_intents SET sha256 = 'changed' WHERE id = :intent",
+        "UPDATE publication_intents SET run_id = :ordinary WHERE id = :intent",
+        "DELETE FROM publication_intents WHERE id = :intent",
+        "UPDATE artifact_metadata SET size = size + 1 WHERE id = :artifact",
+        "DELETE FROM artifact_metadata WHERE id = :artifact",
+    ):
+        with pytest.raises(Exception, match="comparison_evidence_immutable"):
+            with database.engine.begin() as connection:
+                connection.execute(text(statement), {"intent": intent, "artifact": artifact, "ordinary": ordinary})
+    work = database.claim_comparison_cell(run_id, 1)
+    with pytest.raises(Exception, match="comparison_evidence_immutable"):
+        with database.engine.begin() as connection:
+            connection.execute(text("UPDATE publication_intents SET state = 'pending_upload' WHERE id = :intent"),
+                               {"intent": intent})
+    database.fail_comparison_cell(run_id, "test_cleanup", work["owner"])
+
+
+@pytest.mark.parametrize("wrong_owner", [False, True])
+def test_campaign_input_requires_matching_published_intent(database, monkeypatch, wrong_owner):
+    revision, local_id, cloud_id, local, cloud = seed(database)
+    patch_admission(monkeypatch, database, local_id, cloud_id, local, cloud)
+    campaign = database.freeze_comparison_campaign(revision, local_id, cloud_id)
+    readback = database.read_comparison_campaign(campaign)
+    run_id = uuid.UUID(readback["cells"][0]["run_id"])
+    other_run = uuid.UUID(readback["cells"][1]["run_id"])
+    frame = readback["manifest"]["fixtures"][0]["frames"][0]
+    intent, artifact = uuid.uuid4(), uuid.uuid4()
+    with database.engine.begin() as connection:
+        connection.execute(text("""INSERT INTO publication_intents
+            (id, run_id, idempotency_key, media_type, state, sha256, size, final_key)
+            VALUES (:id, :run, :key, 'image/jpeg', :state, :hash, :size, :final)"""),
+            {"id": intent, "run": other_run if wrong_owner else run_id, "key": str(intent),
+             "state": "object_published" if wrong_owner else "pending_upload",
+             "hash": frame["image"]["sha256"], "size": frame["image"]["size"],
+             "final": f"sha256/{frame['image']['sha256']}"})
+        connection.execute(text("""INSERT INTO artifact_metadata
+            (id, run_id, intent_id, key, sha256, size, media_type)
+            VALUES (:id, :run, :intent, :key, :hash, :size, 'image/jpeg')"""),
+            {"id": artifact, "run": run_id, "intent": intent, "key": f"sha256/{frame['image']['sha256']}",
+             "hash": frame["image"]["sha256"], "size": frame["image"]["size"]})
+    with pytest.raises(Exception, match="comparison_input_mismatch"):
+        with database.engine.begin() as connection:
+            connection.execute(text("""INSERT INTO run_inputs (run_id, ordinal, sha256, size, context, artifact_id)
+                VALUES (:run, :ordinal, :hash, :size, CAST(:context AS jsonb), :artifact)"""),
+                {"run": run_id, "ordinal": frame["ordinal"], "hash": frame["image"]["sha256"],
+                 "size": frame["image"]["size"], "context": json.dumps(frame["context"]), "artifact": artifact})
+
+
+@pytest.mark.parametrize("different_campaign", [False, True])
+def test_executor_session_loss_cannot_overlap_reserved_call(isolated_campaign_database, monkeypatch, tmp_path,
+                                                           different_campaign):
+    import asyncio
+    import threading
+    import time
+    from app.application import executor
+
+    database = isolated_campaign_database
+    manifest, archive = execution_manifest(tmp_path)
+    revision, local_id, cloud_id, local, cloud = seed(database, manifest)
+    local["model_files"] = {"model.safetensors": "a" * 64}
+    local = admit_for_test(database, local_id, local)
+    patch_admission(monkeypatch, database, local_id, cloud_id, local, cloud)
+    campaign = database.freeze_comparison_campaign(revision, local_id, cloud_id)
+    other = campaign
+    if different_campaign:
+        other_revision, other_local, other_cloud, other_local_snapshot, other_cloud_snapshot = seed(database, manifest)
+        patch_admission(monkeypatch, database, other_local, other_cloud, other_local_snapshot, other_cloud_snapshot)
+        other = database.freeze_comparison_campaign(other_revision, other_local, other_cloud)
+        patch_admission(monkeypatch, database, local_id, cloud_id, local, cloud)
+    entered, release = threading.Event(), threading.Event()
+    calls, lock_pids = [], []
+    claim, lock = database.claim_comparison_cell, database.comparison_execution_lock
+    monkeypatch.setattr(database, "claim_comparison_cell", lambda run, count: claim(run, count, 1))
+    def record_lock():
+        connection = lock()
+        lock_pids.append(connection.execute(text("SELECT pg_backend_pid()")).scalar_one())
+        connection.commit()
+        return connection
+    monkeypatch.setattr(database, "comparison_execution_lock", record_lock)
+    def blocked_observe(*args):
+        calls.append(args[2])
+        entered.set()
+        assert release.wait(10)
+        raise RuntimeError("observer_timeout")
+    monkeypatch.setattr(executor, "_observe_bounded", blocked_observe)
+    artifacts = MemoryArtifacts()
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        old = pool.submit(asyncio.run, executor.execute_comparison_campaign(database, artifacts, campaign, archive))
+        try:
+            assert entered.wait(5)
+            with database.engine.begin() as connection:
+                assert connection.execute(text("SELECT pg_terminate_backend(:pid)"),
+                                          {"pid": lock_pids[0]}).scalar_one()
+            time.sleep(1.1)
+            with pytest.raises(CampaignGateError, match="campaign_ownership_uncertain"):
+                asyncio.run(executor.execute_comparison_campaign(database, artifacts, other, archive))
+            assert len(calls) == 1
+            states = [cell["state"] for cell in database.read_comparison_campaign(campaign)["cells"]]
+            assert states == ["running"] + ["planned"] * 35
+            if different_campaign:
+                assert all(cell["state"] == "planned" for cell in database.read_comparison_campaign(other)["cells"])
+        finally:
+            release.set()
+        with pytest.raises(CampaignGateError, match="campaign_ownership_uncertain"):
+            old.result(timeout=5)
+    assert len(calls) == 1
+
+
+def test_execute_cli_missing_archive_is_safe_json(database, monkeypatch, tmp_path, capsys):
+    import sys
+    from app.application import evaluation
+
+    revision, local_id, cloud_id, local, cloud = seed(database)
+    patch_admission(monkeypatch, database, local_id, cloud_id, local, cloud)
+    campaign = database.freeze_comparison_campaign(revision, local_id, cloud_id)
+    artifacts = MemoryArtifacts()
+    monkeypatch.setattr(evaluation, "PostgresStore", lambda url: database)
+    monkeypatch.setattr(evaluation, "ArtifactStore", lambda config: artifacts)
+    monkeypatch.setattr(evaluation.Config, "database_url_from_env", lambda: str(database.engine.url))
+    monkeypatch.setattr(evaluation.Config, "from_env", classmethod(lambda cls: type("ConfigStub", (), {
+        "observer_snapshot_dir": None})()))
+    monkeypatch.setattr(sys, "argv", ["evidence-evaluation", "execute-campaign", "--campaign", str(campaign),
+                                      "--archive", str(tmp_path / "absent.zip")])
+    with pytest.raises(SystemExit) as error:
+        evaluation.main()
+    assert error.value.code == 1
+    assert json.loads(capsys.readouterr().out) == {"status": "rejected", "error": "archive_content_unavailable"}
+    assert artifacts.uploads == []
+    assert database.read_comparison_campaign(campaign)["accounting"]["missing"] == 36
+
+
+def execution_setup(database, monkeypatch, tmp_path):
+    from app.application import executor
+
+    manifest, archive = execution_manifest(tmp_path)
+    revision, local_id, cloud_id, local, cloud = seed(database, manifest)
+    local["model_files"] = {"model.safetensors": "a" * 64}
+    cloud["service_account_id"] = "test-service"
+    local = admit_for_test(database, local_id, local)
+    cloud = admit_for_test(database, cloud_id, cloud)
+    campaign = database.freeze_comparison_campaign(revision, local_id, cloud_id)
+    monkeypatch.setattr(executor, "_observe_bounded", lambda *args: {
+        "returned_model_identity": f"checkpoint-sha256:{local['model_files']['model.safetensors']}",
+        "actual_device": "cpu", "latency_ms": 1.0, "peak_memory_bytes": 1,
+        "states": {"excavator": "not_detected_in_frame", "dump_truck": "not_detected_in_frame"},
+        "native": {"detections": [], "image_size": [2, 2]}})
+    monkeypatch.setattr(executor, "read_owner_gate", lambda *args: cloud["owner_evidence"])
+    monkeypatch.setattr(executor.Config, "from_env", classmethod(lambda cls: type("ConfigStub", (), {
+        "cloud_api_key_id": "test-key", "cloud_api_key": "test-secret", "cloud_iam_token": None})()))
+    monkeypatch.setattr(executor, "CloudObserver", type("CloudStub", (), {
+        "__init__": lambda self, snapshot, key: None,
+        "observe": lambda self, image, timeout: {
+            "returned_model_identity": cloud["requested_model_identity"]["id"],
+            "returned_request_identity": "test-response", "actual_device": "remote_unreported",
+            "preprocessing_revision": cloud_api.PREPROCESSING_REVISION,
+            "latency_ms": 1.0, "peak_memory_bytes": None,
+            "states": {"excavator": "not_detected_in_frame", "dump_truck": "not_detected_in_frame"},
+            "native": {}}}))
+    return campaign, archive, MemoryArtifacts()
+
+
+@pytest.mark.parametrize("identity", ["adapter", "lock", "snapshot"])
+def test_runtime_identity_drift_rejects_frozen_campaign_before_upload(database, monkeypatch, tmp_path, identity):
+    import asyncio
+    from app.application.executor import execute_comparison_campaign
+
+    campaign, archive, artifacts = execution_setup(database, monkeypatch, tmp_path)
+    if identity == "adapter":
+        changed = tmp_path / "changed_adapter.py"
+        changed.write_text("changed adapter")
+        monkeypatch.setattr(grounding_dino, "__file__", str(changed))
+        monkeypatch.setattr(cloud_api, "__file__", str(changed))
+    elif identity == "lock":
+        read_bytes = Path.read_bytes
+        monkeypatch.setattr(Path, "read_bytes", lambda path: b"changed lock" if path == ROOT / "backend/uv.lock"
+                            else read_bytes(path))
+    else:
+        for candidate in database.read_comparison_campaign(campaign)["manifest"]["candidates"]:
+            snapshot = candidate["snapshot"]
+            snapshot["runtime"]["batch_timeout_seconds"] += 1
+            with database.engine.begin() as connection:
+                connection.execute(text("""UPDATE observer_profiles SET snapshot = CAST(:snapshot AS jsonb),
+                    profile_hash = :hash WHERE id = :id"""),
+                    {"snapshot": json.dumps(snapshot), "hash": canonical_hash(snapshot),
+                     "id": uuid.UUID(candidate["profile_id"])})
+    result = asyncio.run(execute_comparison_campaign(database, artifacts, campaign, archive))
+    assert artifacts.uploads == []
+    assert all(cell["error_code"] == "profile_runtime_mismatch" for cell in result["cells"])
+    assert result["accounting"]["failed"] == 36
+
+
+@pytest.mark.parametrize("change,expected", [
+    ("state = 'revoked'", "profile_unauthorized"),
+    ("revision = revision + 1", "authorization_revision_changed"),
+])
+def test_authorization_change_during_preparation_is_attributable(database, monkeypatch, tmp_path, change, expected):
+    import asyncio
+    from app.application import executor
+
+    campaign, archive, artifacts = execution_setup(database, monkeypatch, tmp_path)
+    first = uuid.UUID(database.read_comparison_campaign(campaign)["cells"][0]["run_id"])
+    read_verified = artifacts.read_verified
+    changed = []
+    def change_during_decode(key, digest, size):
+        with database.engine.begin() as connection:
+            running = connection.execute(text("SELECT state = 'running' FROM analysis_runs WHERE id = :run"),
+                                         {"run": first}).scalar_one()
+            if running and not changed:
+                connection.execute(text(f"""UPDATE profile_authorizations SET {change}
+                    WHERE profile_id = (SELECT profile_id FROM analysis_runs WHERE id = :run)"""), {"run": first})
+                changed.append(True)
+        return read_verified(key, digest, size)
+    monkeypatch.setattr(artifacts, "read_verified", change_during_decode)
+    monkeypatch.setattr(executor, "_observe_bounded", lambda *args: pytest.fail("revoked local provider called"))
+    result = asyncio.run(executor.execute_comparison_campaign(database, artifacts, campaign, archive))
+    assert changed == [True]
+    assert result["cells"][0]["error_code"] == expected
+    assert result["cells"][0]["invocation_ids"] == []
+    assert all(cell["state"] == "succeeded" for cell in result["cells"] if cell["candidate_ordinal"] == 1)
+
+
+def test_empty_execution_downgrade_restores_planned_guard(isolated_campaign_database, monkeypatch):
+    from alembic import command
+    from alembic.config import Config as AlembicConfig
+
+    database = isolated_campaign_database
+    migrations = AlembicConfig(str(ROOT / "backend/alembic.ini"))
+    command.downgrade(migrations, "0010_comparison_campaign")
+    revision, local_id, cloud_id, local, cloud = seed(database)
+    patch_admission(monkeypatch, database, local_id, cloud_id, local, cloud)
+    campaign = database.freeze_comparison_campaign(revision, local_id, cloud_id)
+    run_id = database.next_comparison_cell(campaign)["run_id"]
+    with pytest.raises(Exception, match="comparison_run_immutable"):
+        with database.engine.begin() as connection:
+            connection.execute(text("UPDATE analysis_runs SET state = 'failed' WHERE id = :run"), {"run": run_id})
+    command.upgrade(migrations, "head")
+    database.fail_comparison_cell(run_id, "test_failure")
+    assert database.read_comparison_campaign(campaign)["cells"][0]["state"] == "failed"
+
+
+def test_partial_input_publication_failure_quarantines_only_unattached_intent(database, monkeypatch, tmp_path):
+    import asyncio
+    from app.application.executor import execute_comparison_campaign
+
+    campaign, archive, artifacts = execution_setup(database, monkeypatch, tmp_path)
+    readback = database.read_comparison_campaign(campaign)
+    fixture = next(f for f in readback["manifest"]["fixtures"] if len(f["frames"]) > 1)
+    target = next(c for c in readback["cells"] if c["fixture_ordinal"] == fixture["ordinal"])
+    index = readback["cells"].index(target)
+    for cell in readback["cells"][:index]:
+        database.fail_comparison_cell(uuid.UUID(cell["run_id"]), "test_preceding_cell_failed")
+    publish_final = artifacts.publish_final
+    failed = []
+    def fail_second_frame(intent, payload, media, digest, size):
+        if not failed and digest == fixture["frames"][1]["image"]["sha256"]:
+            failed.append(intent)
+            raise RuntimeError("artifact_publication_failed")
+        return publish_final(intent, payload, media, digest, size)
+    monkeypatch.setattr(artifacts, "publish_final", fail_second_frame)
+    result = asyncio.run(execute_comparison_campaign(database, artifacts, campaign, archive))
+    assert result["cells"][index]["state"] == "failed"
+    assert result["cells"][index]["error_code"] == "artifact_publication_failed"
+    assert result["cells"][index]["input_count"] == 1
+    assert result["cells"][index + 1]["state"] == "succeeded"
+    with database.engine.connect() as connection:
+        intents = connection.execute(text("SELECT id, state FROM publication_intents WHERE run_id = :run"),
+                                     {"run": uuid.UUID(target["run_id"])}).all()
+    assert {row.state for row in intents} == {"referenced", "quarantined"}
+    assert next(row.state for row in intents if row.id == failed[0]) == "quarantined"
+
+
+@pytest.mark.parametrize("recover", [False, True])
+def test_incomplete_native_intent_is_quarantined_on_cell_failure(database, monkeypatch, recover):
+    revision, local_id, cloud_id, local, cloud = seed(database)
+    patch_admission(monkeypatch, database, local_id, cloud_id, local, cloud)
+    campaign = database.freeze_comparison_campaign(revision, local_id, cloud_id)
+    run_id = database.next_comparison_cell(campaign)["run_id"]
+    intent = database.create_publication_intent(run_id, "application/json", f"{run_id}:native")
+    with database.engine.begin() as connection:
+        connection.execute(text("""UPDATE analysis_runs SET state = 'running', lease_owner = 'test-owner',
+            lease_expires_at = clock_timestamp() + (:seconds * interval '1 second') WHERE id = :run"""),
+            {"run": run_id, "seconds": -1 if recover else 60})
+    if recover:
+        assert database.recover_comparison_campaign(campaign) == 1
+    else:
+        database.fail_comparison_cell(run_id, "native_publication_failed", "test-owner")
+    with database.engine.connect() as connection:
+        assert connection.execute(text("SELECT state FROM publication_intents WHERE id = :id"),
+                                  {"id": intent}).scalar_one() == "quarantined"
+    assert database.read_comparison_campaign(campaign)["cells"][0]["state"] == "failed"
+
+
+@pytest.mark.parametrize("blocked_step", ["provider", "native_upload"])
+def test_renewal_failure_stops_later_calls_and_evidence(isolated_campaign_database, monkeypatch, tmp_path,
+                                                       blocked_step):
+    import asyncio
+    import threading
+    from app.application import executor
+
+    database = isolated_campaign_database
+    campaign, archive, artifacts = execution_setup(database, monkeypatch, tmp_path)
+    entered, release, renewal_failed = threading.Event(), threading.Event(), threading.Event()
+    calls = []
+    observe, upload = executor._observe_bounded, artifacts.upload_temporary
+    def record_observe(*args):
+        calls.append(args[2])
+        if blocked_step == "provider":
+            entered.set()
+            assert release.wait(10)
+        return observe(*args)
+    def block_upload(intent, payload, media):
+        if blocked_step == "native_upload" and media == "application/json":
+            entered.set()
+            assert release.wait(10)
+        return upload(intent, payload, media)
+    async def fail_renewal(self, *args):
+        assert await asyncio.to_thread(entered.wait, 5)
+        renewal_failed.set()
+        raise CampaignGateError("campaign_lease_rejected")
+    monkeypatch.setattr(executor, "_observe_bounded", record_observe)
+    monkeypatch.setattr(artifacts, "upload_temporary", block_upload)
+    monkeypatch.setattr(executor.ClaimLoop, "_renew", fail_renewal)
+    async def exercise():
+        task = asyncio.create_task(executor.execute_comparison_campaign(database, artifacts, campaign, archive))
+        try:
+            assert await asyncio.to_thread(renewal_failed.wait, 5)
+            assert not task.done()
+        finally:
+            release.set()
+        with pytest.raises((CampaignGateError, RuntimeError), match="campaign_(ownership_uncertain|lease_rejected)"):
+            await task
+    asyncio.run(exercise())
+    result = database.read_comparison_campaign(campaign)
+    first = result["cells"][0]
+    assert len(calls) == 1
+    assert [c["state"] for c in result["cells"]] == ["running"] + ["planned"] * 35
+    assert first["observation_ids"] == []
+    assert len(first["artifact_ids"]) == 1
+    with database.engine.connect() as connection:
+        invocations = connection.execute(text("SELECT state FROM observer_invocations WHERE run_id = :run"),
+                                         {"run": uuid.UUID(first["run_id"])}).scalars().all()
+        native_states = connection.execute(text("""SELECT state FROM publication_intents
+            WHERE run_id = :run AND media_type = 'application/json'"""),
+            {"run": uuid.UUID(first["run_id"])}).scalars().all()
+    assert invocations == ["reserved"]
+    assert native_states == (["pending_upload"] if blocked_step == "native_upload" else [])
+
+
+def test_provider_cancellation_drains_before_releasing_execution_lock(isolated_campaign_database, monkeypatch, tmp_path):
+    import asyncio
+    import threading
+    from app.application import executor
+
+    database = isolated_campaign_database
+    campaign, archive, artifacts = execution_setup(database, monkeypatch, tmp_path)
+    entered, release = threading.Event(), threading.Event()
+    observe = executor._observe_bounded
+    calls = []
+    def block_provider(*args):
+        calls.append(args[2])
+        entered.set()
+        assert release.wait(10)
+        return observe(*args)
+    monkeypatch.setattr(executor, "_observe_bounded", block_provider)
+    async def exercise():
+        task = asyncio.create_task(executor.execute_comparison_campaign(database, artifacts, campaign, archive))
+        try:
+            assert await asyncio.to_thread(entered.wait, 5)
+            task.cancel()
+            await asyncio.sleep(0)
+            assert not task.done()
+            with pytest.raises(CampaignGateError, match="campaign_executor_busy"):
+                await executor.execute_comparison_campaign(database, artifacts, campaign, archive)
+        finally:
+            release.set()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+        with pytest.raises(CampaignGateError, match="campaign_ownership_uncertain"):
+            await executor.execute_comparison_campaign(database, artifacts, campaign, archive)
+    asyncio.run(exercise())
+    first = database.read_comparison_campaign(campaign)["cells"][0]
+    assert len(calls) == 1
+    assert first["state"] == "running" and first["observation_ids"] == []
+    with database.engine.connect() as connection:
+        invocation = connection.execute(text("""SELECT state, provider_settled_at FROM observer_invocations
+            WHERE run_id = :run"""), {"run": uuid.UUID(first["run_id"])}).one()
+    assert invocation.state == "reserved" and invocation.provider_settled_at is not None

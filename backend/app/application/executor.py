@@ -5,6 +5,8 @@ import math
 import multiprocessing
 import os
 import uuid
+import zipfile
+import zlib
 from queue import Empty
 from pathlib import Path
 from time import monotonic
@@ -17,6 +19,9 @@ from app.config import Config
 from app.domain.observations import CLASSES, closed_observations, normalized_states
 from app.profiles.grounding_dino import PREPROCESSING_REVISION, GroundingDinoCpu, canonical_bytes
 from app.profiles.cloud_api import CloudObserver, read_owner_gate
+from app.domain.comparison_campaign import CampaignGateError
+from app.adapters.postgres import LOCK_ID
+from sqlalchemy import text
 
 
 def _observe_worker(snapshot_dir: str, hashes: dict, image: bytes, output) -> None:
@@ -123,14 +128,19 @@ class ClaimLoop:
         self.snapshot_dir = snapshot_dir
         self.task = asyncio.create_task(self._run(ready))
 
-    async def _renew(self, run_id: uuid.UUID, owner: str, revision: int) -> None:
+    async def _renew(self, run_id: uuid.UUID, owner: str, revision: int,
+                     campaign: bool = False) -> None:
         while True:
             await asyncio.sleep(10)
-            await asyncio.to_thread(self.store.renew_ordinary, run_id, owner, revision, 30)
+            if campaign:
+                await asyncio.to_thread(self.store.renew_comparison, run_id, owner, revision, 30)
+            else:
+                await asyncio.to_thread(self.store.renew_ordinary, run_id, owner, revision, 30)
 
     async def _execute(self, work: dict, revision: int) -> None:
         run_id, owner = work["id"], work["owner"]
-        renewal = asyncio.create_task(self._renew(run_id, owner, revision))
+        campaign = work.get("campaign", False)
+        renewal = asyncio.create_task(self._renew(run_id, owner, revision, campaign))
         try:
             deadline = (monotonic() + float(work["profile_snapshot"]["runtime"]["batch_timeout_seconds"])
                         if len(work["frames"]) > 1 else None)
@@ -142,8 +152,49 @@ class ClaimLoop:
                 return remaining
 
             async def run_step(func, *args):
+                if renewal.done():
+                    raise RuntimeError("campaign_lease_rejected" if campaign else "ordinary_lease_rejected")
                 remaining_batch()
                 result = await asyncio.to_thread(func, *args)
+                if renewal.done():
+                    raise RuntimeError("campaign_lease_rejected" if campaign else "ordinary_lease_rejected")
+                remaining_batch()
+                return result
+
+            async def run_provider(func, *args):
+                if not campaign:
+                    return await run_step(func, *args)
+                if renewal.done():
+                    raise RuntimeError("campaign_lease_rejected")
+                remaining_batch()
+                task = asyncio.create_task(asyncio.to_thread(func, *args))
+                async def settle():
+                    settlement = asyncio.create_task(asyncio.to_thread(
+                        self.store.settle_comparison_invocation, run_id, owner, invocation))
+                    while not settlement.done():
+                        try:
+                            await asyncio.shield(settlement)
+                        except asyncio.CancelledError:
+                            continue
+                    settlement.result()
+                try:
+                    result = await asyncio.shield(task)
+                except asyncio.CancelledError:
+                    while not task.done():
+                        try:
+                            await asyncio.shield(task)
+                        except asyncio.CancelledError:
+                            continue
+                        except Exception:
+                            break
+                    await settle()
+                    raise
+                except Exception:
+                    await settle()
+                    raise
+                await settle()
+                if renewal.done():
+                    raise RuntimeError("campaign_lease_rejected")
                 remaining_batch()
                 return result
 
@@ -162,6 +213,9 @@ class ClaimLoop:
                 del image
             supported = bool(set(work["requested_classes"]) & set(CLASSES))
             for frame in work["frames"]:
+                if supported:
+                    image = (single_image if single_image is not None else
+                             await run_step(self.artifacts.read_verified, frame["key"], frame["sha256"], frame["size"]))
                 if cloud and supported:
                     evidence = snapshot["owner_evidence"]
                     config = Config.from_env()
@@ -172,24 +226,23 @@ class ClaimLoop:
                            ("account_id", "cloud_id", "folder_id", "service_account_id")):
                         raise RuntimeError("cloud_account_identity_invalid")
                 invocation = await run_step(self.store.reserve_ordinary, run_id, owner, revision,
-                    frame["sha256"], supported, frame["input_id"])
+                    frame["sha256"], supported, frame["input_id"], campaign)
                 if invocation is None:
                     states = {name: "insufficient_data" for name in CLASSES}
                     result, native_intent = None, None
                 else:
-                    image = (single_image if single_image is not None else
-                             await run_step(self.artifacts.read_verified, frame["key"], frame["sha256"], frame["size"]))
                     timeout = min(float(work["profile_snapshot"]["runtime"]["per_image_timeout_seconds"]),
                                   remaining_batch())
                     if cloud:
                         if not config.cloud_api_key:
                             raise RuntimeError("cloud_credential_missing")
-                        result = await run_step(CloudObserver(snapshot, config.cloud_api_key).observe, image, timeout)
+                        result = await run_provider(
+                            lambda: CloudObserver(snapshot, config.cloud_api_key).observe(image, timeout))
                         normalized_states(result["states"])
                         result["native"]["credential_key_id"] = fresh["api_key_id"]
                         result["native"]["owner_gate"] = fresh
                     else:
-                        result = await run_step(_observe_bounded, self.snapshot_dir,
+                        result = await run_provider(_observe_bounded, self.snapshot_dir,
                             snapshot["model_files"], image, timeout)
                         _validate_result(result)
                         result["preprocessing_revision"] = PREPROCESSING_REVISION
@@ -207,8 +260,10 @@ class ClaimLoop:
                     states = result["states"]
                 remaining_batch()
                 observations = closed_observations(states, work["requested_classes"], str(frame["artifact_id"]))
+                if renewal.done():
+                    raise RuntimeError("campaign_lease_rejected" if campaign else "ordinary_lease_rejected")
                 await asyncio.to_thread(self.store.finish_ordinary, run_id, owner, revision,
-                    invocation, result, native_intent, observations, frame["input_id"], deadline)
+                    invocation, result, native_intent, observations, frame["input_id"], deadline, campaign)
         except Exception as exc:
             code = str(exc)
             if code not in {"observer_timeout", "artifact_integrity_failed", "observer_identity_or_device_invalid",
@@ -218,9 +273,24 @@ class ClaimLoop:
                             "observer_transport_failed", "observer_response_too_large",
                             "cloud_account_identity_invalid", "cloud_paid_account_missing",
                             "cloud_account_evidence_stale", "cloud_key_scope_invalid",
-                            "profile_owner_evidence_expired", "observer_identity_invalid"}:
+                            "profile_owner_evidence_expired", "observer_identity_invalid",
+                            "profile_unauthorized", "authorization_revision_changed"}:
                 code = "observer_execution_failed"
-            await asyncio.to_thread(self.store.fail_ordinary, run_id, owner, code)
+            if campaign:
+                if renewal.done():
+                    raise RuntimeError("campaign_ownership_uncertain") from exc
+                for _ in range(3600):
+                    try:
+                        await asyncio.to_thread(self.store.fail_comparison_cell, run_id, code, owner)
+                        break
+                    except Exception as failure:
+                        if str(failure) != "campaign_provider_may_be_active":
+                            raise
+                        await asyncio.sleep(1)
+                else:
+                    raise RuntimeError("campaign_provider_may_be_active") from exc
+            else:
+                await asyncio.to_thread(self.store.fail_ordinary, run_id, owner, code)
         finally:
             renewal.cancel()
             try:
@@ -255,3 +325,85 @@ class ClaimLoop:
                 await self.task
             except asyncio.CancelledError:
                 pass
+
+
+def _verified_campaign_archive(source, manifest: dict) -> dict[int, bytes]:
+    measured = hashlib.sha256()
+    for chunk in iter(lambda: source.read(1024 * 1024), b""):
+        measured.update(chunk)
+    if measured.hexdigest() != manifest.get("source_archive_sha256"):
+        raise CampaignGateError("archive_hash_mismatch")
+    source.seek(0)
+    images = {}
+    try:
+        with zipfile.ZipFile(source) as archive:
+            for frame in manifest["frames"]:
+                for kind in ("image", "label"):
+                    item = frame[kind]
+                    payload = archive.read(item["archive_member"])
+                    if len(payload) != item["size"] or hashlib.sha256(payload).hexdigest() != item["sha256"]:
+                        raise CampaignGateError("archive_content_mismatch")
+                    if kind == "image":
+                        images[frame["ordinal"]] = payload
+    except CampaignGateError:
+        raise
+    except (KeyError, OSError, EOFError, RuntimeError, zipfile.BadZipFile, zlib.error):
+        raise CampaignGateError("archive_content_unavailable") from None
+    return images
+
+
+async def execute_comparison_campaign(store: PostgresStore, artifacts: ArtifactStore,
+                                      campaign_id: uuid.UUID, archive_path: Path,
+                                      snapshot_dir: str | None = None) -> dict:
+    lock = store.comparison_execution_lock()
+    try:
+        lock_pid = lock.execute(text("SELECT pg_backend_pid()")).scalar_one()
+        lock.commit()
+        store.require_comparison_execution_exclusive(campaign_id)
+        store.recover_comparison_campaign(campaign_id)
+        readback = store.read_comparison_campaign(campaign_id)
+        if readback["accounting"]["missing"] == 0:
+            return readback
+        source = store.comparison_source(campaign_id)
+        try:
+            archive = archive_path.open("rb")
+        except OSError:
+            raise CampaignGateError("archive_content_unavailable") from None
+        with archive:
+            images = _verified_campaign_archive(archive, source)
+            runner = ClaimLoop()
+            runner.store, runner.artifacts, runner.snapshot_dir = store, artifacts, snapshot_dir
+            while cell := store.next_comparison_cell(campaign_id):
+                if lock.execute(text("SELECT pg_backend_pid()")).scalar_one() != lock_pid:
+                    raise CampaignGateError("campaign_ownership_uncertain")
+                lock.commit()
+                if cell["state"] == "running":
+                    raise CampaignGateError("campaign_ownership_uncertain")
+                fixture = readback["manifest"]["fixtures"][cell["fixture_ordinal"]]
+                try:
+                    store.require_comparison_authorized(cell["run_id"])
+                    for frame in fixture["frames"]:
+                        original = source["frames"][frame["ordinal"]]
+                        if (original["id"] != frame["id"] or
+                                original["source_rights"]["status"] != "owner_approved_with_caveat" or
+                                (cell["candidate_ordinal"] == 1 and original["cloud_upload_permission"] is not True)):
+                            raise CampaignGateError("fixture_rights_not_cleared")
+                        store.require_comparison_authorized(cell["run_id"])
+                        store.publish_comparison_input(cell["run_id"], frame,
+                                                       images[frame["ordinal"]], artifacts)
+                    work = store.claim_comparison_cell(cell["run_id"], len(fixture["frames"]))
+                except Exception as exc:
+                    code = str(exc)
+                    if not code.isidentifier():
+                        code = "campaign_preparation_failed"
+                    store.fail_comparison_cell(cell["run_id"], code)
+                    continue
+                await runner._execute(work, work["authorization_revision"])
+            return store.read_comparison_campaign(campaign_id)
+    finally:
+        try:
+            lock.execute(text("SELECT pg_advisory_unlock(:key)"), {"key": LOCK_ID + 3})
+            lock.commit()
+        except Exception:
+            pass
+        lock.close()
