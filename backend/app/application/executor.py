@@ -1,4 +1,5 @@
 import asyncio
+import hashlib
 import io
 import math
 import multiprocessing
@@ -15,6 +16,7 @@ from app.adapters.postgres import AdmissionStoreError, PostgresStore
 from app.config import Config
 from app.domain.observations import CLASSES, closed_observations, normalized_states
 from app.profiles.grounding_dino import PREPROCESSING_REVISION, GroundingDinoCpu, canonical_bytes
+from app.profiles.cloud_api import CloudObserver, read_owner_gate
 
 
 def _observe_worker(snapshot_dir: str, hashes: dict, image: bytes, output) -> None:
@@ -146,14 +148,29 @@ class ClaimLoop:
                 return result
 
             single_image = None
+            snapshot = work["profile_snapshot"]
+            cloud = snapshot.get("kind") == "cloud_api"
             for frame in work["frames"]:
+                if cloud and frame["sha256"] not in snapshot.get("allowed_input_sha256", []):
+                    raise RuntimeError("cloud_image_not_authorized")
                 image = await run_step(self.artifacts.read_verified, frame["key"], frame["sha256"], frame["size"])
+                if cloud and hashlib.sha256(image).hexdigest() not in snapshot["allowed_input_sha256"]:
+                    raise RuntimeError("cloud_image_not_authorized")
                 await run_step(_decode_image, image)
                 if len(work["frames"]) == 1:
                     single_image = image
                 del image
             supported = bool(set(work["requested_classes"]) & set(CLASSES))
             for frame in work["frames"]:
+                if cloud and supported:
+                    evidence = snapshot["owner_evidence"]
+                    config = Config.from_env()
+                    fresh = await run_step(read_owner_gate, snapshot["folder_id"], snapshot["service_account_id"],
+                        config.cloud_api_key_id, config.cloud_api_key, config.cloud_iam_token,
+                        evidence["canary_image_sha256"], snapshot["allowed_input_sha256"])
+                    if any(fresh[key] != evidence[key] for key in
+                           ("account_id", "cloud_id", "folder_id", "service_account_id")):
+                        raise RuntimeError("cloud_account_identity_invalid")
                 invocation = await run_step(self.store.reserve_ordinary, run_id, owner, revision,
                     frame["sha256"], supported, frame["input_id"])
                 if invocation is None:
@@ -164,11 +181,19 @@ class ClaimLoop:
                              await run_step(self.artifacts.read_verified, frame["key"], frame["sha256"], frame["size"]))
                     timeout = min(float(work["profile_snapshot"]["runtime"]["per_image_timeout_seconds"]),
                                   remaining_batch())
-                    result = await run_step(_observe_bounded, self.snapshot_dir,
-                        work["profile_snapshot"]["model_files"], image, timeout)
-                    _validate_result(result)
-                    result["preprocessing_revision"] = PREPROCESSING_REVISION
-                    native = canonical_bytes({"detections": result["native"],
+                    if cloud:
+                        if not config.cloud_api_key:
+                            raise RuntimeError("cloud_credential_missing")
+                        result = await run_step(CloudObserver(snapshot, config.cloud_api_key).observe, image, timeout)
+                        normalized_states(result["states"])
+                        result["native"]["credential_key_id"] = fresh["api_key_id"]
+                        result["native"]["owner_gate"] = fresh
+                    else:
+                        result = await run_step(_observe_bounded, self.snapshot_dir,
+                            snapshot["model_files"], image, timeout)
+                        _validate_result(result)
+                        result["preprocessing_revision"] = PREPROCESSING_REVISION
+                    native = canonical_bytes({"response" if cloud else "detections": result["native"],
                         "returned_model_identity": result["returned_model_identity"],
                         "actual_device": result["actual_device"], "latency_ms": result["latency_ms"],
                         "peak_memory_bytes": result["peak_memory_bytes"]})
@@ -187,7 +212,13 @@ class ClaimLoop:
         except Exception as exc:
             code = str(exc)
             if code not in {"observer_timeout", "artifact_integrity_failed", "observer_identity_or_device_invalid",
-                            "ordinary_completion_rejected", "ordinary_reservation_rejected", "ordinary_lease_rejected"}:
+                            "cloud_image_not_authorized", "cloud_credential_missing", "observation_normalization_failed",
+                            "ordinary_completion_rejected", "ordinary_reservation_rejected", "ordinary_lease_rejected",
+                            "observer_quota_failed", "observer_access_failed", "observer_http_failed",
+                            "observer_transport_failed", "observer_response_too_large",
+                            "cloud_account_identity_invalid", "cloud_paid_account_missing",
+                            "cloud_account_evidence_stale", "cloud_key_scope_invalid",
+                            "profile_owner_evidence_expired", "observer_identity_invalid"}:
                 code = "observer_execution_failed"
             await asyncio.to_thread(self.store.fail_ordinary, run_id, owner, code)
         finally:
@@ -204,7 +235,7 @@ class ClaimLoop:
                     await asyncio.to_thread(self.store.fail_unauthorized_queued)
                     if await asyncio.to_thread(self.store.recover):
                         await asyncio.to_thread(self.store.reconcile, self.artifacts, runtime=True)
-                if self.runtime_binding and self.artifacts and self.snapshot_dir:
+                if self.runtime_binding and self.artifacts:
                     profile_id, revision = self.runtime_binding
                     work = await asyncio.to_thread(self.store.claim_ordinary, profile_id, revision, 30)
                     if work:

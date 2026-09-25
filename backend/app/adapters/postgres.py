@@ -13,7 +13,7 @@ from time import monotonic
 
 from app.domain.observations import CLASSES, STAGES, normalized_states
 from app.domain.evaluation_set import inspect_evaluation_set, reserve_held_out_inventory
-from app.profiles import grounding_dino
+from app.profiles import cloud_api, grounding_dino
 from app.profiles.grounding_dino import canonical_bytes, digest
 from app.adapters.artifacts import ArtifactGateError, ArtifactStore
 from app.domain.rule import RULE, RULE_POLICY, evaluate_rule
@@ -273,7 +273,7 @@ class PostgresStore:
         invocation_id = uuid.uuid4()
         input_hash = digest(input_bytes)
         with self.engine.begin() as connection:
-            row = connection.execute(text("""SELECT r.profile_id, r.bootstrap_watchdog_seconds, i.sha256, i.size, i.input_id, p.status
+            row = connection.execute(text("""SELECT r.profile_id, r.bootstrap_watchdog_seconds, r.profile_snapshot, i.sha256, i.size, i.input_id, p.status
                 FROM analysis_runs r JOIN run_inputs i ON i.run_id = r.id JOIN observer_profiles p ON p.id = r.profile_id
                 WHERE r.id = :id AND r.purpose = 'profile_admission' AND r.state = 'queued' FOR UPDATE OF r"""), {"id": run_id}).one_or_none()
             if not row or row.status != "draft" or row.sha256 != input_hash or row.size != len(input_bytes) or row.bootstrap_watchdog_seconds <= 0:
@@ -283,11 +283,13 @@ class PostgresStore:
                 {"owner": str(invocation_id), "watchdog": row.bootstrap_watchdog_seconds, "id": run_id})
             connection.execute(text("UPDATE analysis_stages SET state = 'succeeded' WHERE run_id = :id AND ordinal IN (0, 1)"), {"id": run_id})
             connection.execute(text("UPDATE analysis_stages SET state = 'running' WHERE run_id = :id AND ordinal = 2"), {"id": run_id})
+            request_identity = (row.profile_snapshot["requested_model_identity"]["id"]
+                                if row.profile_snapshot.get("kind") == "cloud_api" else "local-grounding-dino-cpu")
             connection.execute(text("""INSERT INTO observer_invocations
                 (id, run_id, input_id, fence, profile_id, stage_ordinal, input_sha256, intended_request_identity, state)
-                VALUES (:id, :run, :input_id, 1, :profile, 2, :hash, 'local-grounding-dino-cpu', 'reserved')"""),
+                VALUES (:id, :run, :input_id, 1, :profile, 2, :hash, :identity, 'reserved')"""),
                 {"id": invocation_id, "run": run_id, "input_id": row.input_id,
-                 "profile": row.profile_id, "hash": input_hash})
+                 "profile": row.profile_id, "hash": input_hash, "identity": request_identity})
         return invocation_id
 
     def complete_invocation(self, run_id: uuid.UUID, invocation_id: uuid.UUID, result: dict) -> None:
@@ -295,7 +297,7 @@ class PostgresStore:
         with self.engine.begin() as connection:
             reservation = connection.execute(text("""SELECT r.state AS run_state, r.lease_owner,
                 r.lease_expires_at > clock_timestamp() AS lease_live,
-                r.profile_snapshot->'model_files'->>'model.safetensors' AS checkpoint_sha256,
+                r.profile_snapshot, r.profile_snapshot->'model_files'->>'model.safetensors' AS checkpoint_sha256,
                 i.state AS invocation_state, i.fence
                 FROM analysis_runs r JOIN observer_invocations i ON i.run_id = r.id
                 WHERE r.id = :run AND i.id = :id FOR UPDATE OF r, i"""),
@@ -303,14 +305,26 @@ class PostgresStore:
             if (not reservation or reservation.run_state != "running" or reservation.lease_owner != str(invocation_id)
                     or not reservation.lease_live or reservation.invocation_state != "reserved" or reservation.fence != 1):
                 raise AdmissionStoreError("invocation_completion_rejected")
-            if (not reservation.checkpoint_sha256
-                    or result.get("returned_model_identity") != f"checkpoint-sha256:{reservation.checkpoint_sha256}"
-                    or result.get("actual_device") != "cpu"):
+            snapshot = reservation.profile_snapshot
+            if snapshot.get("kind") == "cloud_api":
+                requested = snapshot["requested_model_identity"]["id"]
+                identity_valid = (result.get("returned_model_identity") in (requested, requested + "/latest")
+                                  and result.get("actual_device") == "remote_unreported"
+                                  and isinstance(result.get("returned_request_identity"), str)
+                                  and bool(result["returned_request_identity"])
+                                  and result.get("preprocessing_revision") == cloud_api.PREPROCESSING_REVISION)
+            else:
+                identity_valid = (reservation.checkpoint_sha256
+                    and result.get("returned_model_identity") == f"checkpoint-sha256:{reservation.checkpoint_sha256}"
+                    and result.get("actual_device") == "cpu")
+            if not identity_valid:
                 raise AdmissionStoreError("observer_identity_or_device_invalid")
             changed = connection.execute(text("""UPDATE observer_invocations SET state = 'completed',
-                returned_model_identity = :identity, actual_device = :device, preprocessing_revision = :preprocessing
+                returned_model_identity = :identity, returned_request_identity = :request_identity,
+                actual_device = :device, preprocessing_revision = :preprocessing
                 WHERE id = :id AND run_id = :run AND state = 'reserved' AND fence = 1"""),
                 {"identity": result["returned_model_identity"], "device": result["actual_device"],
+                 "request_identity": result.get("returned_request_identity"),
                  "preprocessing": result["preprocessing_revision"], "id": invocation_id, "run": run_id})
             if changed.rowcount != 1:
                 raise AdmissionStoreError("invocation_completion_rejected")
@@ -426,7 +440,9 @@ class PostgresStore:
             rows = connection.execute(text("""SELECT id, state, latency_ms, peak_memory_bytes FROM analysis_runs
                 WHERE id = ANY(:ids) AND profile_id = :profile AND purpose = 'profile_admission' FOR UPDATE"""),
                 {"ids": run_ids, "profile": profile_id}).all()
-            if len(rows) != len(run_ids) or any(row.state != "succeeded" or row.latency_ms is None or row.peak_memory_bytes is None for row in rows):
+            cloud = draft.snapshot.get("kind") == "cloud_api"
+            if len(rows) != len(run_ids) or any(row.state != "succeeded" or row.latency_ms is None
+                                                   or (not cloud and row.peak_memory_bytes is None) for row in rows):
                 raise AdmissionStoreError("admission_incomplete")
             fixtures = connection.execute(text("SELECT fixture_id, fixture_set_id FROM analysis_runs WHERE id = ANY(:ids)"), {"ids": run_ids}).all()
             if len({row.fixture_set_id for row in fixtures}) != 1 or len({row.fixture_id for row in fixtures}) != len(run_ids):
@@ -436,30 +452,48 @@ class PostgresStore:
             if total != len(run_ids):
                 raise AdmissionStoreError("admission_incomplete")
             actual_devices = connection.execute(text("SELECT actual_device, returned_model_identity, native_artifact_id FROM observer_invocations WHERE run_id = ANY(:ids)"), {"ids": run_ids}).all()
-            if len(actual_devices) != len(run_ids) or any(row.actual_device != "cpu" or not row.returned_model_identity or not row.native_artifact_id for row in actual_devices):
+            expected_device = "remote_unreported" if cloud else "cpu"
+            if len(actual_devices) != len(run_ids) or any(row.actual_device != expected_device or not row.returned_model_identity or not row.native_artifact_id for row in actual_devices):
                 raise AdmissionStoreError("admission_incomplete")
             identities = {row.returned_model_identity for row in actual_devices}
-            expected_adapter_hash = digest(Path(grounding_dino.__file__).read_bytes())
+            module = cloud_api if cloud else grounding_dino
+            expected_adapter_hash = digest(Path(module.__file__).read_bytes())
             expected_lock_hash = digest((Path(__file__).resolve().parents[2] / "uv.lock").read_bytes())
             adapter = draft.snapshot.get("adapter", {})
             runtime = draft.snapshot.get("runtime", {})
             identity = draft.snapshot.get("requested_model_identity", {})
-            if (len(identities) != 1 or adapter.get("code") != "grounding_dino"
+            requested_uri = identity.get("id")
+            if (len(identities) != 1 or adapter.get("code") != ("yandex_ai_studio" if cloud else "grounding_dino")
                     or adapter.get("bundle_sha256") != expected_adapter_hash
                     or runtime.get("uv_lock_sha256") != expected_lock_hash
-                    or runtime.get("device") != "cpu"
-                    or identity != {"id": grounding_dino.MODEL_ID, "revision": grounding_dino.MODEL_REVISION}):
+                    or runtime.get("device") != expected_device
+                    or (requested_uri not in (identities | {value.removesuffix('/latest') for value in identities}) if cloud else
+                        identity != {"id": grounding_dino.MODEL_ID, "revision": grounding_dino.MODEL_REVISION})):
                 raise AdmissionStoreError("admission_identity_invalid")
+            if cloud:
+                evidence = draft.snapshot.get("owner_evidence")
+                canary_hashes = [row.sha256 for row in connection.execute(text(
+                    "SELECT sha256 FROM run_inputs WHERE run_id = ANY(:ids)"), {"ids": run_ids}).all()]
+                backend_root = Path(__file__).resolve().parents[2]
+                held_out_hashes, held_out_proof = cloud_api.read_held_out_scope(
+                    backend_root.parent / "evaluation",
+                    backend_root / "admission" / "exclusions" / "held_out_evaluation.json",
+                    json.loads((backend_root / "admission" / "manifest.json").read_text()), canary_hashes)
+                if (draft.snapshot.get("allowed_input_sha256") != sorted(canary_hashes + held_out_hashes)
+                        or draft.snapshot.get("rights", {}).get("held_out") != held_out_proof):
+                    raise AdmissionStoreError("cloud_upload_scope_invalid")
+                cloud_api.validate_owner_evidence(evidence, canary_hashes, draft.snapshot["allowed_input_sha256"])
             latencies = sorted(row.latency_ms / 1000 for row in rows)
             p95 = latencies[math.ceil(0.95 * len(latencies)) - 1]
             image_timeout = max(2 * p95, 60)
             batch_timeout = max(2 * sum(latencies), 600)
             audit = {"run_ids": [str(value) for value in run_ids], "latency_seconds": latencies,
-                "peak_memory_bytes": [row.peak_memory_bytes for row in rows], "actual_device": "cpu", "errors": []}
+                "peak_memory_bytes": [row.peak_memory_bytes for row in rows], "actual_device": expected_device, "errors": []}
             audit_hash = digest(canonical_bytes(audit))
             snapshot = dict(draft.snapshot)
             snapshot["returned_model_identity"] = identities.pop()
-            snapshot["identity_gap"] = "local checkpoint digest identifies loaded bytes; no remote model identity was returned"
+            snapshot["identity_gap"] = ("hosted_model_revision_unpinnable" if cloud else
+                "local checkpoint digest identifies loaded bytes; no remote model identity was returned")
             snapshot["audit_hash"] = audit_hash
             snapshot["audit_run_ids"] = audit["run_ids"]
             snapshot["runtime"] = {**snapshot["runtime"], "per_image_timeout_seconds": image_timeout,
@@ -474,8 +508,9 @@ class PostgresStore:
                  "snapshot": json.dumps(snapshot), "audit": audit_hash})
             connection.execute(text("""INSERT INTO profile_authorizations
                 (profile_id, revision, state, reason, audit_hash, interactive_retry_allowed)
-                VALUES (:id, 1, 'enabled', 'complete_cpu_admission', :audit, false)"""),
-                {"id": successor_id, "audit": audit_hash})
+                VALUES (:id, 1, 'enabled', :reason, :audit, false)"""),
+                {"id": successor_id, "audit": audit_hash,
+                 "reason": "complete_cloud_admission" if cloud else "complete_cpu_admission"})
             return successor_id
 
     def require_authorized(self, profile_id: uuid.UUID, expected_revision: int | None = None) -> tuple[dict, int]:
@@ -488,11 +523,12 @@ class PostgresStore:
                 raise AdmissionStoreError("profile_unauthorized")
             if expected_revision is not None and row.revision != expected_revision:
                 raise AdmissionStoreError("authorization_revision_changed")
-            if row.snapshot.get("adapter", {}).get("code") != "grounding_dino":
+            cloud = row.snapshot.get("kind") == "cloud_api"
+            if row.snapshot.get("adapter", {}).get("code") != ("yandex_ai_studio" if cloud else "grounding_dino"):
                 raise AdmissionStoreError("profile_unauthorized")
             run_ids = row.snapshot.get("audit_run_ids", [])
-            if (not row.parent_id or not isinstance(run_ids, list) or len(run_ids) != 4
-                    or not all(isinstance(value, str) for value in run_ids) or len(set(run_ids)) != 4
+            if (not row.parent_id or not isinstance(run_ids, list) or not run_ids
+                    or not all(isinstance(value, str) for value in run_ids) or len(set(run_ids)) != len(run_ids)
                     or digest(canonical_bytes(row.snapshot)) != row.profile_hash
                     or digest(canonical_bytes(row.snapshot.get("audit_report"))) != row.audit_hash):
                 raise AdmissionStoreError("profile_admission_evidence_missing")
@@ -500,14 +536,26 @@ class PostgresStore:
                 JOIN observer_invocations i ON i.run_id = r.id
                 JOIN result_projections p ON p.run_id = r.id
                 WHERE r.id = ANY(:ids) AND r.profile_id = :parent AND r.purpose = 'profile_admission'
-                  AND r.state = 'succeeded' AND i.state = 'completed' AND i.actual_device = 'cpu'
-                  AND p.outcome = 'observations_only'"""), {"ids": [uuid.UUID(value) for value in run_ids], "parent": row.parent_id}).scalar_one()
-            if evidenced != 4:
+                  AND r.state = 'succeeded' AND i.state = 'completed' AND i.actual_device = :device
+                  AND i.returned_model_identity = :identity
+                  AND p.outcome = 'observations_only'"""), {"ids": [uuid.UUID(value) for value in run_ids],
+                    "parent": row.parent_id, "device": "remote_unreported" if cloud else "cpu",
+                    "identity": row.snapshot["returned_model_identity"]}).scalar_one()
+            if evidenced != len(run_ids):
                 raise AdmissionStoreError("profile_admission_evidence_missing")
-            adapter_hash = digest(Path(grounding_dino.__file__).read_bytes())
+            adapter_hash = digest(Path((cloud_api if cloud else grounding_dino).__file__).read_bytes())
             lock_hash = digest((Path(__file__).resolve().parents[2] / "uv.lock").read_bytes())
             if row.snapshot.get("adapter", {}).get("bundle_sha256") != adapter_hash or row.snapshot.get("runtime", {}).get("uv_lock_sha256") != lock_hash:
                 raise AdmissionStoreError("profile_runtime_mismatch")
+            if cloud:
+                canary_hashes = [item.sha256 for item in connection.execute(text(
+                    "SELECT sha256 FROM run_inputs WHERE run_id = ANY(:ids)"),
+                    {"ids": [uuid.UUID(value) for value in run_ids]}).all()]
+                try:
+                    cloud_api.validate_owner_evidence(row.snapshot.get("owner_evidence"),
+                        canary_hashes, row.snapshot["allowed_input_sha256"])
+                except cloud_api.CloudObserverError:
+                    raise AdmissionStoreError("profile_owner_evidence_expired") from None
             return row.snapshot, row.revision
 
     def revoke_authorization(self, profile_id: uuid.UUID, expected_revision: int, reason: str) -> None:
@@ -564,11 +612,16 @@ class PostgresStore:
                 raise AdmissionStoreError("submission_state_changed")
             if intent not in ("observation_only", "rule_evaluation") or (intent == "rule_evaluation" and stage != "excavation"):
                 raise AdmissionStoreError("rule_not_applicable")
-            authorization = connection.execute(text("""SELECT p.status, a.state, a.revision FROM observer_profiles p
+            authorization = connection.execute(text("""SELECT p.status, p.snapshot, a.state, a.revision FROM observer_profiles p
                 JOIN profile_authorizations a ON a.profile_id = p.id WHERE p.id = :id FOR UPDATE OF a"""),
                 {"id": profile_id}).one_or_none()
-            if not authorization or authorization.status != "admitted" or authorization.state != "enabled" or authorization.revision != revision:
+            if (not authorization or authorization.status != "admitted" or authorization.state != "enabled"
+                    or authorization.revision != revision
+                    or (snapshot.get("kind") == "cloud_api" and authorization.snapshot != snapshot)):
                 raise AdmissionStoreError("profile_unauthorized")
+            if snapshot.get("kind") == "cloud_api" and any(
+                    item[1] not in snapshot.get("allowed_input_sha256", []) for item in manifest):
+                raise AdmissionStoreError("cloud_image_not_authorized")
             if not manifest or manifest[0][0] != request.intent_id or len({item[0] for item in manifest}) != len(manifest):
                 raise AdmissionStoreError("publication_incomplete")
             publications = []
@@ -654,7 +707,7 @@ class PostgresStore:
         invocation = uuid.uuid4()
         with self.engine.begin() as connection:
             row = connection.execute(text("""SELECT r.state, r.lease_owner, r.lease_expires_at > clock_timestamp() AS live,
-                r.authorization_revision, a.state AS auth_state, a.revision AS auth_revision, i.sha256, i.input_id
+                r.authorization_revision, r.profile_snapshot, a.state AS auth_state, a.revision AS auth_revision, i.sha256, i.input_id
                 FROM analysis_runs r JOIN profile_authorizations a ON a.profile_id = r.profile_id
                 JOIN run_inputs i ON i.run_id = r.id AND i.input_id = COALESCE(:input_id, (SELECT input_id FROM run_inputs WHERE run_id = :run AND ordinal = 0))
                 WHERE r.id = :run FOR UPDATE OF r, a"""), {"run": run_id, "input_id": input_id}).one_or_none()
@@ -662,6 +715,15 @@ class PostgresStore:
                     or row.authorization_revision != revision or row.auth_state != "enabled"
                     or row.auth_revision != revision or row.sha256 != image_hash):
                 raise AdmissionStoreError("ordinary_reservation_rejected")
+            if row.profile_snapshot.get("kind") == "cloud_api" and image_hash not in row.profile_snapshot.get("allowed_input_sha256", []):
+                raise AdmissionStoreError("cloud_image_not_authorized")
+            if row.profile_snapshot.get("kind") == "cloud_api" and call_provider:
+                try:
+                    cloud_api.validate_owner_evidence(row.profile_snapshot.get("owner_evidence"),
+                        row.profile_snapshot["owner_evidence"]["canary_image_sha256"],
+                        row.profile_snapshot["allowed_input_sha256"])
+                except (KeyError, cloud_api.CloudObserverError):
+                    raise AdmissionStoreError("profile_owner_evidence_expired") from None
             existing = connection.execute(text("SELECT 1 FROM observations WHERE run_id = :run AND input_id = :input_id LIMIT 1"),
                                           {"run": run_id, "input_id": row.input_id}).first()
             if existing:
@@ -669,13 +731,15 @@ class PostgresStore:
             connection.execute(text("UPDATE analysis_stages SET state = 'succeeded' WHERE run_id = :run AND ordinal = 1 AND state = 'running'"), {"run": run_id})
             connection.execute(text("UPDATE analysis_stages SET state = 'running' WHERE run_id = :run AND ordinal = 2 AND state = 'pending'"), {"run": run_id})
             if call_provider:
+                request_identity = (row.profile_snapshot["requested_model_identity"]["id"]
+                                    if row.profile_snapshot.get("kind") == "cloud_api" else "local-grounding-dino-cpu")
                 connection.execute(text("""INSERT INTO observer_invocations
-                (id, run_id, input_id, fence, profile_id, authorization_revision, stage_ordinal, input_sha256,
-                 intended_request_identity, state)
-                SELECT :id, :run, :input_id, 1, profile_id, :revision, 2, :hash, 'local-grounding-dino-cpu', 'reserved'
-                FROM analysis_runs WHERE id = :run"""),
-                {"id": invocation, "run": run_id, "input_id": row.input_id,
-                 "revision": revision, "hash": image_hash})
+                    (id, run_id, input_id, fence, profile_id, authorization_revision, stage_ordinal, input_sha256,
+                     intended_request_identity, state)
+                    SELECT :id, :run, :input_id, 1, profile_id, :revision, 2, :hash, :identity, 'reserved'
+                    FROM analysis_runs WHERE id = :run"""),
+                    {"id": invocation, "run": run_id, "input_id": row.input_id,
+                     "revision": revision, "hash": image_hash, "identity": request_identity})
         return invocation if call_provider else None
 
     def finish_ordinary(self, run_id: uuid.UUID, owner: str, revision: int, invocation: uuid.UUID | None,
@@ -711,9 +775,15 @@ class PostgresStore:
                 raise AdmissionStoreError("observation_normalization_failed")
             native_artifact_id = None
             if result is not None:
-                expected = row.profile_snapshot["model_files"]["model.safetensors"]
-                if (row.invocation_state != "reserved" or result.get("returned_model_identity") != f"checkpoint-sha256:{expected}"
-                        or result.get("actual_device") != "cpu" or result.get("preprocessing_revision") != grounding_dino.PREPROCESSING_REVISION):
+                cloud = row.profile_snapshot.get("kind") == "cloud_api"
+                expected = row.profile_snapshot["requested_model_identity"]["id"] if cloud else row.profile_snapshot["model_files"]["model.safetensors"]
+                identity_valid = (result.get("returned_model_identity") in (expected, expected + "/latest")
+                                  and isinstance(result.get("returned_request_identity"), str)
+                                  and bool(result["returned_request_identity"])
+                                  if cloud else result.get("returned_model_identity") == f"checkpoint-sha256:{expected}")
+                if (row.invocation_state != "reserved" or not identity_valid
+                        or result.get("actual_device") != ("remote_unreported" if cloud else "cpu")
+                        or result.get("preprocessing_revision") != (cloud_api.PREPROCESSING_REVISION if cloud else grounding_dino.PREPROCESSING_REVISION)):
                     raise AdmissionStoreError("observer_identity_or_device_invalid")
                 intent = connection.execute(text("""SELECT * FROM publication_intents WHERE id = :id AND run_id = :run
                     AND state = 'object_published' FOR UPDATE"""), {"id": native_intent, "run": run_id}).one_or_none()
@@ -725,12 +795,14 @@ class PostgresStore:
                     {"id": native_artifact_id, "run": run_id, "intent": native_intent, "key": intent.final_key,
                      "hash": intent.sha256, "size": intent.size, "media": intent.media_type})
                 connection.execute(text("""UPDATE observer_invocations SET state = 'completed',
-                    returned_model_identity = :identity, actual_device = 'cpu', preprocessing_revision = :pre,
+                    returned_model_identity = :identity, returned_request_identity = :request_identity,
+                    actual_device = :device, preprocessing_revision = :pre,
                     native_artifact_id = :artifact WHERE id = :id AND state = 'reserved'"""),
-                    {"identity": result["returned_model_identity"], "pre": result["preprocessing_revision"],
+                    {"identity": result["returned_model_identity"], "device": result["actual_device"], "pre": result["preprocessing_revision"],
+                     "request_identity": result.get("returned_request_identity"),
                      "artifact": native_artifact_id, "id": invocation})
                 connection.execute(text("""UPDATE analysis_runs SET latency_ms = COALESCE(latency_ms, 0) + :latency,
-                    peak_memory_bytes = GREATEST(COALESCE(peak_memory_bytes, 0), :memory) WHERE id = :run"""),
+                    peak_memory_bytes = GREATEST(COALESCE(peak_memory_bytes, 0), COALESCE(:memory, 0)) WHERE id = :run"""),
                     {"latency": result["latency_ms"], "memory": result["peak_memory_bytes"], "run": run_id})
                 connection.execute(text("UPDATE publication_intents SET state = 'referenced' WHERE id = :id"), {"id": native_intent})
             for observation in observations:
@@ -971,6 +1043,9 @@ class PostgresStore:
                                       or item["size"] != item["artifact_size"]
                                       for ordinal, item in enumerate(verified_inputs)):
             raise AdmissionStoreError("retry_source_unavailable")
+        if snapshot.get("kind") == "cloud_api" and any(
+                item["sha256"] not in snapshot.get("allowed_input_sha256", []) for item in verified_inputs):
+            raise AdmissionStoreError("cloud_image_not_authorized")
         for item in verified_inputs:
             try:
                 artifacts.read_verified(item["key"], item["sha256"], item["size"])

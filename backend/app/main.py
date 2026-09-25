@@ -16,6 +16,7 @@ from app.application.submission import SubmissionError, submit, submit_series
 from app.domain.rule import ANALYSIS_CHOICES
 from app.config import Config
 from app.profiles.grounding_dino import verify_snapshot
+from app.profiles.cloud_api import CloudObserver
 
 
 MAX_HTTP_BODY_BYTES = 25_100_000
@@ -71,12 +72,15 @@ async def lifespan(app: FastAPI):
             except (ValueError, AdmissionStoreError):
                 state.code = "profile_unauthorized"
                 return
-            if not config.observer_snapshot_dir:
-                state.code = "observer_snapshot_missing"
-                return
             try:
                 snapshot, _ = store.require_authorized(uuid.UUID(runtime_profile))
-                await asyncio.to_thread(verify_snapshot, Path(config.observer_snapshot_dir), snapshot["model_files"])
+                if snapshot.get("kind") == "cloud_api":
+                    CloudObserver(snapshot, config.cloud_api_key)
+                else:
+                    if not config.observer_snapshot_dir:
+                        state.code = "observer_snapshot_missing"
+                        return
+                    await asyncio.to_thread(verify_snapshot, Path(config.observer_snapshot_dir), snapshot["model_files"])
             except Exception:
                 state.code = "observer_snapshot_invalid"
                 return
@@ -181,7 +185,10 @@ def create_app() -> FastAPI:
             if run["state"] == "failed" and not run["retry_successor_id"] and binding and app.state.readiness.ready.is_set():
                 try:
                     snapshot, _ = await asyncio.to_thread(app.state.store.require_authorized, binding[0], binding[1])
-                    await asyncio.to_thread(verify_snapshot, Path(app.state.claim_loop.snapshot_dir), snapshot["model_files"])
+                    if snapshot.get("kind") == "cloud_api":
+                        CloudObserver(snapshot, Config.from_env().cloud_api_key)
+                    else:
+                        await asyncio.to_thread(verify_snapshot, Path(app.state.claim_loop.snapshot_dir), snapshot["model_files"])
                     run["retry_eligible"] = True
                     run["retry_profile_id"] = str(binding[0])
                     run["retry_authorization_revision"] = binding[1]
@@ -216,7 +223,10 @@ def create_app() -> FastAPI:
             return JSONResponse({"code": "profile_unauthorized"}, status_code=503)
         try:
             snapshot, revision = await asyncio.to_thread(app.state.store.require_authorized, binding[0], binding[1])
-            await asyncio.to_thread(verify_snapshot, Path(app.state.claim_loop.snapshot_dir), snapshot["model_files"])
+            if snapshot.get("kind") == "cloud_api":
+                CloudObserver(snapshot, Config.from_env().cloud_api_key)
+            else:
+                await asyncio.to_thread(verify_snapshot, Path(app.state.claim_loop.snapshot_dir), snapshot["model_files"])
             successor = await asyncio.to_thread(app.state.store.retry_ordinary, identifier, binding[0], revision,
                                                 snapshot, app.state.artifacts)
             return JSONResponse({"run_id": str(successor)}, status_code=202)

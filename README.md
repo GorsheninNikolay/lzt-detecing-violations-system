@@ -79,9 +79,17 @@ The command prints draft, run, and admitted successor IDs. A null admitted ID me
 
 For isolated contract tests, use the `evidence_test` database, `evidence-test` bucket, and `TEST_MODEL_SNAPSHOT_DIR` described above, then run `uv run pytest`. Podman Compose can start the same `infra/compose.yaml` services when Docker Compose is unavailable; omit Docker's `--wait` option and check container health before tests.
 
+## Qwen3.6 cloud admission
+
+Cloud admission uses only the four JPEGs in `backend/admission/manifest.json` as canaries and the owner decision in revision `1512020047aa5e2b2fc343f78f9881a0a2c5914c`. The new profile allowlist also contains the eleven separately approved Story 4.1 held-out hashes. Admission checks `evaluation/held-out-v1.json`, `evaluation/owner-attestation-2026-09-24.json`, and `evaluation/freeze-decision-v1.json` against their accepted hashes and disjointness before any upload; it never reads or sends held-out image bytes. Supply a transient AI Studio API key with `yc.ai.foundationModels.execute`, its ID, and an IAM token with read access to the configured folder, service account, API key, and billing accounts. The API key is used for both the no-image probe and all canary requests. Neither credential is written to profile evidence.
+
+Create a private JSON input containing only `folder_id`, `service_account_id`, and `authorization_revision` (the revision above). Set `YANDEX_AI_STUDIO_API_KEY`, `YANDEX_AI_STUDIO_API_KEY_ID`, and `YANDEX_CLOUD_IAM_TOKEN` in the process environment, then run `evidence-admission run-cloud --evidence <private-json-path> --exclusion-inventory <path>` with each of the four inventories under `backend/admission/exclusions/`. The command first checks the exact manifest, account binding, active identities, key scope, and a strict no-image model response. A failed gate leaves a draft and sends no image. Use the returned admitted profile ID as `OBSERVER_PROFILE_ID` only after reading back its persisted evidence and private artifacts.
+
+Delete the transient admission API key after the canary. For ordinary runs, configure a new scoped API key and its ID for the same active service account. Each invocation verifies that key, the folder and billing binding, and model access before uploading an image. The admitted profile retains the admission key ID as historical evidence; each private native artifact records the key ID actually used for its invocation. An expired admission gate still requires a new profile revision.
+
 ## Single-image observations
 
-Start the service with `OBSERVER_PROFILE_ID` set to the admitted successor ID and `OBSERVER_SNAPSHOT_DIR` set to the same verified offline snapshot used for admission. The service refuses submissions until readiness and the profile binding succeed. The observer runs in a bounded child process with CPU and offline model loading; no model download or fallback is attempted.
+Start the service with `OBSERVER_PROFILE_ID` set to the admitted successor ID. For a local profile, also set `OBSERVER_SNAPSHOT_DIR` to the verified offline snapshot used for admission; its observer runs in a bounded CPU child process without model download or fallback. For a cloud profile, provide current transient credentials as described above. The service refuses submissions until readiness and the profile binding succeed.
 
 Submit one JPEG as base64 in JSON. `scenario`, `observation_area`, and `period` are required; `period` is an ISO 8601 timestamp with timezone. `requested_classes` defaults to `excavator` and `dump_truck`. Other requested class names are retained as `not_analyzed` without a provider call when no supported class is requested.
 

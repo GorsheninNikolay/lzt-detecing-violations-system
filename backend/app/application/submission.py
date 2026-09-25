@@ -96,6 +96,8 @@ def submit(store: PostgresStore, artifacts: ArtifactStore, key: str, body: dict,
     if not isinstance(key, str) or not 0 < len(key) <= 128 or any(ord(char) < 33 or ord(char) > 126 for char in key):
         raise SubmissionError("invalid_idempotency_key")
     image, context, requested, request_hash = validate_request(body)
+    if snapshot.get("kind") == "cloud_api" and hashlib.sha256(image).hexdigest() not in snapshot["allowed_input_sha256"]:
+        raise SubmissionError("cloud_image_not_authorized")
     try:
         state, existing_run, intent_id, error = store.begin_submission(key, request_hash, "image/jpeg")
     except AdmissionStoreError as exc:
@@ -132,6 +134,9 @@ def submit_series(store: PostgresStore, artifacts: ArtifactStore, key: str, body
     if not isinstance(key, str) or not 0 < len(key) <= 128 or any(ord(char) < 33 or ord(char) > 126 for char in key):
         raise SubmissionError("invalid_idempotency_key")
     images, context, requested, request_hash = validate_images(body, True)
+    if snapshot.get("kind") == "cloud_api" and any(
+            hashlib.sha256(image).hexdigest() not in snapshot["allowed_input_sha256"] for image in images):
+        raise SubmissionError("cloud_image_not_authorized")
     try:
         state, existing_run, first_intent, error = store.begin_submission(key, request_hash, "image/jpeg")
     except AdmissionStoreError as exc:

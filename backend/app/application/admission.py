@@ -1,6 +1,7 @@
 """Operator entrypoint for the pinned local observer admission."""
 
 import argparse
+import hashlib
 import io
 import json
 import os
@@ -16,6 +17,9 @@ from app.adapters.artifacts import ArtifactGateError, ArtifactStore
 from app.adapters.postgres import PostgresStore
 from app.config import Config
 from app.domain.observations import ManifestError, validate_manifest
+from app.profiles.cloud_api import (ADMISSION_MANIFEST_SHA256, OWNER_DECISION_REVISION, CloudObserver, CloudObserverError,
+                                    canonical_bytes as cloud_bytes, draft_snapshot as cloud_snapshot,
+                                    read_held_out_scope, read_owner_gate, validate_owner_evidence)
 from app.profiles.grounding_dino import (
     PREPROCESSING_REVISION, GroundingDinoCpu, ObserverError, canonical_bytes,
     draft_snapshot, prepare_snapshot, verify_snapshot,
@@ -31,6 +35,17 @@ SAFE_FAILURE_CODES = {
     "fixture_group_overlap", "fixture_checksum_overlap", "exclusion_inventory_invalid",
     "exclusion_inventory_incomplete", "fixture_hash_mismatch", "observer_execution_failed",
     "frame_decode_failed",
+    "observer_timeout", "cloud_owner_account_gate_missing", "cloud_account_evidence_stale",
+    "cloud_paid_account_missing", "cloud_canary_authorization_missing", "cloud_upload_scope_invalid",
+    "cloud_credential_missing", "observer_transport_failed", "observer_identity_or_device_invalid",
+    "observer_quota_failed", "observer_access_failed", "observer_http_failed",
+    "observer_response_too_large", "cloud_account_identity_invalid", "cloud_key_scope_invalid",
+    "cloud_billing_readback_incomplete", "cloud_key_readback_incomplete",
+    "cloud_owner_decision_missing", "cloud_manifest_identity_invalid",
+    "observer_identity_invalid",
+    "cloud_held_out_evidence_missing", "cloud_held_out_evidence_invalid",
+    "cloud_model_probe_invalid",
+    "artifact_integrity_failed",
 }
 
 
@@ -140,6 +155,98 @@ def admit(manifest_path: Path, inventories: list[Path], snapshot_dir: Path,
         store.close()
 
 
+def admit_cloud(manifest_path: Path, inventories: list[Path], evidence_path: Path,
+                watchdog_seconds: int) -> dict:
+    if watchdog_seconds <= 0:
+        raise ValueError("bootstrap_watchdog_invalid")
+    manifest, fixtures = validate_manifest(manifest_path, inventories)
+    try:
+        owner_input = json.loads(evidence_path.read_text())
+    except (OSError, ValueError):
+        owner_input = {}
+    if not isinstance(owner_input, dict):
+        owner_input = {}
+    canary_hashes = [fixture["image"]["sha256"] for fixture, _ in fixtures]
+    config = Config.from_env()
+    gate_error = None
+    evidence = {}
+    held_out_evidence = None
+    allowed = canary_hashes
+    try:
+        if hashlib.sha256(manifest_path.read_bytes()).hexdigest() != ADMISSION_MANIFEST_SHA256:
+            raise CloudObserverError("cloud_manifest_identity_invalid")
+        held_out_hashes, held_out_evidence = read_held_out_scope(HERE.parent / "evaluation",
+            ADMISSION / "exclusions" / "held_out_evaluation.json", manifest, canary_hashes)
+        allowed = canary_hashes + held_out_hashes
+        if (set(owner_input) != {"folder_id", "service_account_id", "authorization_revision"}
+                or owner_input["authorization_revision"] != OWNER_DECISION_REVISION):
+            raise CloudObserverError("cloud_owner_decision_missing")
+        evidence = read_owner_gate(owner_input["folder_id"], owner_input["service_account_id"],
+            config.cloud_api_key_id, config.cloud_api_key, config.cloud_iam_token, canary_hashes, allowed)
+    except Exception as exc:
+        gate_error = str(exc) if str(exc) in SAFE_FAILURE_CODES else "cloud_owner_account_gate_missing"
+    snapshot = cloud_snapshot(HERE / "uv.lock", manifest, owner_input.get("folder_id", ""),
+                              owner_input.get("service_account_id", ""), allowed,
+                              evidence if gate_error is None else {"gate_error": gate_error}, held_out_evidence)
+    store = PostgresStore(config.database_url)
+    artifacts = ArtifactStore(config)
+    guard = store.engine.connect()
+    try:
+        if not guard.execute(text("SELECT pg_try_advisory_lock(804298270114)")).scalar_one():
+            raise ValueError("admission_executor_busy")
+        guard.commit()
+        profile_id, run_ids = store.create_admission_runs(snapshot, manifest, fixtures, watchdog_seconds)
+        try:
+            if gate_error is not None:
+                raise CloudObserverError(gate_error)
+            validate_owner_evidence(evidence, canary_hashes, allowed)
+            observer = CloudObserver(snapshot, config.cloud_api_key)
+        except Exception as exc:
+            code = str(exc) if str(exc).isidentifier() else "admission_failed"
+            for run_id in run_ids:
+                store.fail_admission_run(run_id, code)
+            return {"draft_profile_id": str(profile_id), "run_ids": [str(value) for value in run_ids],
+                    "admitted_profile_id": None, "error_code": code}
+        failed = False
+        failure_code = None
+        for index, (run_id, (_, image_bytes)) in enumerate(zip(run_ids, fixtures)):
+            try:
+                fresh = read_owner_gate(owner_input["folder_id"], owner_input["service_account_id"],
+                    config.cloud_api_key_id, config.cloud_api_key, config.cloud_iam_token, canary_hashes, allowed)
+                if any(fresh[key] != evidence[key] for key in
+                       ("account_id", "cloud_id", "folder_id", "service_account_id", "api_key_id")):
+                    raise CloudObserverError("cloud_account_identity_invalid")
+                invocation_id = store.reserve_admission_invocation(run_id, image_bytes)
+                result = observer.observe(image_bytes, watchdog_seconds)
+                store.complete_invocation(run_id, invocation_id, result)
+                native = cloud_bytes({"response": result["native"],
+                    "returned_model_identity": result["returned_model_identity"],
+                    "credential_key_id": fresh["api_key_id"],
+                    "request_data_controls": {"store": False, "x-data-logging-enabled": "false"}})
+                input_intent = _publish(store, artifacts, run_id, "input", image_bytes, "image/jpeg")
+                native_intent = _publish(store, artifacts, run_id, "native", native, "application/json")
+                for payload, intent in ((image_bytes, input_intent), (native, native_intent)):
+                    digest = hashlib.sha256(payload).hexdigest()
+                    artifacts.read_verified(f"sha256/{digest}", digest, len(payload))
+                store.finish_admission_run(run_id, invocation_id, native_intent, input_intent)
+            except Exception as exc:
+                failed = True
+                code = str(exc) if str(exc) in SAFE_FAILURE_CODES else "admission_failed"
+                failure_code = code
+                store.fail_admission_run(run_id, code)
+                for remaining in run_ids[index + 1:]:
+                    store.fail_admission_run(remaining, "admission_canary_failed")
+                break
+        successor = None if failed else store.authorize_successor(profile_id, run_ids)
+        return {"draft_profile_id": str(profile_id), "run_ids": [str(value) for value in run_ids],
+                "admitted_profile_id": str(successor) if successor else None,
+                **({"error_code": failure_code} if failure_code else {})}
+    finally:
+        guard.execute(text("SELECT pg_advisory_unlock(804298270114)"))
+        guard.close()
+        store.close()
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     subcommands = parser.add_subparsers(dest="command", required=True)
@@ -149,17 +256,26 @@ def main() -> None:
     run.add_argument("--exclusion-inventory", type=Path, action="append", required=True)
     run.add_argument("--snapshot-dir", type=Path, required=True)
     run.add_argument("--bootstrap-watchdog-seconds", type=int, default=600)
+    cloud = subcommands.add_parser("run-cloud")
+    cloud.add_argument("--exclusion-inventory", type=Path, action="append", required=True)
+    cloud.add_argument("--evidence", type=Path, required=True)
+    cloud.add_argument("--bootstrap-watchdog-seconds", type=int, default=600)
     args = parser.parse_args()
     if args.command == "prepare":
         files = prepare_snapshot(args.snapshot_dir)
         (ADMISSION / "model-files.json").write_text(json.dumps(files, indent=2) + "\n")
         print(json.dumps({"prepared": True, "files": len(files)}))
         return
-    os.environ["HF_HUB_OFFLINE"] = "1"
-    os.environ["TRANSFORMERS_OFFLINE"] = "1"
     try:
-        print(json.dumps(admit(ADMISSION / "manifest.json", args.exclusion_inventory, args.snapshot_dir,
-            ADMISSION / "model-files.json", args.bootstrap_watchdog_seconds)))
+        if args.command == "run-cloud":
+            result = admit_cloud(ADMISSION / "manifest.json", args.exclusion_inventory,
+                                 args.evidence, args.bootstrap_watchdog_seconds)
+        else:
+            os.environ["HF_HUB_OFFLINE"] = "1"
+            os.environ["TRANSFORMERS_OFFLINE"] = "1"
+            result = admit(ADMISSION / "manifest.json", args.exclusion_inventory, args.snapshot_dir,
+                ADMISSION / "model-files.json", args.bootstrap_watchdog_seconds)
+        print(json.dumps(result))
     except Exception as exc:
         code = str(exc) if str(exc) in SAFE_FAILURE_CODES else "admission_failed"
         parser.exit(1, code + "\n")

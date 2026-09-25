@@ -2,9 +2,10 @@
 title: 'Story 4.2: Admit the Required Cloud Candidate'
 type: 'feature'
 created: '2026-09-24'
-status: 'draft'
+status: 'done'
+baseline_revision: '1512020047aa5e2b2fc343f78f9881a0a2c5914c'
 review_loop_iteration: 0
-followup_review_recommended: false
+followup_review_recommended: true
 context: []
 warnings: [oversized]
 deferred: []
@@ -48,13 +49,16 @@ deferred: []
 - `backend/tests/test_admission.py`, `backend/tests/test_single_image.py`, and `backend/tests/test_ordered_series.py` — preserve local admission, run, retry, and artifact behavior.
 - `evaluation/held-out-v1.json` and `backend/admission/exclusions/held_out_evaluation.json` — read-only accepted Story 4.1 identities; do not use held-out bytes for admission smoke or rewrite its frozen evidence.
 - `backend/admission/manifest.json` — the four owner-confirmed canary hashes; preserve its exact SHA-256 and separate these frames from the held-out revision.
+- `evaluation/held-out-v1.json`, `evaluation/owner-attestation-2026-09-24.json`, and `evaluation/freeze-decision-v1.json` — accepted Story 4.1's eleven cloud-authorized hashes and immutable decision; authorize their bytes for the later campaign without using them in admission.
 - Yandex Cloud Billing `BillingAccount.List` and `ListBillableObjectBindings`, Resource Manager folder readback, and IAM service-account readback — authoritative account identity and active payment binding; use transient IAM authentication and persist only nonsecret evidence.
+- `spec-4-2-cloud-attempt-2026-09-24.patch.gz` — reviewed implementation seed; `gzip -dc` into `git apply` after checking the exact diff, then correct the previously logged gate, timeout, identity, and test gaps.
 
 ## Tasks & Acceptance
 
 **Execution:**
 - `backend/app/profiles/cloud_api.py` — port the bounded Responses request and strict normalization; retain the provider's actual returned URI, reject missing identity, and keep credentials transient.
 - `backend/app/application/admission.py` and `backend/app/adapters/postgres.py` — perform live folder, service-account, billing, and no-image model readbacks before canary upload; bind the owner decision and four exact hashes to a secret-free immutable draft; refresh the gate before each image and ordinary provider reservation; authorize a successor only after successful admission invocation and private artifact readback.
+- `backend/app/application/admission.py` and `backend/app/profiles/cloud_api.py` — verify the accepted Story 4.1 manifest, freeze decision, owner cloud-use attestation, and disjointness; include its eleven hashes in the new immutable profile allowlist while retaining only the four admission hashes as canary inputs.
 - `backend/app/profiles/cloud_api.py` and `backend/app/application/executor.py` — enforce a whole-call deadline and bounded response bytes, retain the returned request/response identity, and preserve distinct quota, access, timeout, transport, and malformed-response failures without a fallback.
 - `backend/app/application/submission.py`, `backend/app/application/executor.py`, and `backend/app/main.py` — enforce the profile's exact image hashes at submission and execution, including retry, then route only the explicitly bound enabled Qwen revision through existing reservation and completion contracts.
 - `backend/tests/test_cloud_profile.py`, `backend/tests/test_admission.py`, and `backend/tests/test_single_image.py` — cover every canary matrix row, real PostgreSQL successor authorization, an authorized ordinary cloud run, expiry, revocation, retry, response caps/deadlines, and local-profile compatibility.
@@ -66,6 +70,7 @@ deferred: []
 - Given timeout, malformed output, absent served identity, or artifact failure, when the canary ends, then admission fails and neither an absence result nor fallback candidate is produced.
 - Given the owner-confirmed four-image scope and a live active billing binding, when admission starts, then no image is sent until the same credential completes a bounded strict-schema no-image Qwen request and its account, model, and response identities are retained.
 - Given a queued cloud run whose account evidence has expired or authorization has changed, when execution reaches provider reservation, then the run fails before sending image bytes to the provider and a new immutable admission revision is required.
+- Given the accepted Story 4.1 revision and its owner upload attestation, when the cloud successor is admitted, then its allowlist covers the eleven held-out hashes plus four admission hashes while none of the held-out bytes are used for admission.
 
 ## Spec Change Log
 
@@ -75,6 +80,8 @@ deferred: []
 ## Design Notes
 
 The earlier cloud pilot may supply an admission canary only if its exact image belongs to the owner's approved prototype scope and remains outside Story 4.1's held-out set. The admitted profile may authorize the held-out hashes for a later campaign, but Story 4.2 must not send those bytes as a canary or count historical pilot runs as campaign cells. A request setting such as `store=false` is evidence about the request, not provider deletion.
+
+The owner decision is recorded in revision `1512020047aa5e2b2fc343f78f9881a0a2c5914c`; bind that revision, the four canary hashes, the configured folder/service-account IDs, active billing binding, and no-image probe response ID in the profile evidence. Use the owner statement for terms and image rights, official API readback for account/payment/identity, and a successful no-image call for present model access and sequential capacity. Never accept those machine-verifiable gates as operator-supplied strings.
 
 ## Review Triage Log
 
@@ -97,6 +104,26 @@ The earlier cloud pilot may supply an admission canary only if its exact image b
   - `[medium]` `[intent_gap]` No live admitted profile was demonstrated — synthetic strings, fake storage, and mocked HTTP do not establish current account, provider, or private-artifact evidence. The exact external proof required for admission remains unresolved.
   - `[false]` `[reject]` Sprint ledger was allegedly left out of sync — after preserving the attempt as a patch and reverting its code, Story 4.2 remains unimplemented and its `backlog` entry reflects the checked source state; no `done` transition is supported.
 
+### 2026-09-25 — Review pass
+- verdicts: 16 findings — high 0, medium 11, low 2, false 3, maybe-false 0
+- findings:
+  - `[medium]` `[patch]` A no-image probe could return detected equipment and still pass — admission now requires both classes to be `not_detected_in_frame` before any image call.
+  - `[medium]` `[patch]` Admission native artifacts omitted their API key ID — each native artifact now includes the nonsecret key ID used for that canary.
+  - `[medium]` `[patch]` No-image probe output was reduced to identity fields — immutable owner evidence now retains its validated states and request controls.
+  - `[false]` `[reject]` Canary results were not compared with fixture labels — admission proves the observation and evidence pipeline, while accuracy against labels belongs to the later frozen comparison; the Story 4.2 acceptance asks for a closed strict response, not a detection threshold.
+  - `[false]` `[reject]` Readiness lacked a live provider call — readiness verifies application dependencies and a bound profile; external provider availability is checked before each invocation and failures stay explicit, so a later provider outage does not make readiness a false pass.
+  - `[medium]` `[patch]` A key with additional scopes could be recorded as solely execution-scoped — the gate now accepts only the exact execution scope set.
+  - `[medium]` `[patch]` Ordinary native evidence lacked the fresh gate identity and timestamp — the private native response now binds the current nonsecret gate result and actual key ID.
+  - `[low]` `[patch]` A failed image canary returned no top-level error code — the CLI result now returns the safe code recorded on its failed run.
+  - `[medium]` `[patch]` Cloud series execution and partial failure had no cloud test — a PostgreSQL/S3 integration case now verifies per-frame refresh and retention of earlier evidence after later failure.
+  - `[medium]` `[patch]` Child-process timeout path was untested — a stalled-child test now asserts timeout and process termination.
+  - `[low]` `[reject]` A different secret could theoretically share a six-character masked suffix — the API list also binds the ID, service account and scope, and the same secret successfully performs the probe; exploiting the suffix collision is implausible, while authoritative proof of a supplied secret's ID would require replacing the credential contract.
+  - `[medium]` `[patch]` Same no-image negative-state gap as the first finding — the same validation and failure test covers both findings.
+  - `[medium]` `[patch]` The whole-call child-process deadline lacked a test — the same stalled-child process test covers this finding.
+  - `[medium]` `[patch]` An allowed held-out image had no ordinary-run verification — an approved archive JPEG passed submission and mocked-provider execution through PostgreSQL/S3; no held-out bytes were sent to a live provider.
+  - `[false]` `[reject]` Four-versus-fifteen image scope was allegedly unresolved — Story 4.1's separate owner cloud-upload attestation and Epic 4's required campaign authorize the eleven held-out hashes for later ordinary runs; the four-image restriction applies to admission only.
+  - `[medium]` `[patch]` The diff lacked live admission evidence — this result record now includes account, canary, profile, artifact, and key-deletion readbacks without credentials or image bytes.
+
 ## Verification
 
 **Commands:**
@@ -108,12 +135,29 @@ The earlier cloud pilot may supply an admission canary only if its exact image b
 
 ## Auto Run Result
 
+Status: done. Story 4.2 is implemented and the current adapter revision has live admitted profile `8c6799e9-1f24-4287-ac30-26d921a67c7c` in isolated local database `evidence_story42_20260925` and private bucket `evidence-story42-20260925`. Authoritative readback found `admitted` status, enabled authorization revision 1, the exact union of four owner-approved canary hashes and eleven accepted Story 4.1 hashes, four completed live canary invocations with response IDs, a negative strict-schema no-image probe, and eight checksum-verified private artifacts. The returned model URI was `gpt://b1gcpjp9nc4hhoffpf3a/qwen3.6-35b-a3b`. Independent IAM readback found zero API keys remaining after the transient admission key was deleted. Earlier profiles remain immutable history; this profile passed `require_authorized` against the current adapter bytes.
+
+Changed files:
+- `backend/app/profiles/cloud_api.py` — bounded Qwen observer, official account/key/payment readback, negative no-image probe, approved 15-hash scope, and strict response normalization.
+- `backend/app/application/admission.py` — guarded four-image canary, private artifact publication/readback, and safe failure result.
+- `backend/app/adapters/postgres.py` — immutable cloud successor, current authorization and invocation identity checks, exact allowlist and retry fences.
+- `backend/app/application/submission.py`, `backend/app/application/executor.py`, `backend/app/config.py`, `backend/app/main.py` — explicit cloud submission, runtime, transient credentials, and startup routing without fallback.
+- `backend/tests/test_cloud_profile.py` — gate, bounded-call, persistence, held-out, series, retry, and failure-path verification.
+- `README.md` — CLI admission and credential-rotation instructions.
+- This spec — owner decision, scope, review triage, and observed result.
+
+Review: 10 shared-root patch entries were fixed (9 medium, 1 low); no findings were deferred. Four findings were rejected: label comparison belongs to the later campaign, readiness does not promise perpetual provider availability, the masked-suffix collision is negligible relative to changing the credential contract, and the eleven held-out hashes have separate owner cloud-upload authorization. Follow-up review recommended: true because nine medium patch entries changed cloud evidence and verification paths; a live ordinary run with a rotated key remains unverified.
+
+Verification: the final full backend suite ran against fresh isolated PostgreSQL/S3 with the real Story 4.1 archive: 153 passed, 1 skipped because `TEST_HELD_OUT_IMAGE_PATH` was unset. That one approved held-out ordinary-run test was then run separately with a checksum-verified JPEG and passed. `git diff --check` and Python compilation passed. The live canary, profile authorization, exact hash scope, invocation identities, private artifact integrity, and key deletion were independently read back. Held-out bytes were not sent to the provider; Story 4.3's three-repeat comparison, deployment, and live ordinary execution remain separate work.
+
 Status: blocked after one implementation and review pass. Blocking condition: intent gap in authoritative live owner-account gate evidence. The attempted implementation is preserved in [spec-4-2-cloud-attempt-2026-09-24.patch.gz](spec-4-2-cloud-attempt-2026-09-24.patch.gz); its code was removed from the working tree as required by the workflow. No cloud profile was admitted.
 
-Resolution, 2026-09-25: The owner supplied the missing terms and image-scope attestation. A live read-only billing binding and active service-account readback were observed; the new admission gate is specified above. Implementation resumes from this draft. No model or image request has yet been made in this resumed pass.
+Resolution, 2026-09-25: The owner supplied the missing terms and image-scope attestation. A live read-only billing binding and active service-account readback were observed; the new admission gate is specified above. At this checkpoint, implementation resumed from the draft and no model or image request had yet been made.
+
+Verified live admission, 2026-09-25: Local database `evidence_story42_20260925` recorded admitted profile `0f408e96-3f86-4f86-b2bb-8cbf5684feac` with four succeeded canary runs, the exact 15-hash allowlist (four admission and eleven Story 4.1 held-out hashes), eight checksum-verified private input/native artifacts, and the returned Qwen URI. Independent readback found zero remaining API keys after the transient admission key was deleted. No held-out bytes were used in admission; this result does not establish the later Story 4.1 comparison campaign.
 
 Attempt verification: 36 focused tests passed against disposable local PostgreSQL and S3 resources after one compatibility fix. These tests used mocked cloud HTTP and did not prove account access, terms, a live canary, or an enabled persisted Qwen successor. The current source tree contains the planning baseline, not that tested code.
 
-Unresolved decision: identify the authoritative account and terms readback that must be bound to the immutable profile, and confirm the exact currently approved four admission image hashes before a live upload. The separately accepted Story 4.1 set must remain outside the admission canary.
+Prior unresolved decision (resolved 2026-09-25): identify the authoritative account and terms readback and confirm the four admission image hashes. The owner confirmation, official Billing/Resource Manager/IAM readback, and exact manifest identity now settle these gates. The separately accepted Story 4.1 set remains outside the admission canary.
 
 Earlier blocking condition (superseded): the future-customer GigaChat account and upload/deletion canary were unavailable. The approved Qwen prototype has different gates. Its branch pilot is evidence for planning and integration, not proof that this Story 4.2 revision is implemented or admitted on current `main`.

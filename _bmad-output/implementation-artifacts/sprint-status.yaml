@@ -4,7 +4,7 @@
 # Retrospective: optional, done
 # Action item: open, in-progress, done
 generated: 09-22-2026 21:57
-last_updated: 09-24-2026 23:03
+last_updated: 09-25-2026 10:13
 project: lzt-detecing-violations-system
 project_key: NOKEY
 tracking_system: file-system
@@ -41,7 +41,7 @@ development_status:
 
   epic-4: in-progress
   4-1-freeze-the-held-out-evaluation-set: done
-  4-2-admit-the-required-cloud-candidate: backlog
+  4-2-admit-the-required-cloud-candidate: done
   4-3-freeze-a-complete-comparison-campaign: backlog
   4-4-execute-and-recover-every-planned-cell: backlog
   4-5-calculate-criterion-level-readiness: backlog
