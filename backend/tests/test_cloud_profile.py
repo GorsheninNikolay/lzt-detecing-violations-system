@@ -35,6 +35,42 @@ def test_missing_gate_rejects_before_canary():
         validate_owner_evidence({}, ["a" * 64], ["a" * 64])
 
 
+def test_vm_iam_token_requires_metadata_identity(monkeypatch):
+    class Response(io.BytesIO):
+        def __enter__(self):
+            return self
+        def __exit__(self, *args):
+            self.close()
+
+    def metadata(http_request, **_kwargs):
+        assert http_request.full_url == (
+            "http://169.254.169.254/computeMetadata/v1/instance/service-accounts/default/token")
+        assert http_request.get_header("Metadata-flavor") == "Google"
+        return Response(b'{"access_token":"short-lived","token_type":"Bearer"}')
+
+    monkeypatch.setattr(cloud_api.request, "urlopen", metadata)
+    assert cloud_api._vm_iam_token() == "short-lived"
+    monkeypatch.setattr(cloud_api.request, "urlopen", lambda *_args, **_kwargs:
+                        Response(b'{"token_type":"Bearer"}'))
+    with pytest.raises(CloudObserverError, match="cloud_credential_missing"):
+        cloud_api._vm_iam_token()
+
+
+def test_owner_gate_uses_vm_token_when_no_token_is_configured(monkeypatch):
+    monkeypatch.setattr(cloud_api, "_vm_iam_token", lambda: "short-lived")
+
+    class ReachedCloud(RuntimeError):
+        pass
+
+    def read(_url, token):
+        assert token == "short-lived"
+        raise ReachedCloud
+
+    monkeypatch.setattr(cloud_api, "_get", read)
+    with pytest.raises(ReachedCloud):
+        cloud_api.read_owner_gate("folder", "service", "key-id", "api-key", None, ["a" * 64])
+
+
 def test_valid_evidence_binds_exact_canary_and_scope():
     image_hash = "a" * 64
     evidence = {key: "checked" for key in ("account_id", "cloud_id", "service_account_id",

@@ -1,0 +1,76 @@
+name: construction-evidence
+
+services:
+  postgres:
+    image: postgres:17.6
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: evidence
+      POSTGRES_USER: evidence
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U evidence -d evidence"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  minio:
+    image: minio/minio:RELEASE.2025-09-07T16-13-09Z
+    command: server /data
+    restart: unless-stopped
+    environment:
+      MINIO_ROOT_USER: evidence
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  init:
+    build:
+      context: ../..
+      dockerfile: infra/deploy/backend.Dockerfile
+    environment: &backend_environment
+      DATABASE_URL: postgresql+psycopg://evidence:${POSTGRES_PASSWORD}@postgres:5432/evidence
+      S3_ENDPOINT: http://minio:9000
+      S3_BUCKET: evidence
+      S3_ACCESS_KEY: evidence
+      S3_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
+      YANDEX_AI_STUDIO_API_KEY: ${YANDEX_AI_STUDIO_API_KEY:-}
+      YANDEX_AI_STUDIO_API_KEY_ID: ${YANDEX_AI_STUDIO_API_KEY_ID:-}
+      OBSERVER_PROFILE_ID: ${OBSERVER_PROFILE_ID:-}
+    command: ["python", "/app/init.py"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+
+  backend:
+    build:
+      context: ../..
+      dockerfile: infra/deploy/backend.Dockerfile
+    restart: unless-stopped
+    environment: *backend_environment
+    depends_on:
+      init:
+        condition: service_completed_successfully
+
+  web:
+    build:
+      context: ../..
+      dockerfile: infra/deploy/web.Dockerfile
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${DEPLOY_PORT}:8080"
+    depends_on:
+      - backend
+
+volumes:
+  postgres-data:
+  minio-data:

@@ -129,11 +129,25 @@ def _get(url: str, iam_token: str) -> dict:
     return _read_json(request.Request(url, headers={"Authorization": "Bearer " + iam_token}), GATE_SECONDS)
 
 
+def _vm_iam_token() -> str:
+    try:
+        payload = _read_json(request.Request(
+            "http://169.254.169.254/computeMetadata/v1/instance/service-accounts/default/token",
+            headers={"Metadata-Flavor": "Google"}), 3)
+        token = payload.get("access_token")
+        if payload.get("token_type") != "Bearer" or not isinstance(token, str) or not token:
+            raise ValueError
+        return token
+    except (CloudObserverError, ValueError):
+        raise CloudObserverError("cloud_credential_missing") from None
+
+
 def read_owner_gate(folder_id: str, service_account_id: str, api_key_id: str,
-                    api_key: str, iam_token: str, canary_hashes: list[str],
+                    api_key: str, iam_token: str | None, canary_hashes: list[str],
                     allowed_hashes: list[str] | None = None) -> dict:
-    if not all((folder_id, service_account_id, api_key_id, api_key, iam_token)):
+    if not all((folder_id, service_account_id, api_key_id, api_key)):
         raise CloudObserverError("cloud_credential_missing")
+    iam_token = iam_token or _vm_iam_token()
     folder = _get("https://resource-manager.api.cloud.yandex.net/resource-manager/v1/folders/" + quote(folder_id), iam_token)
     service = _get("https://iam.api.cloud.yandex.net/iam/v1/serviceAccounts/" + quote(service_account_id), iam_token)
     if (folder.get("id") != folder_id or folder.get("status") != "ACTIVE"

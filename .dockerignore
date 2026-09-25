@@ -1,0 +1,15 @@
+.git/
+.agents/
+.opencode/
+_bmad/
+_bmad-output/
+artifacts/
+output/
+reviews/
+tmp/
+backend/.venv/
+backend/.pytest_cache/
+backend/**/__pycache__/
+backend/tests/
+web/node_modules/
+web/*.tsbuildinfo
