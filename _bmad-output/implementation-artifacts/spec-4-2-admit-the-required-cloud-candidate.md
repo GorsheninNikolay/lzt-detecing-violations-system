@@ -2,8 +2,7 @@
 title: 'Story 4.2: Admit the Required Cloud Candidate'
 type: 'feature'
 created: '2026-09-24'
-status: 'blocked'
-baseline_revision: 'bd5e0cf705fac23c6a1774c1a086b54f95c1b8d9'
+status: 'draft'
 review_loop_iteration: 0
 followup_review_recommended: false
 context: []
@@ -24,6 +23,8 @@ deferred: []
 **Always:** Bind requested and returned model URI, adapter, prompt, schema, reasoning, temperature and runtime revisions, account/data evidence, authorized image hashes, authorization revision, provider request/response identity, and private artifacts. Reject unapproved images before upload or paid inference. Validate the closed two-class observation states. A timeout, malformed response, absent returned identity, quota failure, or missing account/data gate fails admission; no fallback or inferred equipment absence follows. Disclose any unpinnable hosted-model revision as an identity gap.
 
 **Never:** Treat the prior branch pilot as the Story 4.1 campaign; use the held-out set for admission or tuning; store credentials in the repository; enable a draft profile; infer provider deletion from `store=false` or local artifact deletion; send new real-site images without separate rights/data approval; route to another provider on failure.
+
+**Owner decision, 2026-09-25:** The owner confirmed that the current paid Yandex Cloud account has accepted the applicable AI Studio commercial and processing/retention terms and that the prior authorization for the four JPEGs in `backend/admission/manifest.json` remains valid. That manifest's SHA-256 is `57a27283c36df6e6d2da87939bf170f641cb8440ac2f0d01d58e17fb8c5a1909`; its four image hashes match the earlier authorized admission set. Before any image leaves the machine, read back the configured folder and active service account, an active billing account bound to that cloud, and a bounded Qwen3.6 strict-schema request without an image using the same scoped transient credential. A successful no-image request establishes current model access and capacity for the sequential canary, not future quota. Retain the nonsecret readback identities, timestamps, response ID, owner decision reference, and exact image scope. Recheck freshness before each image upload and each ordinary invocation; an expired gate requires a new immutable admission revision.
 
 ## I/O & Edge-Case Matrix
 
@@ -46,24 +47,30 @@ deferred: []
 - `backend/app/domain/observations.py:78` — closed two-class observation-state contract.
 - `backend/tests/test_admission.py`, `backend/tests/test_single_image.py`, and `backend/tests/test_ordered_series.py` — preserve local admission, run, retry, and artifact behavior.
 - `evaluation/held-out-v1.json` and `backend/admission/exclusions/held_out_evaluation.json` — read-only accepted Story 4.1 identities; do not use held-out bytes for admission smoke or rewrite its frozen evidence.
+- `backend/admission/manifest.json` — the four owner-confirmed canary hashes; preserve its exact SHA-256 and separate these frames from the held-out revision.
+- Yandex Cloud Billing `BillingAccount.List` and `ListBillableObjectBindings`, Resource Manager folder readback, and IAM service-account readback — authoritative account identity and active payment binding; use transient IAM authentication and persist only nonsecret evidence.
 
 ## Tasks & Acceptance
 
 **Execution:**
 - `backend/app/profiles/cloud_api.py` — port the bounded Responses request and strict normalization; retain the provider's actual returned URI, reject missing identity, and keep credentials transient.
-- `backend/app/application/admission.py` and `backend/app/adapters/postgres.py` — persist current owner-account, access, quota, terms, data controls, and exact image-scope evidence; reject a missing gate before any canary upload; authorize an immutable successor only after successful admission invocation and private artifact readback.
+- `backend/app/application/admission.py` and `backend/app/adapters/postgres.py` — perform live folder, service-account, billing, and no-image model readbacks before canary upload; bind the owner decision and four exact hashes to a secret-free immutable draft; refresh the gate before each image and ordinary provider reservation; authorize a successor only after successful admission invocation and private artifact readback.
+- `backend/app/profiles/cloud_api.py` and `backend/app/application/executor.py` — enforce a whole-call deadline and bounded response bytes, retain the returned request/response identity, and preserve distinct quota, access, timeout, transport, and malformed-response failures without a fallback.
 - `backend/app/application/submission.py`, `backend/app/application/executor.py`, and `backend/app/main.py` — enforce the profile's exact image hashes at submission and execution, including retry, then route only the explicitly bound enabled Qwen revision through existing reservation and completion contracts.
-- `backend/tests/test_cloud_profile.py`, `backend/tests/test_admission.py`, and `backend/tests/test_single_image.py` — cover account/data gate failures, unauthorized bytes, strict response and raw served identity, canary failure, revocation, retry, and local-profile compatibility.
+- `backend/tests/test_cloud_profile.py`, `backend/tests/test_admission.py`, and `backend/tests/test_single_image.py` — cover every canary matrix row, real PostgreSQL successor authorization, an authorized ordinary cloud run, expiry, revocation, retry, response caps/deadlines, and local-profile compatibility.
 
 **Acceptance Criteria:**
 - Given any missing owner-account or data gate, when admission is attempted, then the profile remains draft and no image is uploaded.
 - Given an image outside an admitted profile's authorized hashes, when a run is submitted, then it is rejected before artifact publication or provider inference and the profile authorization remains unchanged.
 - Given approved canary data and the evidenced paid owner account, when admission runs, then the ordinary run records strict response, served URI, request data controls, private input/native artifacts, and an admitted enabled successor without claiming provider deletion.
 - Given timeout, malformed output, absent served identity, or artifact failure, when the canary ends, then admission fails and neither an absence result nor fallback candidate is produced.
+- Given the owner-confirmed four-image scope and a live active billing binding, when admission starts, then no image is sent until the same credential completes a bounded strict-schema no-image Qwen request and its account, model, and response identities are retained.
+- Given a queued cloud run whose account evidence has expired or authorization has changed, when execution reaches provider reservation, then the run fails before sending image bytes to the provider and a new immutable admission revision is required.
 
 ## Spec Change Log
 
 - 2026-09-24: The owner approved `sprint-change-proposal-2026-09-24.md`, replacing GigaChat with Yandex AI Studio Qwen3.6 for an allowlisted prototype. The prior GigaChat dependency block is superseded; branch integration, live account gates, and the new Story 4.1 campaign remain unverified.
+- 2026-09-25: The owner confirmed the paid account's accepted commercial and data terms and continued authorization of the exact four admission frames. The intent contract now fixes authoritative Billing/Resource Manager/IAM readback and a no-image model/capacity probe before image upload. This avoids the prior self-authored-string gate. Keep the existing local profile, immutable evidence, no fallback, readback, and held-out separation.
 
 ## Design Notes
 
@@ -102,6 +109,8 @@ The earlier cloud pilot may supply an admission canary only if its exact image b
 ## Auto Run Result
 
 Status: blocked after one implementation and review pass. Blocking condition: intent gap in authoritative live owner-account gate evidence. The attempted implementation is preserved in [spec-4-2-cloud-attempt-2026-09-24.patch.gz](spec-4-2-cloud-attempt-2026-09-24.patch.gz); its code was removed from the working tree as required by the workflow. No cloud profile was admitted.
+
+Resolution, 2026-09-25: The owner supplied the missing terms and image-scope attestation. A live read-only billing binding and active service-account readback were observed; the new admission gate is specified above. Implementation resumes from this draft. No model or image request has yet been made in this resumed pass.
 
 Attempt verification: 36 focused tests passed against disposable local PostgreSQL and S3 resources after one compatibility fix. These tests used mocked cloud HTTP and did not prove account access, terms, a live canary, or an enabled persisted Qwen successor. The current source tree contains the planning baseline, not that tested code.
 
