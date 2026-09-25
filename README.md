@@ -1,6 +1,18 @@
 # Construction Evidence Service
 
-The API accepts single JPEG and ordered JPEG-series observation runs. PostgreSQL owns structured state; private S3-compatible storage owns bytes.
+The API accepts single JPEG/PNG and ordered mixed-format observation runs. PostgreSQL owns structured state; private S3-compatible storage owns bytes. The legacy excavation rule and cloud observer still accept JPEG only.
+
+## Zone-plan expansion
+
+`GET /catalog/works` imports the supplied 377-row XLSX with source SHA-256 and cell provenance. `POST /projects`, `POST /projects/{id}/zones`, and `PUT /zones/{id}/plan` create manually confirmed, immutable zone-plan revisions. A plan PUT supplies `expected_revision` and full `entries`; parallel entries are valid. Each entry has `catalog_work_id`, timezone-aware `start_at`/`end_at`, `state`, optional `stage_key`, and `expected_equipment`, `allowed_equipment`, `excluded_equipment` arrays. `GET /zones/{id}/plan?revision=N` reads a historical revision.
+
+An ordinary analysis may include `project_id`, `zone_id`, `plan_revision_id`, and one timezone-aware `capture_times` value per frame. The request binds the exact revision and times before publication; retries retain that binding. Local results expose normalized, oriented `objects` boxes and separate `scene_features` when the profile supports them. `POST /runs/{id}/confirm-stage` records a human choice independently. `GET /signals` and `PATCH /signals/{id}` provide the internal review feed and state/comment handling. A date signal means completion is unconfirmed; an absent-equipment signal requires three assessable frames and an explicit active-plan expectation.
+
+The eight-class/scene adapter code is staged behind a new `equipment-boxes-v2` profile contract. No such profile is admitted by the existing two-class admission set. The six added classes, scene prompts, and three new scenarios require the separately labeled and group-disjoint evaluation described in [EXPANSION.md](_bmad-output/specs/spec-construction-monitoring-concepts/EXPANSION.md) before they can be presented as ready. The old cloud profile remains presence-only.
+
+The [annotation queue](evaluation/expansion/README.md) now inventories all 100 organizer PNGs and includes unreviewed model candidates. Its unknown site/camera grouping prevents an independent quality split until provenance and human labels are supplied.
+
+Generate the jury-facing PDF draft and supporting document with `uv run --no-project --with reportlab python scripts/build_submission_pdfs.py`. They are written to `output/pdf/`. The deck includes one source PNG and the observed model-class confusion; a live end-to-end screenshot and jury-access proof remain release checks.
 
 ## Local start
 
@@ -47,7 +59,7 @@ The directory boundaries are `backend/app/domain` for evidence contracts, `appli
 
 ## Responsive web client
 
-After starting the ready backend with an admitted observer profile, run `cd web && npm ci && npm run dev` and open `http://127.0.0.1:5173`. The development server proxies `/api/runs/*` to backend `/runs/*` and serves `/runs/{run_id}` as a web page. The Russian New Analysis page accepts a single JPEG or an ordered series of 2–8 JPEGs, preserves duplicate frames and local order, and submits `observation_only` with scenario, area, and timezone-aware period. It routes to `/runs/{run_id}` only when the API returns an ID. See [web/README.md](web/README.md) for validation, retry, and route limits.
+After starting the ready backend with an admitted observer profile, run `cd web && npm ci && npm run dev` and open `http://127.0.0.1:5173`. The development server proxies `/api/*` to the backend and serves `/runs/{run_id}` as a web page. New Analysis accepts a single JPEG/PNG or an ordered mixed series of 2–8 images, preserves duplicate frames and local order, and submits `observation_only` with scenario, area, and timezone-aware period. It routes to `/runs/{run_id}` only when the API returns an ID. See [web/README.md](web/README.md) for validation, retry, and route limits.
 
 ## Initial local observer admission
 
@@ -91,7 +103,7 @@ Delete the transient admission API key after the canary. For ordinary runs, conf
 
 Start the service with `OBSERVER_PROFILE_ID` set to the admitted successor ID. For a local profile, also set `OBSERVER_SNAPSHOT_DIR` to the verified offline snapshot used for admission; its observer runs in a bounded CPU child process without model download or fallback. For a cloud profile, provide current transient credentials as described above. The service refuses submissions until readiness and the profile binding succeed.
 
-Submit one JPEG as base64 in JSON. `scenario`, `observation_area`, and `period` are required; `period` is an ISO 8601 timestamp with timezone. `requested_classes` defaults to `excavator` and `dump_truck`. Other requested class names are retained as `not_analyzed` without a provider call when no supported class is requested.
+Submit one JPEG or PNG as base64 in JSON for a local observation-only run. `scenario`, `observation_area`, and `period` are required; `period` is an ISO 8601 timestamp with timezone. `requested_classes` defaults to `excavator` and `dump_truck`. Other requested class names are retained as `not_analyzed` when the bound profile does not support them.
 
 ```sh
 IMAGE_BASE64=$(base64 < development-image.jpg | tr -d '\n')
@@ -105,6 +117,6 @@ The submit response contains the authoritative `run_id` and current state. Reusi
 
 ## Ordered-series observations
 
-Submit 2–8 JPEGs to `POST /runs/series` with the same context and `Idempotency-Key` as the single-image request, replacing `image_base64` with an `images_base64` JSON array. Array position defines frame order; each item is limited to 16 MB of decoded bytes and 40 million pixels. The HTTP body limit is 200 MB. Reversing distinct images under the same idempotency key returns `idempotency_key_conflict`.
+Submit 2–8 JPEG/PNG images to `POST /runs/series` with the same context and `Idempotency-Key` as the single-image request, replacing `image_base64` with an `images_base64` JSON array. Array position defines frame order; each item is limited to 16 MB of decoded bytes and 40 million pixels. The HTTP body limit is 200 MB. Reversing distinct images under the same idempotency key returns `idempotency_key_conflict`.
 
 `GET /runs/{run_id}` returns `inputs` in zero-based order, each with a stable `input_id`, checksum, size, and source artifact ID. `observations` include that input ID and ordinal, class state, reason where needed, source artifact ID, and completed invocation ID for provider-derived states. `native_evidence_by_frame` attributes retained native evidence to its frame. Equal image bytes may share an S3 object, but retain separate input and observation references. The series projection appears only after every frame has a closed class set. A later technical failure leaves the run failed with earlier evidence visible and no projection. Results describe individual frames only; no area-wide absence is inferred.

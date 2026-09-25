@@ -7,10 +7,16 @@ sources:
   - ../../../specs/spec-construction-monitoring-concepts/SPEC.md
   - ../../../specs/spec-construction-monitoring-concepts/prototype-scenarios.md
   - ../../architecture/architecture-lzt-detecing-violations-system-2026-09-21/ARCHITECTURE-SPINE.md
-updated: 2026-09-21
+updated: 2026-09-25
 ---
 
 # Construction Monitoring Rapid MVP - Experience Spine
+
+## Subsequent zone-plan experience (2026-09-25)
+
+The original Rapid MVP journey below remains historical. The expansion adds a project and declared-zone selector, searchable source catalog, full-revision plan editor, and capture time for each JPEG/PNG frame. The run workspace overlays public normalized boxes on both thumbnails and the zoomed viewer, offers a show/hide control and a textual object list, and separates model stage hypotheses from one human confirmation. An empty hypothesis is shown as insufficient evidence. Unsupported classes and the cloud profile's absence of boxes are explicit.
+
+A persistent Signals surface shows a new-count, type/status filters, evidence, linked zone/work/plan revision, recommendation, and state/comment controls. Missing-equipment signals require a series; the overdue-date signal says completion is unconfirmed. Closing a signal requires a human action. The plan editor must show concurrent operations rather than forcing a single current stage.
 
 ## Foundation
 
@@ -47,22 +53,24 @@ Visual lineage: [hackathon task-page reference](imports/hackathon-task-page-refe
 |---|---|---|---|
 | Stages Overview (`Этапы`) | App open, primary navigation | Read-only evidence navigator for construction stages and their latest completed analysis outcome | Select a stage or start `Новый анализ` |
 | New Analysis (`Новый анализ`) | Persistent primary action, selected stage | Confirm intent and context, add ordered images, or choose a demonstration fixture | `Запустить анализ` |
-| Run Workspace (`Анализ`) | Submission, analysis history, stage inspector | Show the authoritative six-stage pipeline, then the result and evidence without changing route identity | Inspect evidence or open linked retry |
+| Run Workspace (`Анализ`) | Submission, analysis history, stage inspector, selected signal | Show the saved outcome and its evidence first on completed runs; reveal the processing stages on demand | Inspect evidence or open linked retry |
 | Analysis History (`Анализы`) | Primary navigation | Reopen recent runs, compare outcomes, and follow predecessor/successor lineage | Open a run |
-| Prototype Readiness (`Готовность`) | Primary navigation, end of jury flow | Show criterion-level readiness evidence and a separate provider comparison | Open criterion evidence |
-| About Project (`О проекте`) | Team-name menu or footer link | Explain team identity, method, scope, limitations, and source provenance | Return to previous surface |
+| Zone Plan (`План`) | Primary navigation | Select a project and zone, inspect catalog work, and save a new zone-plan revision | Save revision |
+| Signals (`Сигналы`) | Primary navigation | Triage plan and analysis signals against their saved plan revision | Update state and comment |
+| Prototype Readiness (`Готовность`) | `Ещё`, end of jury flow | Show criterion-level readiness evidence and a separate provider comparison | Open criterion evidence |
+| About Project (`О проекте`) | `Ещё` or team attribution | Explain team identity, method, scope, limitations, and source provenance | Return to previous surface |
 
 Composition references: [Stages Overview](mockups/key-stages-overview.html), [New Analysis](mockups/key-new-analysis.html), [Run Workspace](mockups/key-run-workspace.html), and [Prototype Readiness](mockups/key-readiness.html).
 
-Laptop primary navigation contains `Этапы`, `Анализы`, and `Готовность`; `Новый анализ` remains the single persistent primary action. `О проекте` is secondary. Phone uses labeled bottom navigation for the first three destinations and a visible `Новый анализ` action that never overlaps content.
+Laptop primary navigation contains `Этапы`, `Анализы`, `План`, and `Сигналы`; `Новый анализ` remains the persistent primary action. `Готовность`, `Сравнение провайдеров`, and `О проекте` are in the keyboard-accessible `Ещё` menu. Phone uses labeled bottom navigation for the four primary destinations and a visible `Новый анализ` action in the compact header.
 
 The Stages Overview is not a schedule or health dashboard. A stage status summarizes only the latest completed analysis bound to that stage:
 
 | Russian label | Meaning |
 |---|---|
 | `Анализов нет` | No completed run exists for this stage. |
-| `Проверка не требуется` | The latest completed rule-evaluation run produced `no_check`. |
-| `Требуется проверка` | The latest completed run produced one human check request. |
+| `Проверка не запрошена` | The latest completed rule-evaluation run produced `no_check`. |
+| `Рекомендована проверка человеком` | The latest completed run produced one human check request. |
 | `Недостаточно данных` | The run succeeded but evidence was insufficient for rule evaluation. |
 | `Только наблюдения` | The latest succeeded run had observation-only intent; no stage rule was evaluated. |
 | `Не анализировалось` | The latest succeeded rule-evaluation projection was out of scope or the rule was not applicable. |
@@ -107,6 +115,8 @@ Multi-frame evidence always has two visible layers:
 
 The series sentence is parameterized from backend evidence as `Самосвал не обнаружен ни в одном из <N> пригодных кадров.` It never becomes `Самосвал отсутствует` and never invents a fifth observation state.
 
+In the completed workspace, `Основание вывода` keeps observations, series suitability, declared zone, period, rule, and recommendation near the selected source image. Only `supporting_input_ids` from the persisted projection can mark a frame as supporting evidence. The large image and thumbnails use the same artifact route; object boxes appear only when saved normalized geometry is valid and stay aligned to the rendered image. Run IDs, frame IDs, hashes, and observer payloads sit in named technical disclosures. Partial observations on a failed run retain a visible incomplete-run label.
+
 Provider-native artifacts remain secondary and explicitly attributed. Their technical disclosure labels provider/adapter, model or observer execution-profile revision, observer invocation, exact source frame IDs, preprocessing revision when applicable, and artifact identity/checksum. Native counts, confidence, and geometry are marked `Данные конкретного наблюдателя. Не используются правилом этапа.`
 
 The exact safety line in every Check-request Panel is: `Это рекомендация для проверки, а не подтверждение нарушения.` It remains visible without expanding technical detail.
@@ -117,17 +127,17 @@ Visual specifications are defined in the Components section of `DESIGN.md` and i
 
 | Component | Use | Behavioral rules |
 |---|---|---|
-| Application Shell | Every surface | Keeps primary navigation, current destination, and one persistent `Новый анализ` action. Restores the last safe route after refresh. |
+| Application Shell | Every surface | Keeps four primary destinations, current destination, the `Ещё` disclosure, and one persistent `Новый анализ` action. Restores the last safe route after refresh. |
 | Team Brand Block | Stages Overview and About Project | Uses the complete supplied logo only where its embedded wordmark remains legible. Compact headers use the text `17 мгновений ИИ`, not a cropped or invented mark. |
 | Stage Tile | Stages Overview | Entire tile selects the stage. Shows the outcome of the latest succeeded Result Projection plus any newer run lifecycle as a separate line; never a plan-completion status. |
 | Stage Inspector | Stages Overview | Shows selected stage, latest outcome, area and period, then routes to evidence or a new analysis. Non-configured stages explain scope rather than presenting a dead control. |
 | Primary Button | One per decision area | Fires the main action. During submission, replace the label with `Создаём анализ…` and prevent duplicate submission without hiding the control. |
 | Secondary Button | Supporting actions | Used for `Выбрать пример`, `Изменить`, `Отмена`, and non-primary navigation. Never competes visually with the primary action. |
 | Status Label | Stage, run, pipeline, readiness | Always includes the full Russian label. Color and icon are supplemental. It is not interactive unless paired with a separate disclosure control. |
-| Analysis Context | New Analysis | Compact summary of intent, stage, area, period, and, for rule evaluation, applied rule name/revision and provenance. `Изменить` reveals persistent labels and helper text; closing edit mode preserves values. |
+| Analysis Context | New Analysis | Persistent fields show intent, stage, area, and period. An optional project/zone selector binds the saved plan revision; each bound frame keeps its capture time. Rule name, revision, expectation, and provenance stay visible for rule evaluation. |
 | Analysis Intent Selector | New Analysis | Two explicit choices: default `Проверить правило этапа` and secondary `Только распознать технику`. Changing intent updates the explanation before submission. If the selected stage has no applicable rule, `Проверить правило этапа` is unavailable with the visible reason `Для этого этапа правило не настроено в прототипе`, and `Только распознать технику` is selected; the UI never silently chooses a rule. |
-| Image Uploader | New Analysis | Supports file selection on all devices and camera capture where the browser exposes it. Validates supported format and decoding only; subjective visibility is evaluated by the pipeline. |
-| Input Manifest | New Analysis | Lists every accepted image with zero-based backend ordinal represented to users as `Кадр 1`, `Кадр 2`, and so on. Supports reorder and reversible local removal with `Вернуть`; buttons are always available, drag is optional. |
+| Image Uploader | New Analysis | File selection and drop use one validation path: up to eight JPEG/PNG files, 16 MB and 40 million pixels each. Camera capture remains available where supported; subjective visibility is evaluated by the pipeline. Demonstration examples start collapsed. |
+| Input Manifest | New Analysis | Lists local previews, name, size, capture time when bound to a plan, and every accepted image's zero-based backend ordinal as `Кадр 1`, `Кадр 2`, and so on. Explicit reorder and reversible remove controls remain available. |
 | Pipeline Route | Run Workspace | Renders six persisted stages ordered by ordinal, not by timestamp, with these exact labels: `Регистрация входных данных`, `Проверка пригодности кадров`, `Распознавание техники`, `Объединение наблюдений серии`, `Проверка правила`, `Формирование результата`. Stable backend keys appear only in technical disclosure. |
 | Observation Row | Run result | One frame, one requested class, exactly one closed observation state, and the exact evaluated-input reference. `Не анализировалось` remains a visible row with reason and input reference; only detection, non-detection, deviation claims, and check requests are suppressed. |
 | Series Evidence | Run result | Separate from Observation Rows. Shows usable-frame count, same-area confirmation, upload order, excavator-supporting frame references, and backend-supplied persistence wording such as `Самосвал не обнаружен ни в одном из <N> пригодных кадров`. |
@@ -139,7 +149,8 @@ Visual specifications are defined in the Components section of `DESIGN.md` and i
 | Run Row | Analysis History | Shows creation time, stage, intent, lifecycle, outcome when terminal, and linked retry identity. Running rows update without reordering the list. |
 | Readiness Criterion | Prototype Readiness | Shows criterion name, `Пройдено`, `Не пройдено`, or `Нет данных`, then literal evidence and linked runs. Coverage includes evaluation-set identity and size, image checksums, manual labels, test-specific sufficiency conditions, false warnings, misses, false detections, disagreements, and check-request comprehension. Never compresses readiness into one decorative score. |
 | Provider Comparison | Prototype Readiness | Separate block with candidate identity, complete planned-run accounting, failures/timeouts, and report status. It never implies readiness or silently publishes a winner. |
-| Bottom Navigation | Phone | Three labeled destinations: `Этапы`, `Анализы`, `Готовность`. Active state uses text, shape, and {colors.brand}; no icon-only mode. |
+| Signal List and Detail | Signals | Filters `Все`, `Новые`, `В работе`, `Закрытые` preserve the selected signal and its unsaved comment. Initially 20 rows load; `Показать ещё` opens the next page. The detail reads the linked run and exact saved plan revision, and keeps its basis visible when frames are unavailable. A calendar signal explains that it has no linked analysis. |
+| Bottom Navigation | Phone | Four labeled destinations: `Этапы`, `Анализы`, `План`, `Сигналы`. Active state uses text, shape, and {colors.brand}; no icon-only mode. |
 | Inline Notice | Forms and run states | Contextual warning, error, or reconnect information placed next to the affected content. Toasts are reserved for transient confirmation with no required action. |
 
 Overlay reference: [Evidence Viewer](mockups/key-evidence-viewer.html).
@@ -152,7 +163,7 @@ Overlay reference: [Evidence Viewer](mockups/key-evidence-viewer.html).
 |---|---|
 | `queued` | Run Workspace opens immediately. Header says `Анализ поставлен в очередь`; all six stages are visible as pending. |
 | `running` | Exactly one eligible stage says `Выполняется`; prior stages show persisted completion summaries; later stages remain `Ожидает`. No percentage or estimated finish time. |
-| `succeeded` | Pipeline remains visible. Result Summary appears in the same workspace; completion is announced once without moving focus. A visible `Перейти к результату` action moves focus to its heading only when activated. |
+| `succeeded` | The saved result leads the workspace and the pipeline moves into a collapsed disclosure. Completion is announced once without moving focus. A visible `Перейти к результату` action moves focus to its heading only when activated. |
 | `failed` | Active stage shows `Ошибка выполнения`; completed evidence stays visible. Downstream stages show `Пропущено: предыдущий этап завершился ошибкой`. |
 | polling disconnected | Inline Notice says `Связь потеряна. Анализ может продолжаться на сервере.` Keep the known state and offer `Проверить статус`; do not fabricate failure. |
 | interrupted by server restart | Terminal failure explains `Выполнение было прервано`. `Повторить анализ` creates a linked successor run; it never resumes or overwrites the failed run. |
@@ -166,8 +177,8 @@ Overlay reference: [Evidence Viewer](mockups/key-evidence-viewer.html).
 | `insufficient_data` | `Недостаточно данных` | At class level, explain observer inability or frame evidence limits and retain the evaluated-frame reference. At rule-evaluation outcome level, explain visibility, coverage, or series sufficiency. Suppress check requests. |
 | `not_analyzed` | `Не анализировалось` | Keep the requested-class row, reason, scope/rule explanation, and evaluated-input reference visible. Suppress only detection/non-detection, deviation claims, and check requests. |
 | `observations_only` | `Только наблюдения` | Keep this top-level outcome even if every requested class is `Недостаточно данных`. Show class states and evidence, then state `Правило этапа не проверялось`; never produce a check request. |
-| `no_check` | `Проверка не требуется` | Show supporting observations and applied rule. Do not style this as proof that the whole stage is healthy. |
-| `check_requested` | `Требуется проверка` | Show one Check-request Panel and the explicit non-violation statement. |
+| `no_check` | `Проверка не запрошена` | Show supporting observations and applied rule. Do not style this as proof that the whole stage is healthy. |
+| `check_requested` | `Рекомендована проверка человеком` | Show one Check-request Panel and the explicit non-violation statement. |
 
 ### Surface-specific states
 
@@ -183,6 +194,11 @@ Overlay reference: [Evidence Viewer](mockups/key-evidence-viewer.html).
 | New Analysis | duplicate checksum | Keep both images and their ordinals; disclose duplication without blocking, matching the active policy. |
 | New Analysis | submitting | Disable duplicate submit, preserve the manifest, and transition to the created Run Workspace after authoritative `run_id` response. |
 | New Analysis | submission or API failure | Keep context, accepted images, order, and intent. Associate the Russian error with an error summary and offer `Повторить отправку`; reconcile any uncertain `run_id` before enabling a second submission. |
+| Signals | no records or filter matches | Keep all four filters visible and explain that no signals match the selected state. |
+| Signals | row selected | Open saved basis, saved plan revision, linked run, current human state, and the comment draft. On phones place this detail directly after the row. |
+| Signals | switched selection or filter during a read | Cancel the obsolete run/plan requests and ignore late responses. Keep each signal's unsaved comment in its own draft. |
+| Signals | failed save or artifact | Preserve the comment and signal context; show an inline retryable error. A missing preview never removes the saved basis. |
+| Signals | calendar signal without analysis | Show the plan-based reason and state explicitly that no linked frames exist. `Закрыт` means manual handling is complete, not that the site is safe. |
 | Analysis History | empty | `Запусков пока нет.` with `Новый анализ`. |
 | Analysis History | loading or fetch failure | History container exposes `aria-busy="true"`; visual skeleton fragments are hidden from assistive technology and preserve list geometry. On failure show `Не удалось загрузить анализы` and `Повторить`; do not replace a previously loaded list with blank content. |
 | Analysis History | mixed lifecycle | Grouping and sorting remain stable; status updates do not jump rows under the pointer or focus. |
@@ -216,9 +232,9 @@ Recovery-state reference: [Recovery States](mockups/key-recovery-states.html).
 
 | Viewport | Navigation and layout | Evidence and forms |
 |---|---|---|
-| Laptop, `>= 1024px` | Persistent top navigation. Stage map and inspector use a wide/narrow split. Pipeline is a six-column ordered route. | Context and manifest may form two columns. Evidence uses 3-4 thumbnails per row. Viewer is a large overlay. |
-| Tablet, `768-1023px` | Top navigation condenses but keeps text labels. Stage inspector stacks below the map. Pipeline becomes a vertical route. | Single-column form with two-column thumbnail grid. |
-| Phone, `< 768px` | Compact top bar plus labeled Bottom Navigation. Stage map is a single list; selected inspector follows the tile. | Full primary flow. Camera/file input where supported, explicit reorder buttons, one-column pipeline, full-screen Evidence Viewer, sticky submit only when it does not obscure content or keyboard. |
+| Laptop, `>= 1024px` | Persistent top navigation. Stage map and inspector use a wide/narrow split. Pipeline uses the saved six-step order. | New Analysis shows context in about one third of the width and images in the remaining column. Completed Result shows a large selected frame beside its basis. Signals shows list and selected detail side by side. |
+| Tablet, `768-1023px` | Top navigation condenses but keeps text labels. Stage inspector stacks below the map. Pipeline becomes a vertical route. | New Analysis stacks context and images. The result and signal columns may stack without changing reading order. |
+| Phone, `< 768px` | Compact top bar plus four labeled Bottom Navigation destinations. Stage map is a single list; selected inspector follows the tile. | Result reads outcome, basis, image, then technical detail. Signal detail opens immediately after its selected row. Camera/file input, explicit reorder buttons, full-screen Evidence Viewer, and the submit panel remain operable above bottom navigation. |
 
 The experience does not require a specific device orientation. At 200% browser zoom, laptop layout may collapse to the phone/tablet topology. At a viewport width of 320 CSS pixels, including with WCAG text-spacing overrides, the page remains operable without two-dimensional scrolling. The zoomable evidence canvas is the only essential region that may scroll on both axes. Content order remains meaningful without CSS positioning. Fixed navigation and optional sticky submit honor device safe areas and provide scroll padding so focused controls are never fully obscured.
 
@@ -256,12 +272,12 @@ The experience does not require a specific device orientation. At 200% browser z
 1. Marina opens `Этапы` and sees that only `Земляные работы котлована` is configured for the full Rapid MVP rule.
 2. She selects the stage and chooses `Новый анализ`.
 3. New Analysis defaults to `Проверить правило этапа` and shows the explicit area, period, applied rule revision, expectation, and demonstration-rule provenance.
-4. She chooses the demonstration example `Требуется проверка`; three ordered images populate the Input Manifest.
+4. She expands the demonstration examples and chooses `Самосвал не обнаружен в серии`; three ordered images populate the Input Manifest.
 5. She confirms context and selects `Запустить анализ`.
 6. Run Workspace first shows the queued state, then updates the six pipeline stages as persisted status arrives.
-7. Result Summary becomes `Требуется проверка`. The Check-request Panel says `Возможна задержка вывоза грунта` and recommends checking dump-truck supply.
+7. Result Summary becomes `Рекомендована проверка человеком`. The Check-request Panel says `Возможна задержка вывоза грунта` and recommends checking dump-truck supply.
 8. Marina opens evidence, then rule provenance and uncertainty.
-9. She opens a saved `Проверка не требуется` run for contrast, then visits `Готовность`.
+9. She opens a saved `Проверка не запрошена` run for contrast, then visits `Готовность` through `Ещё`.
 10. She opens `О проекте` to verify the team, method, supported scope, and explicit limitations.
 11. **Climax:** Marina can explain in her own words that an excavator was observed, no dump truck was observed in the three usable frames, and the system requested a human check rather than declaring a violation.
 

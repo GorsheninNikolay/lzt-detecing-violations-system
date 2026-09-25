@@ -11,15 +11,16 @@ import uuid
 from pathlib import Path
 from time import monotonic
 
-from app.domain.observations import CLASSES, STAGES, normalized_states
+from app.domain.observations import CLASSES, STAGES, normalized_states, normalized_objects, scene_features, stage_hypotheses
 from app.domain.evaluation_set import inspect_evaluation_set, reserve_held_out_inventory, canonical_hash
 from app.domain.comparison_campaign import CampaignGateError, build_manifest
 from app.domain.evaluation_report import POLICY_REVISION, build_report
 from app.domain.provider_comparison import project_comparison
-from app.profiles import cloud_api, grounding_dino
+from app.profiles import cloud_api, grounding_dino, grounding_dino_v2
 from app.profiles.grounding_dino import canonical_bytes, digest
 from app.adapters.artifacts import ArtifactGateError, ArtifactStore
 from app.domain.rule import RULE, RULE_POLICY, evaluate_rule
+from app.domain.site_analysis import compare_equipment
 
 
 class DatabaseGateError(RuntimeError):
@@ -867,13 +868,14 @@ class PostgresStore:
                 {"id": intent_id, "run": run_id, "key": idempotency_key, "media": media_type})
         return intent_id
 
-    def create_submission_intent(self, key: str) -> uuid.UUID:
+    def create_submission_intent(self, key: str, media_type: str = "image/jpeg") -> uuid.UUID:
         intent_id = uuid.uuid4()
         with self.engine.begin() as connection:
             connection.execute(text("""INSERT INTO publication_intents
                 (id, idempotency_key, submission_key, media_type, state)
-                VALUES (:id, :intent_key, :key, 'image/jpeg', 'pending_upload')"""),
-                {"id": intent_id, "intent_key": f"submission-intent:{intent_id}", "key": key})
+                VALUES (:id, :intent_key, :key, :media, 'pending_upload')"""),
+                {"id": intent_id, "intent_key": f"submission-intent:{intent_id}", "key": key,
+                 "media": media_type})
         return intent_id
 
     def publication_content_verified(self, intent_id: uuid.UUID, sha256: str, size: int, final_key: str) -> None:
@@ -1042,7 +1044,9 @@ class PostgresStore:
         if expected_revision is not None and row.revision != expected_revision:
             raise AdmissionStoreError("authorization_revision_changed")
         cloud = row.snapshot.get("kind") == "cloud_api"
-        if row.snapshot.get("adapter", {}).get("code") != ("yandex_ai_studio" if cloud else "grounding_dino"):
+        extended = row.snapshot.get("observation_contract") == "equipment-boxes-v2"
+        if row.snapshot.get("adapter", {}).get("code") != (
+                "yandex_ai_studio" if cloud else "grounding_dino_v2" if extended else "grounding_dino"):
             raise AdmissionStoreError("profile_unauthorized")
         run_ids = row.snapshot.get("audit_run_ids", [])
         if (not row.parent_id or not isinstance(run_ids, list) or not run_ids
@@ -1061,7 +1065,8 @@ class PostgresStore:
                 "identity": row.snapshot["returned_model_identity"]}).scalar_one()
         if evidenced != len(run_ids):
             raise AdmissionStoreError("profile_admission_evidence_missing")
-        adapter_hash = digest(Path((cloud_api if cloud else grounding_dino).__file__).read_bytes())
+        adapter_hash = (grounding_dino_v2.bundle_hash() if extended else
+                        digest(Path((cloud_api if cloud else grounding_dino).__file__).read_bytes()))
         lock_hash = digest((Path(__file__).resolve().parents[2] / "uv.lock").read_bytes())
         if row.snapshot.get("adapter", {}).get("bundle_sha256") != adapter_hash or row.snapshot.get("runtime", {}).get("uv_lock_sha256") != lock_hash:
             raise AdmissionStoreError("profile_runtime_mismatch")
@@ -1111,6 +1116,19 @@ class PostgresStore:
             connection.execute(text("""UPDATE submission_requests SET state = 'failed', error_code = :code
                 WHERE idempotency_key = :key AND state = 'publishing'"""), {"key": key, "code": code})
 
+    def validate_plan_binding(self, context: dict) -> None:
+        if "plan_revision_id" not in context:
+            return
+        with self.engine.connect() as connection:
+            valid = connection.execute(text("""SELECT 1 FROM zone_plan_revisions r
+                JOIN site_zones z ON z.id=r.zone_id
+                WHERE r.id=:revision AND z.id=:zone AND z.project_id=:project"""),
+                {"revision": uuid.UUID(context["plan_revision_id"]),
+                 "zone": uuid.UUID(context["zone_id"]),
+                 "project": uuid.UUID(context["project_id"])}).first()
+        if not valid:
+            raise AdmissionStoreError("invalid_plan_binding")
+
     def commit_submission(self, key: str, profile_id: uuid.UUID, revision: int, snapshot: dict,
                           context: dict, requested_classes: list[str], image_hash: str, image_size: int,
                           intent: str = "observation_only", stage: str | None = None) -> uuid.UUID:
@@ -1145,11 +1163,15 @@ class PostgresStore:
                 raise AdmissionStoreError("publication_incomplete")
             publications = []
             for intent_id, image_hash, image_size in manifest:
-                publication = connection.execute(text("""SELECT sha256, size, final_key FROM publication_intents
+                publication = connection.execute(text("""SELECT sha256, size, final_key, media_type FROM publication_intents
                     WHERE id = :id AND submission_key = :key AND run_id IS NULL
                       AND state = 'object_published' FOR UPDATE"""),
                     {"id": intent_id, "key": key}).one_or_none()
-                if not publication or publication.sha256 != image_hash or publication.size != image_size or publication.final_key != f"sha256/{image_hash}":
+                if (not publication or publication.sha256 != image_hash or publication.size != image_size
+                        or publication.final_key != f"sha256/{image_hash}"
+                        or publication.media_type not in ("image/jpeg", "image/png")
+                        or (intent == "rule_evaluation" and publication.media_type != "image/jpeg")
+                        or (snapshot.get("kind") == "cloud_api" and publication.media_type != "image/jpeg")):
                     raise AdmissionStoreError("publication_incomplete")
                 publications.append(publication)
             connection.execute(text("""INSERT INTO analysis_runs
@@ -1165,18 +1187,37 @@ class PostgresStore:
                  "policy": json.dumps({"intent": intent, **(RULE_POLICY if intent == "rule_evaluation" else {"revision": "observations-only-v1"})}),
                  "rule": json.dumps(RULE) if intent == "rule_evaluation" else None,
                  "intent": intent, "stage": stage,
-                 "taxonomy": json.dumps({"portable_classes": list(CLASSES), "revision": "presence-only-v1"}),
+                 "taxonomy": json.dumps({"portable_classes": list(grounding_dino_v2.EQUIPMENT_PROMPTS),
+                                          "revision": "equipment-boxes-v2"} if
+                                         snapshot.get("observation_contract") == "equipment-boxes-v2" else
+                                         {"portable_classes": list(CLASSES), "revision": "presence-only-v1"}),
                  "classes": json.dumps(requested_classes)})
+            if "plan_revision_id" in context:
+                valid = connection.execute(text("""SELECT 1 FROM zone_plan_revisions r
+                    JOIN site_zones z ON z.id=r.zone_id
+                    WHERE r.id=:revision AND z.id=:zone AND z.project_id=:project"""),
+                    {"revision": uuid.UUID(context["plan_revision_id"]),
+                     "zone": uuid.UUID(context["zone_id"]),
+                     "project": uuid.UUID(context["project_id"])}).first()
+                if not valid:
+                    raise AdmissionStoreError("invalid_plan_binding")
+                connection.execute(text("""INSERT INTO run_plan_bindings
+                    (run_id,zone_id,revision_id,frame_times)
+                    VALUES (:run,:zone,:revision,CAST(:times AS jsonb))"""),
+                    {"run": run_id, "zone": uuid.UUID(context["zone_id"]),
+                     "revision": uuid.UUID(context["plan_revision_id"]),
+                     "times": json.dumps(context["capture_times"])})
             for ordinal, ((intent_id, image_hash, image_size), publication) in enumerate(zip(manifest, publications)):
                 artifact_id = uuid.uuid4()
                 connection.execute(text("""INSERT INTO artifact_metadata (id, run_id, intent_id, key, sha256, size, media_type)
-                    VALUES (:id, :run, :intent, :key, :hash, :size, 'image/jpeg')"""),
+                    VALUES (:id, :run, :intent, :key, :hash, :size, :media)"""),
                     {"id": artifact_id, "run": run_id, "intent": intent_id, "key": publication.final_key,
-                     "hash": image_hash, "size": image_size})
+                     "hash": image_hash, "size": image_size, "media": publication.media_type})
                 connection.execute(text("""INSERT INTO run_inputs (run_id, ordinal, sha256, size, context, artifact_id)
                     VALUES (:run, :ordinal, :hash, :size, CAST(:context AS jsonb), :artifact)"""),
                     {"run": run_id, "ordinal": ordinal, "hash": image_hash, "size": image_size,
-                     "context": json.dumps(context), "artifact": artifact_id})
+                     "context": json.dumps({**context, "captured_at": context["capture_times"][ordinal]}
+                                           if "capture_times" in context else context), "artifact": artifact_id})
                 connection.execute(text("UPDATE publication_intents SET run_id = :run, state = 'referenced' WHERE id = :id"),
                     {"run": run_id, "id": intent_id})
             for ordinal, name in enumerate(STAGES):
@@ -1340,6 +1381,27 @@ class PostgresStore:
                 connection.execute(text("""UPDATE analysis_runs SET latency_ms = COALESCE(latency_ms, 0) + :latency,
                     peak_memory_bytes = GREATEST(COALESCE(peak_memory_bytes, 0), COALESCE(:memory, 0)) WHERE id = :run"""),
                     {"latency": result["latency_ms"], "memory": result["peak_memory_bytes"], "run": run_id})
+                if not cloud and result.get("native"):
+                    extended = row.profile_snapshot.get("observation_contract") == "equipment-boxes-v2"
+                    prompts = grounding_dino_v2.EQUIPMENT_PROMPTS if extended else {
+                        "excavator": "an excavator", "dump_truck": "a dump truck"}
+                    for ordinal, item in enumerate(normalized_objects(
+                            result["native"], prompts, result.get("source_orientation", 1))):
+                        connection.execute(text("""INSERT INTO detected_objects
+                            (id,run_id,input_id,invocation_id,ordinal,class_name,score,box,image_size)
+                            VALUES (:id,:run,:input,:invocation,:ordinal,:class_name,:score,
+                                    CAST(:box AS jsonb),CAST(:image_size AS jsonb))"""),
+                            {"id": uuid.uuid4(), "run": run_id, "input": source.input_id,
+                             "invocation": invocation, "ordinal": ordinal, "class_name": item["class_name"],
+                             "score": item["score"], "box": json.dumps(item["box"]),
+                             "image_size": json.dumps(item["image_size"])})
+                    if extended:
+                        for ordinal, item in enumerate(scene_features(result["native"], grounding_dino_v2.SCENE_PROMPTS)):
+                            connection.execute(text("""INSERT INTO detected_scene_features
+                                (id,run_id,input_id,invocation_id,ordinal,feature_name,score)
+                                VALUES (:id,:run,:input,:invocation,:ordinal,:feature_name,:score)"""),
+                                {"id": uuid.uuid4(), "run": run_id, "input": source.input_id,
+                                 "invocation": invocation, "ordinal": ordinal, **item})
             for observation in observations:
                 connection.execute(text("""INSERT INTO observations
                     (run_id, input_id, class_name, state, reason, input_sha256, invocation_id, source_artifact_id)
@@ -1409,6 +1471,48 @@ class PostgresStore:
                 projection.update(evaluate_rule(projection["frames"], usable_ids,
                                                 binding.policy_snapshot, binding.rule_snapshot,
                                                 binding.request_context))
+            if row.profile_snapshot.get("observation_contract") == "equipment-boxes-v2":
+                detected = connection.execute(text("""SELECT input_id,class_name FROM detected_objects WHERE run_id=:run"""),
+                                              {"run": run_id}).mappings().all()
+                scene = connection.execute(text("""SELECT input_id,feature_name FROM detected_scene_features WHERE run_id=:run"""),
+                                           {"run": run_id}).mappings().all()
+                projection["stage_hypotheses"] = stage_hypotheses(
+                    [{**dict(item), "input_id": str(item["input_id"])} for item in detected],
+                    [{**dict(item), "input_id": str(item["input_id"])} for item in scene])
+            plan = connection.execute(text("""SELECT zone_id,revision_id,frame_times
+                FROM run_plan_bindings WHERE run_id=:run"""), {"run": run_id}).mappings().one_or_none()
+            if plan:
+                lineage_root = connection.execute(text("""WITH RECURSIVE lineage AS (
+                    SELECT id,retry_predecessor_id FROM analysis_runs WHERE id=:run
+                    UNION ALL
+                    SELECT prior.id,prior.retry_predecessor_id FROM analysis_runs prior
+                    JOIN lineage current ON prior.id=current.retry_predecessor_id)
+                    SELECT id FROM lineage WHERE retry_predecessor_id IS NULL LIMIT 1"""),
+                    {"run": run_id}).scalar_one()
+                entries = connection.execute(text("""SELECT id,starts_at,ends_at,state,stage_key,
+                    expected_equipment,allowed_equipment,excluded_equipment
+                    FROM zone_plan_entries WHERE revision_id=:revision"""),
+                    {"revision": plan["revision_id"]}).mappings().all()
+                signals = compare_equipment([dict(item) for item in entries], plan["frame_times"],
+                    [{**dict(item), "input_id": str(item["input_id"])} for item in evidence],
+                    usable_ids, set(grounding_dino_v2.EQUIPMENT_PROMPTS if
+                                    row.profile_snapshot.get("observation_contract") == "equipment-boxes-v2" else CLASSES))
+                projection["plan_revision_id"] = str(plan["revision_id"])
+                projection["rule_results"] = [{**signal, "entry_id": str(signal["entry_id"])
+                                                if signal["entry_id"] else None} for signal in signals]
+                for signal in signals:
+                    fingerprint = digest(canonical_bytes({"run": str(lineage_root), **signal,
+                                                         "entry_id": str(signal["entry_id"])
+                                                         if signal["entry_id"] else None}))
+                    connection.execute(text("""INSERT INTO site_signals
+                        (id,fingerprint,run_id,zone_id,revision_id,work_entry_id,kind,basis)
+                        VALUES (:id,:fingerprint,:run,:zone,:revision,:entry,:kind,CAST(:basis AS jsonb))
+                        ON CONFLICT (fingerprint) DO NOTHING"""),
+                        {"id": uuid.uuid4(), "fingerprint": fingerprint, "run": run_id,
+                         "zone": plan["zone_id"], "revision": plan["revision_id"],
+                         "entry": signal["entry_id"], "kind": signal["kind"],
+                         "basis": json.dumps({"rule_revision": "site-equipment-v1",
+                                              "supporting_input_ids": usable_ids, **signal}, default=str)})
             connection.execute(text("""INSERT INTO result_projections (run_id, outcome, snapshot)
                 VALUES (:run, :outcome, CAST(:snapshot AS jsonb))"""),
                 {"run": run_id, "outcome": projection["outcome"], "snapshot": json.dumps(projection)})
@@ -1460,8 +1564,10 @@ class PostgresStore:
             if not row:
                 return None
             stages = connection.execute(text("SELECT name, state, reason FROM analysis_stages WHERE run_id = :id ORDER BY ordinal"), {"id": run_id}).mappings().all()
-            inputs = connection.execute(text("""SELECT input_id, ordinal, sha256, size, artifact_id
-                FROM run_inputs WHERE run_id = :id ORDER BY ordinal"""), {"id": run_id}).mappings().all()
+            inputs = connection.execute(text("""SELECT i.input_id, i.ordinal, i.sha256, i.size,
+                i.artifact_id, a.media_type FROM run_inputs i
+                LEFT JOIN artifact_metadata a ON a.id = i.artifact_id
+                WHERE i.run_id = :id ORDER BY i.ordinal"""), {"id": run_id}).mappings().all()
             observations = connection.execute(text("""SELECT o.class_name, o.state, o.reason, o.input_sha256,
                 o.source_artifact_id, o.input_id, i.ordinal, o.invocation_id
                 FROM observations o JOIN run_inputs i ON i.input_id = o.input_id
@@ -1472,6 +1578,16 @@ class PostgresStore:
                 FROM observer_invocations i JOIN artifact_metadata a ON a.id = i.native_artifact_id
                 JOIN run_inputs r ON r.input_id = i.input_id
                 WHERE i.run_id = :id ORDER BY r.ordinal"""), {"id": run_id}).mappings().all()
+            objects = connection.execute(text("""SELECT id,input_id,invocation_id,class_name,score,box,image_size
+                FROM detected_objects WHERE run_id=:id ORDER BY input_id,ordinal"""),
+                {"id": run_id}).mappings().all()
+            features = connection.execute(text("""SELECT input_id,invocation_id,feature_name,score
+                FROM detected_scene_features WHERE run_id=:id ORDER BY input_id,ordinal"""),
+                {"id": run_id}).mappings().all()
+            plan_binding = connection.execute(text("""SELECT zone_id,revision_id,frame_times
+                FROM run_plan_bindings WHERE run_id=:id"""), {"id": run_id}).mappings().one_or_none()
+            confirmation = connection.execute(text("""SELECT stage,comment,created_at FROM stage_confirmations
+                WHERE run_id=:id"""), {"id": run_id}).mappings().one_or_none()
             return {"run_id": str(row.id), "purpose": purpose, "state": row.state, "error_code": row.error_code,
                     "created_at": row.created_at.isoformat() if row.created_at else None,
                     "context": row.request_context, "requested_classes": row.requested_classes,
@@ -1496,6 +1612,16 @@ class PostgresStore:
                                       "source_artifact_id": str(item["source_artifact_id"]) if item["source_artifact_id"] else None,
                                       "invocation_id": str(item["invocation_id"]) if item["invocation_id"] else None}
                                      for item in observations],
+                    "objects": [{**dict(item), "id": str(item["id"]), "input_id": str(item["input_id"]),
+                                 "invocation_id": str(item["invocation_id"])} for item in objects],
+                    "scene_features": [{**dict(item), "input_id": str(item["input_id"]),
+                                        "invocation_id": str(item["invocation_id"])} for item in features],
+                    "plan_binding": ({"zone_id": str(plan_binding["zone_id"]),
+                                      "revision_id": str(plan_binding["revision_id"]),
+                                      "capture_times": plan_binding["frame_times"]} if plan_binding else None),
+                    "stage_confirmation": ({**dict(confirmation),
+                                            "created_at": confirmation["created_at"].isoformat()}
+                                           if confirmation else None),
                     "native_evidence": ({"artifact_id": str(native[0]["id"]), "sha256": native[0]["sha256"],
                                          "size": native[0]["size"]} if len(inputs) == 1 and native else None),
                     "native_evidence_by_frame": [{"artifact_id": str(item["id"]), "sha256": item["sha256"],
@@ -1575,15 +1701,20 @@ class PostgresStore:
                 raise AdmissionStoreError("run_not_found")
             if preliminary["state"] != "failed":
                 raise AdmissionStoreError("retry_ineligible")
+            if preliminary["analysis_intent"] == "rule_evaluation" and snapshot.get("observation_contract") == "equipment-boxes-v2":
+                raise AdmissionStoreError("rule_not_applicable")
             existing = connection.execute(text("SELECT id FROM analysis_runs WHERE retry_predecessor_id = :id"),
                                           {"id": source_id}).scalar_one_or_none()
             if existing:
                 return existing
             verified_inputs = [dict(item) for item in connection.execute(inputs_query, {"id": source_id}).mappings()]
-        if not verified_inputs or any(item["ordinal"] != ordinal or item["media_type"] != "image/jpeg"
+        if not verified_inputs or any(item["ordinal"] != ordinal or item["media_type"] not in ("image/jpeg", "image/png")
                                       or item["sha256"] != item["artifact_sha256"]
                                       or item["size"] != item["artifact_size"]
                                       for ordinal, item in enumerate(verified_inputs)):
+            raise AdmissionStoreError("retry_source_unavailable")
+        if (preliminary["analysis_intent"] == "rule_evaluation" or snapshot.get("kind") == "cloud_api") and any(
+                item["media_type"] != "image/jpeg" for item in verified_inputs):
             raise AdmissionStoreError("retry_source_unavailable")
         if snapshot.get("kind") == "cloud_api" and any(
                 item["sha256"] not in snapshot.get("allowed_input_sha256", []) for item in verified_inputs):
@@ -1642,6 +1773,13 @@ class PostgresStore:
                     {"run": run_id, "ordinal": item["ordinal"], "input": uuid.uuid4(),
                      "sha": item["sha256"], "size": item["size"], "context": json.dumps(item["context"]),
                      "artifact": artifact_id})
+            plan = connection.execute(text("""SELECT zone_id,revision_id,frame_times
+                FROM run_plan_bindings WHERE run_id=:source"""), {"source": source_id}).mappings().one_or_none()
+            if plan:
+                connection.execute(text("""INSERT INTO run_plan_bindings(run_id,zone_id,revision_id,frame_times)
+                    VALUES (:run,:zone,:revision,CAST(:times AS jsonb))"""),
+                    {"run": run_id, "zone": plan["zone_id"], "revision": plan["revision_id"],
+                     "times": json.dumps(plan["frame_times"])})
             for ordinal, name in enumerate(STAGES):
                 connection.execute(text("""INSERT INTO analysis_stages (run_id, ordinal, name, state)
                     VALUES (:run, :ordinal, :name, 'pending')"""),

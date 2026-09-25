@@ -2,6 +2,7 @@
 id: SPEC-construction-monitoring-concepts
 companions:
   - prototype-scenarios.md
+  - EXPANSION.md
 sources:
   - ../../forge/construction-monitoring-concepts/forged-idea.md
 ---
@@ -9,6 +10,8 @@ sources:
 > **Canonical contract.** This SPEC and the files in `companions:` are the complete, preservation-validated contract for what to build, test, and validate. Source documents listed in frontmatter are for traceability — consult them only if you need narrative rationale or prose color this contract intentionally omits.
 
 # Construction Monitoring Rapid MVP
+
+The original Rapid MVP contract below remains the historical two-class baseline. `EXPANSION.md` defines the subsequent zone-plan and signal scope; its additions do not retroactively change old profiles, runs, or evaluation campaigns.
 
 ## Why
 

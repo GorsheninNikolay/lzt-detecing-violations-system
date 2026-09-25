@@ -5,6 +5,7 @@ import App from './App'
 import demoCases from './demoCases.json'
 
 const jpeg = new Uint8Array([0xff, 0xd8, 0xff, 0xd9])
+const png = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10])
 const image = (name: string, marker = 0) => new File([jpeg, new Uint8Array([marker])], name, { type: 'image/jpeg' })
 const stageNames = ['input_registration', 'frame_usability', 'equipment_observation', 'series_aggregation', 'rule_evaluation', 'result_projection']
 const snapshot = (state: string, states = Array(6).fill('pending'), reasons: Record<number, string> = {}) => ({
@@ -644,16 +645,17 @@ describe('Observation result', () => {
     expect(await screen.findByRole('heading', { name: 'Только наблюдения' })).toBeTruthy()
     expect(screen.getByText(/Правило этапа не проверялось/)).toBeTruthy()
     expect(screen.getByText(/Самосвал не обнаружен ни в одном из 2 пригодных кадров/)).toBeTruthy()
-    expect(screen.getByText(/Порядок: Кадр 2 \(input-1\) → Кадр 1 \(input-0\)/)).toBeTruthy()
-    expect(screen.getByText('Кадры с экскаватором: input-0.')).toBeTruthy()
+    expect(screen.getByText(/Порядок: Кадр 2 → Кадр 1/)).toBeTruthy()
+    expect(screen.getByText('Кадры с экскаватором: Кадр 1.')).toBeTruthy()
     const rows = view.container.querySelectorAll<HTMLElement>('.observation-row')
     expect(inputs[0].sha256).not.toBe(inputs[1].sha256)
     expect(within(rows[0]).getByText('Экскаватор: Обнаружен')).toBeTruthy()
-    expect(within(rows[0]).getByText(/input-0/)).toBeTruthy()
+    expect(view.container.querySelector('.result-details')?.textContent).toContain('Входной ID: input-0')
     expect(within(rows[2]).getByText('Экскаватор: Не обнаружен в кадре')).toBeTruthy()
-    expect(within(rows[2]).getByText(/input-1/)).toBeTruthy()
+    expect(view.container.querySelector('.result-details')?.textContent).toContain('Входной ID: input-1')
     expect(screen.getByText(/по изображениям не подтверждена/)).toBeTruthy()
-    await user.click(screen.getByRole('button', { name: 'Перейти к результату' }))
+    expect(view.container.querySelector('.run-workspace')?.firstElementChild?.classList.contains('result')).toBe(true)
+    expect(screen.getByRole('heading', { name: 'Только наблюдения' }).tagName).toBe('H1')
     expect(document.activeElement).toBe(screen.getByRole('heading', { name: 'Только наблюдения' }))
     const opener = screen.getByRole('button', { name: 'Открыть кадр 1' })
     opener.focus()
@@ -695,6 +697,91 @@ describe('Observation result', () => {
     await user.keyboard('{Enter}')
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
     expect(document.activeElement).toBe(opener)
+  })
+
+  it('shows separate normalized boxes for multiple objects and hides them without hiding the list', async () => {
+    const user = userEvent.setup()
+    const objects = [
+      { input_id: 'input-0', class_name: 'excavator', score: .91, box: [.1, .2, .4, .6], image_size: [1000, 500], invocation_id: 'call-1' },
+      { input_id: 'input-0', class_name: 'excavator', score: .83, box: [.5, .1, .9, .7], image_size: [1000, 500], invocation_id: 'call-1' },
+    ]
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => url === `/api/runs/${runId}`
+      ? { ok: true, json: async () => ({ ...completed, objects }) }
+      : { ok: true, blob: async () => new Blob(['image']) }))
+    const view = render(<App />)
+    await screen.findByRole('heading', { name: 'Только наблюдения' })
+    await waitFor(() => expect(view.container.querySelectorAll('.result-feature-image .object-box')).toHaveLength(2))
+    expect((view.container.querySelector('.object-box') as HTMLElement).style.left).toBe('10%')
+    expect(parseFloat((view.container.querySelector('.object-box') as HTMLElement).style.width)).toBeCloseTo(30)
+    expect(screen.getByText('Экскаватор — 91%')).toBeTruthy()
+    expect(screen.getByText('Экскаватор — 83%')).toBeTruthy()
+    await user.click(screen.getByRole('button', { name: 'Открыть кадр 1' }))
+    expect(within(screen.getByRole('dialog')).getAllByText('Экскаватор', { selector: '.object-box span' })).toHaveLength(2)
+    await user.click(screen.getByLabelText('Показывать рамки объектов'))
+    expect(view.container.querySelectorAll('.object-box')).toHaveLength(0)
+    expect(screen.getByText('Экскаватор — 91%')).toBeTruthy()
+  })
+
+  it('selects the saved supporting frame and keeps technical IDs in details', async () => {
+    const user = userEvent.setup()
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => url === '/api/runs/' + runId
+      ? { ok: true, json: async () => ({ ...completed, result_projection: {
+        ...completed.result_projection, outcome: 'no_check', supporting_input_ids: ['input-1'],
+      } }) }
+      : { ok: true, blob: async () => new Blob(['jpeg']) }))
+    const view = render(<App />)
+    await screen.findByRole('heading', { name: 'Проверка не запрошена' })
+    const feature = view.container.querySelector<HTMLElement>('.result-feature-image')!
+    expect(await within(feature).findByRole('img', { name: /Кадр 2/ })).toBeTruthy()
+    const thumbnails = [...view.container.querySelectorAll<HTMLElement>('.source-thumbnail')]
+    expect(thumbnails[0].textContent).not.toContain('Поддерживает вывод')
+    expect(thumbnails[1].textContent).toContain('Поддерживает вывод')
+    expect(view.container.querySelector('.result-basis')?.textContent).not.toContain('input-1')
+    expect(view.container.querySelector('.result-details')?.textContent).toContain('Входной ID: input-1')
+    expect(screen.getByText('Этапы анализа').closest('details')?.open).toBe(false)
+    await user.click(within(thumbnails[0]).getByRole('button', { name: 'Выбрать кадр 1' }))
+    expect(await within(feature).findByRole('img', { name: /Кадр 1/ })).toBeTruthy()
+    expect(within(thumbnails[0]).getByRole('button', { name: 'Выбрать кадр 1' }).getAttribute('aria-pressed')).toBe('true')
+  })
+
+  it('focuses a completed result after loading without taking focus from later interaction', async () => {
+    history.replaceState({}, '', '/new')
+    const nextId = '22345678-1234-1234-1234-123456789abc'
+    let resolveFirst!: (value: unknown) => void
+    let resolveSecond!: (value: unknown) => void
+    const first = new Promise(resolve => { resolveFirst = resolve })
+    const second = new Promise(resolve => { resolveSecond = resolve })
+    vi.stubGlobal('fetch', vi.fn((url: string) => url === '/api/runs/' + runId ? first
+      : url === '/api/runs/' + nextId ? second
+        : Promise.resolve({ ok: true, blob: async () => new Blob(['jpeg']) })))
+    render(<App />)
+    act(() => {
+      history.pushState({}, '', '/runs/' + runId)
+      dispatchEvent(new PopStateEvent('popstate'))
+    })
+    await screen.findByRole('heading', { name: 'Проверяем анализ…' })
+    await act(async () => { resolveFirst({ ok: true, json: async () => completed }) })
+    const outcome = await screen.findByRole('heading', { name: 'Только наблюдения' })
+    expect(document.activeElement).toBe(outcome)
+
+    act(() => {
+      history.pushState({}, '', '/runs/' + nextId)
+      dispatchEvent(new PopStateEvent('popstate'))
+    })
+    await screen.findByRole('heading', { name: 'Проверяем анализ…' })
+    const navigation = screen.getByRole('link', { name: 'Этапы' })
+    navigation.focus()
+    await act(async () => { resolveSecond({ ok: true, json: async () => completed }) })
+    expect(document.activeElement).toBe(navigation)
+  })
+
+  it('withholds a result whose saved run ID differs from the requested route', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => ({
+      ...completed, run_id: '22345678-1234-1234-1234-123456789abc',
+    }) })))
+    render(<App />)
+    expect(await screen.findByText('Получены данные другого анализа. Повторите проверку.', { selector: '.attention p' })).toBeTruthy()
+    expect(screen.queryByRole('heading', { name: 'Только наблюдения' })).toBeNull()
   })
 
   it('shows a single-frame result without inventing series evidence', async () => {
@@ -744,7 +831,7 @@ describe('Observation result', () => {
     const view = render(<App />)
     expect(await screen.findByRole('heading', { name: label })).toBeTruthy()
     expect(view.container.querySelector('.rule-provenance')?.textContent).toContain(reason)
-    expect(screen.getByText(/Порядок: Кадр 1 \(input-0\) → Кадр 2 \(input-1\)/)).toBeTruthy()
+    expect(screen.getByText(/Порядок: Кадр 1 → Кадр 2/)).toBeTruthy()
     expect(view.container.querySelectorAll('.source-thumbnail')).toHaveLength(2)
     expect(screen.queryByRole('region', { name: 'Проверка человеком' })).toBeNull()
     if (outcome === 'not_analyzed') {
@@ -752,7 +839,7 @@ describe('Observation result', () => {
         .filter(row => row.textContent?.includes('crane: Не анализировалось'))
       expect(unsupported).toHaveLength(2)
       expect(unsupported[0].textContent).toContain('Класс не поддерживается профилем распознавания.')
-      expect(unsupported[0].textContent).toContain('input-0')
+      expect(view.container.querySelector('.result-details')?.textContent).toContain('Входной ID: input-0')
     }
   })
 
@@ -768,7 +855,7 @@ describe('Observation result', () => {
     const affectedRow = view.container.querySelector('.observation-row')!
     expect(affectedRow.textContent).toContain('Недостаточно данных')
     expect(affectedRow.textContent).toContain('Кадр непригоден для распознавания.')
-    expect(affectedRow.textContent).toContain('input-0')
+    expect(view.container.querySelector('.result-details')?.textContent).toContain('Входной ID: input-0')
     expect(screen.queryByRole('region', { name: 'Проверка человеком' })).toBeNull()
   })
 
@@ -787,7 +874,7 @@ describe('Observation result', () => {
     expect(await screen.findByRole('heading', { name: 'Недостаточно данных' })).toBeTruthy()
     expect(view.container.querySelector('.rule-provenance')?.textContent).toContain('input-0')
     expect(view.container.querySelector('.observation-row')?.textContent).toContain('Кадр непригоден для распознавания.')
-    expect(screen.getByText(/Порядок: Кадр 1 \(input-0\) → Кадр 2 \(input-1\)/)).toBeTruthy()
+    expect(screen.getByText(/Порядок: Кадр 1 → Кадр 2/)).toBeTruthy()
     expect(screen.queryByRole('region', { name: 'Проверка человеком' })).toBeNull()
   })
 
@@ -810,7 +897,7 @@ describe('Observation result', () => {
     expect(screen.getByText('Экскаватор: Обнаружен')).toBeTruthy()
     expect(within(view.container.querySelectorAll<HTMLElement>('.observation-row')[0]).queryByText('Экскаватор: Не обнаружен в кадре')).toBeNull()
     expect(within(view.container.querySelectorAll<HTMLElement>('.observation-row')[0]).getByRole('heading', { name: 'Кадр 1' })).toBeTruthy()
-    expect(screen.getByText('Пригодность: не пригоден.')).toBeTruthy()
+    expect(screen.getByText('Пригодность: пригоден.')).toBeTruthy()
     expect(screen.getByText(/Проверка по проекции/)).toBeTruthy()
     expect(screen.getByText('Источник правила: Источник из проекции.')).toBeTruthy()
     expect(within(view.container.querySelectorAll<HTMLElement>('.source-thumbnail')[0]).getByRole('heading', { name: 'Кадр 1' })).toBeTruthy()
@@ -831,10 +918,10 @@ describe('Observation result', () => {
     expect(await screen.findByText('Сводные данные серии недоступны для этого анализа.')).toBeTruthy()
     expect(screen.getByText('Данные о правиле в проекции недоступны.')).toBeTruthy()
     expect(view.container.querySelector('.rule-provenance')?.textContent).toContain('Результат правила: Причина из проекции')
-    expect(view.container.querySelector('.rule-provenance')?.textContent).toContain('Подтверждающие входные ID: input-0.')
+    expect(view.container.querySelector('.rule-provenance')?.textContent).toContain('Подтверждающие кадры: Кадр 1.')
     expect(screen.getByText('Неопределённость не указана в проекции.')).toBeTruthy()
     expect(view.container.querySelectorAll('.source-thumbnail')).toHaveLength(inputs.length)
-    expect(view.container.querySelector('.source-thumbnail')?.textContent).toContain('Исходный артефакт ID: image-0')
+    expect(view.container.querySelector('.result-details')?.textContent).toContain('Исходный артефакт ID: image-0')
   })
 
   it('renders the persisted rule outcome and human-check boundary', async () => {
@@ -865,7 +952,7 @@ describe('Observation result', () => {
     expect(await screen.findByRole('heading', { name: 'Рекомендована проверка человеком' })).toBeTruthy()
     const panel = screen.getByRole('region', { name: 'Проверка человеком' })
     expect(panel.textContent).toContain('Основание: Есть повод проверить возможную задержку вывоза грунта')
-    expect(panel.textContent).toContain('Подтверждающие входные ID: input-0, input-1, input-2.')
+    expect(panel.textContent).toContain('Подтверждающие кадры: Кадр 1, Кадр 2, Кадр 3.')
     expect(panel.textContent).toContain('Период: 2026-09-23T12:00:00+03:00. Заявленная зона: series_gate')
     expect(panel.textContent).toContain('Рекомендуемая проверка человеком: Проверить вручную.')
     expect(within(panel).getByText('Это рекомендация для проверки, а не подтверждение нарушения.')).toBeTruthy()
@@ -874,7 +961,7 @@ describe('Observation result', () => {
     expect(screen.getByText('Источник правила: demonstration rule.')).toBeTruthy()
     expect(screen.getByText('Необнаружение в кадре не доказывает отсутствие на площадке.')).toBeTruthy()
     const headings = [...document.querySelectorAll('.result h3')].map(item => item.textContent)
-    expect(headings).toEqual(['Наблюдения по кадрам', 'Данные серии', 'Исходные кадры', 'Правило и его источник', 'Неопределённость', 'Проверка человеком'])
+    expect(headings).toEqual(['Основание вывода', 'Исходные кадры'])
   })
 
   it('falls back to projected and run areas when series area is missing', async () => {
@@ -922,12 +1009,12 @@ describe('Observation result', () => {
     render(<App />)
     expect(await screen.findByRole('heading', { name: 'Проверка не запрошена' })).toBeTruthy()
     expect(document.querySelector('.rule-provenance')?.textContent).toContain('Самосвал обнаружен в пригодной серии; запрос проверки не сформирован.')
-    expect(document.querySelector('.rule-provenance')?.textContent).toContain('Подтверждающие входные ID: input-0, input-1.')
+    expect(document.querySelector('.rule-provenance')?.textContent).toContain('Подтверждающие кадры: Кадр 1, Кадр 2.')
     expect(screen.getByText(/ревизия rule-positive-v1/)).toBeTruthy()
     expect(screen.getByText('Необнаружение в кадре не доказывает отсутствие техники на всей площадке.')).toBeTruthy()
     expect(screen.getByText('Экскаватор: Обнаружен')).toBeTruthy()
     expect(screen.getByText('Самосвал: Обнаружен')).toBeTruthy()
-    expect(screen.getByText(/Пригодных кадров: 3\. Входные ID: input-0, input-1, input-2/)).toBeTruthy()
+    expect(screen.getByText(/Пригодных кадров: 3\. Кадр 1, Кадр 2, Кадр 3/)).toBeTruthy()
     expect(screen.queryByText(/Самосвал не обнаружен ни в одном/)).toBeNull()
     expect(screen.queryByText(/Проверить вручную/)).toBeNull()
     expect(screen.queryByText(/этап.*здоров|нарушени[йя] нет/i)).toBeNull()
@@ -955,9 +1042,9 @@ describe('Observation result', () => {
       : { ok: false, json: async () => ({ code: 'artifact_integrity_failed' }) })
     vi.stubGlobal('fetch', fetchMock)
     const view = render(<App />)
-    expect(await screen.findAllByText('Пригодность: пригоден.')).toHaveLength(2)
-    expect(view.container.querySelector('.source-thumbnail')?.textContent).toContain('Исходный артефакт ID: image-0')
-    expect(view.container.querySelector('.source-thumbnail')?.textContent).toContain('SHA-256: hash-0')
+    expect(await screen.findAllByText('Пригодность: пригоден.')).toHaveLength(1)
+    expect(view.container.querySelector('.result-details')?.textContent).toContain('Исходный артефакт ID: image-0')
+    expect(view.container.querySelector('.result-details')?.textContent).toContain('SHA-256: hash-0')
     expect((await screen.findAllByText('Целостность артефакта не подтверждена')).length).toBeGreaterThan(0)
     expect(view.container.querySelectorAll('.observation-row')).toHaveLength(4)
     view.unmount()
@@ -991,11 +1078,12 @@ describe('Observation result', () => {
     await screen.findByRole('heading', { name: 'Только наблюдения' })
     const thumbnails = [...view.container.querySelectorAll<HTMLElement>('.source-thumbnail')]
     expect(await within(thumbnails[1]).findByRole('img', { name: /Кадр 2/ })).toBeTruthy()
-    await user.click(await within(thumbnails[0]).findByRole('button', { name: 'Повторить' }))
-    expect(within(thumbnails[0]).getByText('Загружаем изображение…')).toBeTruthy()
+    const feature = view.container.querySelector<HTMLElement>('.result-feature-image')!
+    await user.click(await within(feature).findByRole('button', { name: 'Повторить' }))
+    expect(within(feature).getByText('Загружаем изображение…')).toBeTruthy()
     expect(within(thumbnails[1]).getByRole('img', { name: /Кадр 2/ })).toBeTruthy()
     await act(async () => { resolveRetry({ ok: true, blob: async () => new Blob(['recovered']) }) })
-    expect(await within(thumbnails[0]).findByRole('img', { name: /Кадр 1/ })).toBeTruthy()
+    expect(await within(feature).findByRole('img', { name: /Кадр 1/ })).toBeTruthy()
   })
 
   it('shows a later native failure instead of stale successful content', async () => {
@@ -1037,6 +1125,120 @@ beforeEach(() => {
   } })
 })
 afterEach(() => { vi.useRealTimers(); cleanup(); vi.unstubAllGlobals(); vi.restoreAllMocks() })
+
+describe('Zone plan and signals', () => {
+  const projectId = '11111111-1111-1111-1111-111111111111'
+  const zoneId = '22222222-2222-2222-2222-222222222222'
+  const workId = '33333333-3333-3333-3333-333333333333'
+
+  it('saves an editable work as the next zone plan revision', async () => {
+    history.replaceState({}, '', '/plan')
+    const user = userEvent.setup()
+    const fetchMock = vi.fn(async (url: string, options?: RequestInit) => ({ ok: true, json: async () =>
+      url === '/api/projects' ? { projects: [{ id: projectId, name: 'Объект А', timezone: 'Europe/Moscow' }] } :
+      url === '/api/catalog/works' ? { works: [{ id: workId, source_row: 4, code: '10.', title: 'Подготовка' }] } :
+      url === `/api/projects/${projectId}/zones` ? { zones: [{ id: zoneId, name: 'Север' }] } :
+      url === `/api/zones/${zoneId}/plan` && options?.method === 'PUT' ? { revision_number: 1 } :
+      url === `/api/zones/${zoneId}/plan` ? { revision_number: 0, entries: [] } : {} }))
+    vi.stubGlobal('fetch', fetchMock)
+    render(<App />)
+    await screen.findByText('Подготовка')
+    await user.selectOptions(screen.getByLabelText('Проект'), projectId)
+    await user.selectOptions(await screen.findByLabelText('Зона'), zoneId)
+    await user.click(await screen.findByRole('button', { name: 'Добавить работу' }))
+    await user.selectOptions(screen.getByLabelText('Состояние'), 'active')
+    await user.selectOptions(screen.getByLabelText('Сценарий анализа'), 'excavation')
+    await user.selectOptions(screen.getByLabelText('Ожидаемая техника'), 'excavator')
+    await user.click(screen.getByRole('button', { name: 'Сохранить новую ревизию' }))
+    await screen.findByText('Сохранена ревизия 1.')
+    const request = fetchMock.mock.calls.find(([url, options]) => url === `/api/zones/${zoneId}/plan` && options?.method === 'PUT')
+    const body = JSON.parse(String(request?.[1]?.body))
+    expect(body.expected_revision).toBe(0)
+    expect(body.entries[0]).toMatchObject({ catalog_work_id: workId, state: 'active', stage_key: 'excavation', expected_equipment: ['excavator'] })
+    expect(body.entries[0].start_at).toMatch(/[+-]\d\d:\d\d$/)
+  })
+
+  it('filters signals and saves human state with comment', async () => {
+    history.replaceState({}, '', '/signals')
+    const user = userEvent.setup()
+    const signal = { id: 'signal-1', run_id: null, zone_id: zoneId, revision_id: 'revision-1', work_entry_id: null,
+      kind: 'completion_unconfirmed', state: 'new', basis: { due_at: '2026-09-25T10:00:00Z' }, comment: '', created_at: '2026-09-25T11:00:00Z' }
+    const fetchMock = vi.fn(async (url: string, options?: RequestInit) => ({ ok: true, json: async () =>
+      options?.method === 'PATCH' ? { id: signal.id, state: 'in_progress', comment: 'Проверяем' }
+        : { new_count: 1, signals: url.includes('state=closed') ? [] : [signal] } }))
+    vi.stubGlobal('fetch', fetchMock)
+    render(<App />)
+    expect((await screen.findAllByText('Завершение не подтверждено')).length).toBeGreaterThan(0)
+    await user.selectOptions(screen.getByLabelText('Состояние'), 'in_progress')
+    await user.type(screen.getByLabelText('Комментарий'), 'Проверяем')
+    await user.click(screen.getByRole('button', { name: 'Сохранить' }))
+    await waitFor(() => expect(fetchMock.mock.calls.some(([, options]) => options?.method === 'PATCH')).toBe(true))
+    const request = fetchMock.mock.calls.find(([, options]) => options?.method === 'PATCH')
+    expect(JSON.parse(String(request?.[1]?.body))).toEqual({ state: 'in_progress', comment: 'Проверяем' })
+    await user.selectOptions(screen.getByLabelText('Показать'), 'closed')
+    expect(await screen.findByText('Сигналов по выбранному фильтру нет.')).toBeTruthy()
+  })
+
+  it('binds an analysis to the selected plan revision and each frame time', async () => {
+    history.replaceState({}, '', '/new')
+    const user = userEvent.setup()
+    const revisionId = '44444444-4444-4444-4444-444444444444'
+    const fetchMock = vi.fn(async (url: string, options?: RequestInit) => ({ ok: true, status: 202, json: async () =>
+      url === '/api/projects' ? { projects: [{ id: projectId, name: 'Объект А', timezone: 'Europe/Moscow' }] } :
+      url === `/api/projects/${projectId}/zones` ? { zones: [{ id: zoneId, name: 'Север' }] } :
+      url === `/api/zones/${zoneId}/plan` ? { revision_id: revisionId, revision_number: 2, entries: [] } :
+      url === '/api/runs/single-image' ? { run_id: '12345678-1234-1234-1234-123456789abc' } : snapshot('queued') }))
+    vi.stubGlobal('fetch', fetchMock)
+    render(<App />)
+    await fillContext(user)
+    await user.click(screen.getByRole('button', { name: 'Привязать к плану' }))
+    await user.selectOptions(await screen.findByLabelText('Проект плана'), projectId)
+    await user.selectOptions(await screen.findByLabelText('Зона плана'), zoneId)
+    expect(await screen.findByText('Ревизия плана: 2.')).toBeTruthy()
+    await user.upload(screen.getByLabelText('Выбрать изображение'), image('frame.jpg'))
+    const time = screen.getByLabelText('Время съёмки') as HTMLInputElement
+    fireEvent.change(time, { target: { value: '2026-09-25T12:30' } })
+    expect(screen.getByLabelText('Зона наблюдения')).toHaveProperty('readOnly', true)
+    await user.click(screen.getByRole('button', { name: 'Запустить анализ' }))
+    await waitFor(() => expect(fetchMock.mock.calls.some(([url, options]) => url === '/api/runs/single-image' && options?.method === 'POST')).toBe(true))
+    const request = fetchMock.mock.calls.find(([url, options]) => url === '/api/runs/single-image' && options?.method === 'POST')
+    expect(JSON.parse(String(request?.[1]?.body))).toMatchObject({ project_id: projectId, zone_id: zoneId, plan_revision_id: revisionId,
+      observation_area: 'Север', requested_classes: expect.arrayContaining(['road_roller', 'mobile_crane']),
+      capture_times: [expect.stringMatching(/^2026-09-25T12:30:00[+-]\d\d:\d\d$/)] })
+  })
+
+  it('keeps the submission unbound only after explicit cancellation', async () => {
+    history.replaceState({}, '', '/new')
+    const user = userEvent.setup()
+    const fetchMock = vi.fn(async (_url: string, _options?: RequestInit) => ({ ok: true, json: async () => ({ projects: [] }) }))
+    vi.stubGlobal('fetch', fetchMock)
+    render(<App />)
+    await fillContext(user)
+    await user.upload(screen.getByLabelText('Выбрать изображение'), image('frame.jpg'))
+    await user.click(screen.getByRole('button', { name: 'Привязать к плану' }))
+    await user.click(screen.getByRole('button', { name: 'Запустить анализ' }))
+    expect(await screen.findByText(/Выберите проект и зону с сохранённой ревизией плана/)).toBeTruthy()
+    expect(fetchMock.mock.calls.some(([, options]) => options?.method === 'POST')).toBe(false)
+    await user.click(screen.getByRole('button', { name: 'Без привязки к плану' }))
+    expect(screen.queryByLabelText('Проект плана')).toBeNull()
+  })
+
+  it('explains the legacy rule limitation before sending a PNG', async () => {
+    history.replaceState({}, '', '/new')
+    vi.stubGlobal('__ANALYSIS_CHOICES__', [{ id: 'excavation', label: 'Земляные работы', rule: {
+      name: 'Вывоз грунта', revision: 'v1', expectation: 'Самосвал', provenance: 'demo', recommendation: 'Проверить',
+    } }])
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+    const user = userEvent.setup()
+    render(<App />)
+    await fillContext(user)
+    await user.upload(screen.getByLabelText('Выбрать изображение'), new File([png], 'frame.png', { type: 'image/png' }))
+    await user.click(screen.getByRole('button', { name: 'Запустить анализ' }))
+    expect((await screen.findAllByText(/Текущее правило принимает JPEG/)).length).toBeGreaterThan(0)
+    expect(fetchMock.mock.calls.some(([, options]) => options?.method === 'POST')).toBe(false)
+  })
+})
 
 describe('About project', () => {
   it('opens directly without API reads and explains the bounded outcomes and source', async () => {
@@ -1145,7 +1347,7 @@ describe('Stages Overview', () => {
     expect(screen.getAllByRole('link', { name: 'Новый анализ' })).toHaveLength(1)
     await user.click(screen.getByRole('link', { name: 'Новый анализ' }))
     expect(location.pathname).toBe('/new')
-    expect(document.activeElement).toBe(screen.getByRole('heading', { name: 'Наблюдение за техникой' }))
+    expect(document.activeElement).toBe(screen.getByRole('heading', { name: 'Новый анализ' }))
     expect(screen.getByText(/Выбранный этап не настроен в прототипе/)).toBeTruthy()
     expect(screen.getByText(/Привязка сохранится в анализе/)).toBeTruthy()
   })
@@ -1268,6 +1470,27 @@ describe('New Analysis', () => {
     provenance: 'demonstration rule', recommendation: 'Проверить вручную',
   } }, { id: 'other', label: 'Другой этап', rule: null }] }
 
+  it('validates dropped files, previews accepted frames, and releases removed previews', async () => {
+    const user = userEvent.setup()
+    const create = vi.fn().mockReturnValueOnce('blob:first').mockReturnValueOnce('blob:second').mockReturnValueOnce('blob:restored')
+    const revoke = vi.fn()
+    vi.stubGlobal('URL', { ...URL, createObjectURL: create, revokeObjectURL: revoke })
+    render(<App />)
+    expect(screen.getByText('Включённые примеры').closest('details')?.open).toBe(false)
+    const dropzone = screen.getByRole('group', { name: 'Загрузка кадров' })
+    fireEvent.drop(dropzone, { dataTransfer: { files: [image('first.jpg'), image('second.jpg')] } })
+    expect(await screen.findByText('second.jpg')).toBeTruthy()
+    expect(screen.getAllByRole('img', { name: /Предпросмотр: кадр/ })).toHaveLength(2)
+    expect(create).toHaveBeenCalledTimes(2)
+    await user.click(screen.getByRole('button', { name: 'Удалить: first.jpg, кадр 1' }))
+    expect(revoke).toHaveBeenCalledWith('blob:first')
+    await user.click(screen.getByRole('button', { name: 'Вернуть' }))
+    expect(await screen.findByRole('img', { name: 'Предпросмотр: кадр 1, first.jpg' })).toBeTruthy()
+    expect(create).toHaveBeenCalledTimes(3)
+    fireEvent.drop(dropzone, { dataTransfer: { files: [new File(['bad'], 'bad.gif', { type: 'image/gif' })] } })
+    await waitFor(() => expect(document.getElementById('images-error')?.textContent).toContain('bad.gif: Поддерживаются файлы JPEG'))
+  })
+
   for (const demo of demoCases.cases) {
     it(`loads ${demo.id} as an editable ordinary series in source order`, async () => {
       const user = userEvent.setup()
@@ -1281,7 +1504,8 @@ describe('New Analysis', () => {
       vi.stubGlobal('fetch', fetchMock)
       render(<App />)
       await user.type(screen.getByLabelText('Сценарий'), 'Исходный черновик')
-      await user.upload(screen.getByLabelText('Выбрать JPEG'), image('mine.jpg'))
+      await user.upload(screen.getByLabelText('Выбрать изображение'), image('mine.jpg'))
+      await user.click(screen.getByText('Включённые примеры'))
       await user.click(screen.getByRole('button', { name: demo.label }))
       expect(await screen.findByText('Screenshot_' + demo.frames[2].sourceMember.match(/\d+/)![0] + '.jpg')).toBeTruthy()
       expect(screen.queryByText('mine.jpg')).toBeNull()
@@ -1315,7 +1539,8 @@ describe('New Analysis', () => {
     }))
     render(<App />)
     await user.type(screen.getByLabelText('Сценарий'), 'Мой сценарий')
-    await user.upload(screen.getByLabelText('Выбрать JPEG'), image('mine.jpg'))
+    await user.upload(screen.getByLabelText('Выбрать изображение'), image('mine.jpg'))
+    await user.click(screen.getByText('Включённые примеры'))
     await user.click(screen.getByRole('button', { name: demo.label }))
     expect(await screen.findByText(/Текущая форма сохранена/)).toBeTruthy()
     expect((screen.getByLabelText('Сценарий') as HTMLInputElement).value).toBe('Мой сценарий')
@@ -1332,7 +1557,8 @@ describe('New Analysis', () => {
     vi.stubGlobal('fetch', fetchMock)
     render(<App />)
     await user.type(screen.getByLabelText('Сценарий'), 'Мой сценарий')
-    await user.upload(screen.getByLabelText('Выбрать JPEG'), image('mine.jpg'))
+    await user.upload(screen.getByLabelText('Выбрать изображение'), image('mine.jpg'))
+    await user.click(screen.getByText('Включённые примеры'))
     vi.useFakeTimers()
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: demo.label })); await Promise.resolve() })
     expect(screen.getByRole('button', { name: demo.label })).toHaveProperty('disabled', true)
@@ -1366,6 +1592,7 @@ describe('New Analysis', () => {
     Object.defineProperty(video, 'videoWidth', { configurable: true, value: 2 })
     Object.defineProperty(video, 'videoHeight', { configurable: true, value: 2 })
     await user.click(screen.getByRole('button', { name: 'Сделать снимок' }))
+    await user.click(screen.getByText('Включённые примеры'))
     await user.click(screen.getByRole('button', { name: demo.label }))
     expect(await screen.findByText('Screenshot_90.jpg')).toBeTruthy()
     await act(async () => finishCapture(new Blob([jpeg], { type: 'image/jpeg' })))
@@ -1379,6 +1606,7 @@ describe('New Analysis', () => {
     vi.stubGlobal('__ANALYSIS_CHOICES__', configuredChoices.stages)
     render(<App />)
     await user.type(screen.getByLabelText('Сценарий'), 'Мой сценарий')
+    await user.click(screen.getByText('Включённые примеры'))
     await user.click(screen.getByRole('button', { name: demoCases.cases[0].label }))
     expect(screen.getByRole('alert').textContent).toContain('текущая ревизия правила изменилась')
     expect((screen.getByLabelText('Сценарий') as HTMLInputElement).value).toBe('Мой сценарий')
@@ -1386,6 +1614,7 @@ describe('New Analysis', () => {
     const saved = { endpoint: '/api/runs/series', body: '{"original":true}', key: 'original-key' }
     sessionStorage.setItem('observation-pending', JSON.stringify(saved))
     render(<App />)
+    await user.click(screen.getByText('Включённые примеры'))
     await screen.findByText(/загрузка примера недоступна/)
     expect(screen.getByRole('button', { name: demoCases.cases[0].label })).toHaveProperty('disabled', true)
     expect(sessionStorage.getItem('observation-pending')).toBe(JSON.stringify(saved))
@@ -1459,7 +1688,7 @@ describe('New Analysis', () => {
     vi.stubGlobal('fetch', post)
     render(<App />)
     await fillContext(user)
-    await user.upload(screen.getByLabelText('Выбрать JPEG'), image('one.jpg'))
+    await user.upload(screen.getByLabelText('Выбрать изображение'), image('one.jpg'))
     expect(screen.getByText(/нужны минимум три пригодных кадра/)).toBeTruthy()
     await user.click(screen.getByRole('button', { name: 'Запустить анализ' }))
     await waitFor(() => expect(post).toHaveBeenCalled())
@@ -1474,7 +1703,7 @@ describe('New Analysis', () => {
     vi.stubGlobal('fetch', post)
     render(<App />)
     await fillContext(user)
-    await user.upload(screen.getByLabelText('Выбрать JPEG'), [image('first.jpg', 1), image('second.jpg', 2), image('duplicate.jpg', 1)])
+    await user.upload(screen.getByLabelText('Выбрать изображение'), [image('first.jpg', 1), image('second.jpg', 2), image('duplicate.jpg', 1)])
     await screen.findByText('Кадр 3')
     await user.click(screen.getByRole('button', { name: /Выше: second.jpg/ }))
     const rows = screen.getAllByRole('listitem').filter(row => row.classList.contains('frame'))
@@ -1501,8 +1730,8 @@ describe('New Analysis', () => {
     render(<App />)
     expect(screen.getByRole('link', { name: 'К основному содержимому' })).toHaveProperty('hash', '#main')
     await fillContext(user)
-    await user.upload(screen.getByLabelText('Выбрать JPEG'), [image('first.jpg'), new File(['bad'], 'bad.png', { type: 'image/png' }), image('third.jpg')])
-    expect((await screen.findAllByText(/bad.png: Поддерживаются только файлы JPEG/)).length).toBeGreaterThan(0)
+    await user.upload(screen.getByLabelText('Выбрать изображение'), [image('first.jpg'), new File(['bad'], 'bad.png', { type: 'image/png' }), image('third.jpg')])
+    expect((await screen.findAllByText(/bad.png: Файл не удалось прочитать как изображение/)).length).toBeGreaterThan(0)
     expect(screen.getByText('third.jpg')).toBeTruthy()
     await user.click(screen.getByRole('button', { name: /Удалить: first.jpg/ }))
     await user.click(screen.getByRole('button', { name: 'Вернуть' }))
@@ -1510,6 +1739,23 @@ describe('New Analysis', () => {
     expect(within(rows[0]).getByText('first.jpg')).toBeTruthy()
     expect(within(rows[1]).getByText('third.jpg')).toBeTruthy()
     expect(screen.getByLabelText('Сценарий')).toHaveProperty('value', 'Земляные работы')
+  })
+
+  it('accepts PNG with matching signature and preserves its original bytes in the request', async () => {
+    const user = userEvent.setup()
+    const post = vi.fn(async (url: string, _options?: RequestInit) => ({ status: 202, ok: true,
+      json: async () => url === '/api/runs/single-image'
+        ? { run_id: '12345678-1234-1234-1234-123456789abc' }
+        : snapshot('queued') }))
+    vi.stubGlobal('fetch', post)
+    render(<App />)
+    await fillContext(user)
+    await user.upload(screen.getByLabelText('Выбрать изображение'), new File([png], 'frame.png', { type: 'image/png' }))
+    expect(await screen.findByText('frame.png')).toBeTruthy()
+    await user.click(screen.getByRole('button', { name: 'Запустить анализ' }))
+    await waitFor(() => expect(post.mock.calls.some(([url, options]) => url === '/api/runs/single-image' && options?.method === 'POST')).toBe(true))
+    const request = post.mock.calls.find(([url, options]) => url === '/api/runs/single-image' && options?.method === 'POST')
+    expect(JSON.parse(String(request?.[1]?.body)).image_base64).toBe(btoa(String.fromCharCode(...png)))
   })
 
   it('preserves exact request and idempotency key after an uncertain response', async () => {
@@ -1521,7 +1767,7 @@ describe('New Analysis', () => {
     vi.stubGlobal('fetch', fetchMock)
     render(<App />)
     await fillContext(user)
-    await user.upload(screen.getByLabelText('Выбрать JPEG'), image('one.jpg'))
+    await user.upload(screen.getByLabelText('Выбрать изображение'), image('one.jpg'))
     await user.click(screen.getByRole('button', { name: 'Запустить анализ' }))
     expect(await screen.findByText(/Ответ сервера не получен/)).toBeTruthy()
     expect(screen.getByLabelText('Сценарий')).toHaveProperty('value', 'Земляные работы')
@@ -1552,7 +1798,7 @@ describe('New Analysis', () => {
       vi.stubGlobal('fetch', post)
       render(<App />)
       await fillContext(user)
-      await user.upload(screen.getByLabelText('Выбрать JPEG'), filenames.map(name => image(name)))
+      await user.upload(screen.getByLabelText('Выбрать изображение'), filenames.map(name => image(name)))
       await screen.findByText(`Кадр ${filenames.length}`)
       const deadlines: Array<() => void> = []
       const realSetTimeout = globalThis.setTimeout
@@ -1643,7 +1889,7 @@ describe('New Analysis', () => {
     vi.stubGlobal('fetch', post)
     render(<App />)
     await fillContext(user)
-    await user.upload(screen.getByLabelText('Выбрать JPEG'), image('one.jpg'))
+    await user.upload(screen.getByLabelText('Выбрать изображение'), image('one.jpg'))
     await user.click(screen.getByRole('button', { name: 'Запустить анализ' }))
     await waitFor(() => expect(storage.open).toHaveBeenCalledTimes(1))
     expect(post).not.toHaveBeenCalled()
@@ -1668,7 +1914,7 @@ describe('New Analysis', () => {
     expect(sessionStorage.getItem('observation-pending-id')).toBeNull()
     expect(screen.getByLabelText('Сценарий').closest('fieldset')).toHaveProperty('disabled', false)
     await fillContext(user)
-    await user.upload(screen.getByLabelText('Выбрать JPEG'), image('two.jpg'))
+    await user.upload(screen.getByLabelText('Выбрать изображение'), image('two.jpg'))
     await user.click(screen.getByRole('button', { name: 'Запустить анализ' }))
     await waitFor(() => expect(storage.open).toHaveBeenCalledTimes(4))
     storage.completeWrite()
@@ -1687,7 +1933,7 @@ describe('New Analysis', () => {
     vi.stubGlobal('fetch', post)
     render(<App />)
     await fillContext(user)
-    await user.upload(screen.getByLabelText('Выбрать JPEG'), image('one.jpg'))
+    await user.upload(screen.getByLabelText('Выбрать изображение'), image('one.jpg'))
     await user.click(screen.getByRole('button', { name: 'Запустить анализ' }))
     await waitFor(() => expect(storage.open).toHaveBeenCalledTimes(1))
     storage.completeWrite()
@@ -1711,7 +1957,7 @@ describe('New Analysis', () => {
       vi.stubGlobal('fetch', post)
       render(<App />)
       await fillContext(user)
-      await user.upload(screen.getByLabelText('Выбрать JPEG'), filenames.map(name => image(name)))
+      await user.upload(screen.getByLabelText('Выбрать изображение'), filenames.map(name => image(name)))
       await user.click(screen.getByRole('button', { name: 'Запустить анализ' }))
       expect(await screen.findByText(/Отправка завершилась ошибкой.*новый ключ отправки/)).toBeTruthy()
       expect(post).toHaveBeenCalledTimes(1)
@@ -1741,7 +1987,7 @@ describe('New Analysis', () => {
     vi.stubGlobal('fetch', post)
     render(<App />)
     await fillContext(user)
-    await user.upload(screen.getByLabelText('Выбрать JPEG'), image('one.jpg'))
+    await user.upload(screen.getByLabelText('Выбрать изображение'), image('one.jpg'))
     await user.click(screen.getByRole('button', { name: 'Запустить анализ' }))
     expect(await screen.findByText(/Ответ сервера не получен/)).toBeTruthy()
     const saved = sessionStorage.getItem('observation-pending')
@@ -1775,7 +2021,7 @@ describe('New Analysis', () => {
     const user = userEvent.setup()
     Object.defineProperty(navigator, 'mediaDevices', { configurable: true, value: { getUserMedia: vi.fn().mockRejectedValue(new DOMException('denied', 'NotAllowedError')) } })
     render(<App />)
-    await user.upload(screen.getByLabelText('Выбрать JPEG'), image('one.jpg'))
+    await user.upload(screen.getByLabelText('Выбрать изображение'), image('one.jpg'))
     await user.click(screen.getByRole('button', { name: 'Снять камерой' }))
     expect((await screen.findAllByText(/Доступ к камере не предоставлен/)).length).toBeGreaterThan(0)
     expect(screen.getByRole('button', { name: 'Снять камерой' })).toHaveProperty('disabled', true)
@@ -1793,7 +2039,7 @@ describe('New Analysis', () => {
       .mockResolvedValueOnce({ width: 8000, height: 6000, close: vi.fn() })
     vi.stubGlobal('createImageBitmap', decode)
     render(<App />)
-    await user.upload(screen.getByLabelText('Выбрать JPEG'), [image('good.jpg'), image('broken.jpg'), image('large.jpg')])
+    await user.upload(screen.getByLabelText('Выбрать изображение'), [image('good.jpg'), image('broken.jpg'), image('large.jpg')])
     expect(await screen.findByText('good.jpg')).toBeTruthy()
     expect(screen.queryByText('broken.jpg')).toBeNull()
     expect(screen.queryByText('large.jpg')).toBeNull()
@@ -1809,7 +2055,7 @@ describe('New Analysis', () => {
     vi.stubGlobal('fetch', post)
     render(<App />)
     await fillContext(user)
-    fireEvent.change(screen.getByLabelText('Выбрать JPEG'), { target: { files: [image('slow.jpg')] } })
+    fireEvent.change(screen.getByLabelText('Выбрать изображение'), { target: { files: [image('slow.jpg')] } })
     await waitFor(() => expect(finishDecode).toBeTypeOf('function'))
     fireEvent.submit(screen.getByRole('button', { name: 'Запустить анализ' }).closest('form')!)
     expect(post).not.toHaveBeenCalled()
@@ -1825,7 +2071,7 @@ describe('New Analysis', () => {
     vi.stubGlobal('fetch', post)
     render(<App />)
     await fillContext(user)
-    await user.upload(screen.getByLabelText('Выбрать JPEG'), image('one.jpg'))
+    await user.upload(screen.getByLabelText('Выбрать изображение'), image('one.jpg'))
     await user.click(screen.getByRole('button', { name: 'Запустить анализ' }))
     expect(await screen.findByText(/Сервер отклонил запрос/)).toBeTruthy()
     expect(sessionStorage.getItem('observation-pending')).toBeNull()
@@ -1917,7 +2163,7 @@ describe('New Analysis', () => {
     fireEvent.click(screen.getByRole('link', { name: 'Новый анализ' }))
     await act(async () => { resolveLate({ ok: true, json: async () => snapshot('failed') }); await Promise.resolve() })
     expect(fetchMock.mock.calls[2][1].signal.aborted).toBe(true)
-    expect(screen.getByRole('heading', { name: 'Наблюдение за техникой' })).toBeTruthy()
+    expect(screen.getByRole('heading', { name: 'Новый анализ' })).toBeTruthy()
     expect(screen.queryByText('Проверка пригодности кадров')).toBeNull()
     vi.useRealTimers()
   })
@@ -1982,10 +2228,10 @@ describe('New Analysis', () => {
   it('keeps undo disabled when a restored frame would exceed eight', async () => {
     const user = userEvent.setup()
     render(<App />)
-    await user.upload(screen.getByLabelText('Выбрать JPEG'), Array.from({ length: 8 }, (_, index) => image(`${index}.jpg`, index)))
+    await user.upload(screen.getByLabelText('Выбрать изображение'), Array.from({ length: 8 }, (_, index) => image(`${index}.jpg`, index)))
     await screen.findByText('Кадр 8')
     await user.click(screen.getByRole('button', { name: /Удалить: 0.jpg/ }))
-    await user.upload(screen.getByLabelText('Выбрать JPEG'), image('replacement.jpg'))
+    await user.upload(screen.getByLabelText('Выбрать изображение'), image('replacement.jpg'))
     await screen.findByText('replacement.jpg')
     expect(screen.getByRole('button', { name: 'Вернуть' })).toHaveProperty('disabled', true)
   })
@@ -2014,7 +2260,7 @@ describe('New Analysis', () => {
       const user = userEvent.setup()
       render(<App />)
       await fillContext(user)
-      await user.upload(screen.getByLabelText('Выбрать JPEG'), image('one.jpg'))
+      await user.upload(screen.getByLabelText('Выбрать изображение'), image('one.jpg'))
       fireEvent.change(screen.getByLabelText('Дата и время наблюдения'), { target: { value: '2026-03-08T02:30' } })
       await user.click(screen.getByRole('button', { name: 'Запустить анализ' }))
       expect((await screen.findAllByText(/Укажите существующие местные дату и время/)).length).toBeGreaterThan(0)

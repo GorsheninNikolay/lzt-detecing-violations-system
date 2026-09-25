@@ -36,6 +36,12 @@ def jpeg(color) -> bytes:
     return output.getvalue()
 
 
+def png(color) -> bytes:
+    output = io.BytesIO()
+    Image.new("RGB", (96, 96), color).save(output, format="PNG")
+    return output.getvalue()
+
+
 def request_body(image: bytes, classes=None) -> dict:
     body = {"intent": "observation_only", "scenario": "equipment_check", "observation_area": "north_gate",
             "period": "2026-09-23T12:00:00+03:00", "image_base64": base64.b64encode(image).decode()}
@@ -243,6 +249,88 @@ def test_validation_before_publication():
             validate_request(body)
     image = jpeg((0, 0, 0))
     assert validate_request(request_body(image))[2] == ["excavator", "dump_truck"]
+    assert validate_request(request_body(png((0, 0, 0))))[0] == png((0, 0, 0))
+    with pytest.raises(SubmissionError, match="rule_not_applicable"):
+        validate_request(request_body(png((0, 0, 0))) | {"intent": "rule_evaluation", "stage": "excavation"})
+
+
+def test_mixed_format_submission_passes_each_media_type_to_publication():
+    originals = [jpeg((1, 2, 3)), png((4, 5, 6))]
+    body = {key: value for key, value in request_body(originals[0]).items() if key != "image_base64"}
+    body["images_base64"] = [base64.b64encode(image).decode() for image in originals]
+    published = []
+
+    class Store:
+        def begin_submission(self, key, request_hash, media_type):
+            assert media_type == "image/jpeg"
+            return "created", None, uuid.uuid4(), None
+
+        def create_submission_intent(self, key, media_type):
+            assert media_type == "image/png"
+            return uuid.uuid4()
+
+        def publication_content_verified(self, *args):
+            pass
+
+        def publication_object_published(self, *args):
+            pass
+
+        def commit_series_submission(self, key, profile, revision, snapshot, context, requested, manifest, **kwargs):
+            assert len(manifest) == 2
+            return uuid.uuid4()
+
+    class Artifacts:
+        def upload_temporary(self, intent, image, media_type):
+            published.append((image, media_type))
+            return "temporary", uuid.uuid4().hex, len(image)
+
+        def publish_final(self, intent, image, media_type, digest, size):
+            assert (image, media_type) in published
+
+        def read_verified(self, key, digest, size):
+            pass
+
+    assert submission.submit_series(Store(), Artifacts(), "mixed", body, uuid.uuid4(), 1, {})[0] == "queued"
+    assert published == list(zip(originals, ("image/jpeg", "image/png")))
+
+
+def test_mixed_image_formats_preserve_originals_and_retry(isolated_admission_database, integration):
+    config, _, _ = integration
+    store = PostgresStore(isolated_admission_database)
+    artifacts = ArtifactStore(Config(isolated_admission_database, config.s3_endpoint, config.s3_bucket,
+                                     config.s3_access_key, config.s3_secret_key))
+    parent, profile = uuid.uuid4(), uuid.uuid4()
+    with store.engine.begin() as connection:
+        connection.execute(text("INSERT INTO observer_profiles (id, status, profile_hash, snapshot) VALUES (:id, 'draft', :hash, '{}'::jsonb)"),
+                           {"id": parent, "hash": uuid.uuid4().hex})
+        connection.execute(text("""INSERT INTO observer_profiles (id, parent_id, status, profile_hash, snapshot, audit_hash)
+            VALUES (:id, :parent, 'admitted', :hash, '{}'::jsonb, :audit)"""),
+            {"id": profile, "parent": parent, "hash": uuid.uuid4().hex, "audit": uuid.uuid4().hex})
+        connection.execute(text("""INSERT INTO profile_authorizations
+            (profile_id, revision, state, reason, audit_hash, interactive_retry_allowed)
+            SELECT :id, 1, 'enabled', 'test', audit_hash, false FROM observer_profiles WHERE id = :id"""),
+            {"id": profile})
+    originals = [jpeg((1, 2, 3)), png((4, 5, 6))]
+    body = {key: value for key, value in request_body(originals[0]).items() if key != "image_base64"}
+    body["images_base64"] = [base64.b64encode(image).decode() for image in originals]
+    try:
+        _, run_id = submission.submit_series(store, artifacts, uuid.uuid4().hex, body, profile, 1, {})
+        with store.engine.connect() as connection:
+            rows = connection.execute(text("""SELECT a.key, a.sha256, a.size, a.media_type
+                FROM run_inputs i JOIN artifact_metadata a ON a.id = i.artifact_id
+                WHERE i.run_id = :run ORDER BY i.ordinal"""), {"run": run_id}).all()
+        assert [row.media_type for row in rows] == ["image/jpeg", "image/png"]
+        assert [artifacts.read_verified(row.key, row.sha256, row.size) for row in rows] == originals
+        with store.engine.begin() as connection:
+            connection.execute(text("UPDATE analysis_runs SET state = 'failed' WHERE id = :run"), {"run": run_id})
+        retried = store.retry_ordinary(run_id, profile, 1, {}, artifacts)
+        with store.engine.connect() as connection:
+            retry_types = connection.execute(text("""SELECT a.media_type FROM run_inputs i
+                JOIN artifact_metadata a ON a.id = i.artifact_id
+                WHERE i.run_id = :run ORDER BY i.ordinal"""), {"run": retried}).scalars().all()
+        assert retry_types == ["image/jpeg", "image/png"]
+    finally:
+        store.close()
 
 
 def test_rejects_large_dimensions_before_pixel_load(monkeypatch):

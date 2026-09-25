@@ -1032,3 +1032,13 @@ So that I do not confuse model comparison with prototype readiness.
 **When** I expand technical detail
 **Then** the view distinguishes measured performance, commercial/data gates, returned identity, and unresolved gaps
 **And** neither the comparison report nor UI publishes an ActiveObserverConfiguration or treats a shortlisted candidate as a selected winner.
+
+## Epic 5: Zone plans, located equipment, and review signals
+
+This increment extends the completed Rapid MVP. The source XLSX is a work catalog, not a schedule. Existing evidence, profile, and comparison revisions remain immutable.
+
+1. **Catalog and plan:** Given the supplied XLSX, importing it preserves 377 distinct source rows, raw/date-formatted codes, cell coordinates, and applicability; given a zone, a manager can save parallel work entries as an immutable, optimistic plan revision.
+2. **PNG and located observations:** Given JPEG/PNG input and an admitted local profile, a completed run retains original bytes and returns frame-bound normalized boxes for every detected object; old/cloud runs do not invent boxes.
+3. **Stage hypotheses:** Given corroborating equipment and scene features in the same frame, a run proposes excavation, concreting, or roadwork with supporting frame IDs; without corroboration it returns no decisive stage. A confirmation is stored separately.
+4. **Signals:** Given an explicitly bound plan revision and enough usable frames, equipment checks use all concurrent work entries and create idempotent, reviewable signals; given an expired unfinished entry, the calendar signal states only that completion is unconfirmed.
+5. **Release gate:** Given a group-disjoint labeled eight-class set, report class, box, stage, signal, and laptop-speed results; only admitted capabilities appear ready. Reproduce the original-PNG demo and verify jury access, presentation, accompanying document, and camera guidance.

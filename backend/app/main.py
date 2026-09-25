@@ -18,6 +18,8 @@ from app.domain.comparison_campaign import CampaignGateError
 from app.config import Config
 from app.profiles.grounding_dino import verify_snapshot
 from app.profiles.cloud_api import CloudObserver
+from app.application.site import router as site_router
+from app.application.signals import router as signals_router
 
 
 MAX_HTTP_BODY_BYTES = 25_100_000
@@ -112,6 +114,8 @@ async def lifespan(app: FastAPI):
 def create_app() -> FastAPI:
     app = FastAPI(lifespan=lifespan)
     app.state.readiness = Readiness()
+    app.include_router(site_router)
+    app.include_router(signals_router)
 
     @app.get("/health/live")
     def live() -> dict[str, bool]:

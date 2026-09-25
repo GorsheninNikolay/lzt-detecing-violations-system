@@ -3,7 +3,9 @@
 .opencode/
 _bmad/
 _bmad-output/
-artifacts/
+artifacts/**
+!artifacts/dataset/
+!artifacts/dataset/Свод*.xlsx
 output/
 reviews/
 tmp/

@@ -296,3 +296,9 @@ sequenceDiagram
 - Approve rights-cleared RF-DETR training corpus size/split; only the specifically owner-approved images are eligible for admitted Qwen processing, and new site imagery needs separate approval.
 - Revisit Kimi only if Russian customer eligibility, payment, commercial terms, and data terms are evidenced from the intended account.
 - Add vector search only after an approved use case; `pgvector` is not a placeholder dependency.
+
+### Expansion decision — zone plans and public object evidence (2026-09-25)
+
+The historical two-class rules and comparison cells remain revision-bound. The later expansion adds an XLSX catalog with source coordinates and checksum; project and zone entities; immutable full plan revisions; a run-to-plan binding with capture time per frame; JPEG/PNG originals; public normalized boxes and scene features; stage hypotheses; and persistent signals. PostgreSQL remains the structured-state authority, S3 retains image and native invocation bytes, and the existing leased executor publishes observations. The cloud profile remains presence-only.
+
+The expanded local adapter uses a distinct `equipment-boxes-v2` observation contract. Its eight equipment prompts and five scene prompts must pass a new group-disjoint evaluation and admission before use as a ready profile. Only explicit exclusion across all concurrent active operations can support an unplanned-equipment signal. Missing equipment requires three assessable frames and an active operation's explicit expectation. A human stage confirmation is a separate write and cannot mutate the run or plan. Calendar signals say completion is unconfirmed.

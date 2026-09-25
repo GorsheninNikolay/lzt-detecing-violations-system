@@ -18,25 +18,28 @@ from app.adapters.postgres import AdmissionStoreError, PostgresStore
 from app.config import Config
 from app.domain.observations import CLASSES, closed_observations, normalized_states
 from app.profiles.grounding_dino import PREPROCESSING_REVISION, GroundingDinoCpu, canonical_bytes
+from app.profiles.grounding_dino_v2 import GroundingDinoCpuV2, EQUIPMENT_PROMPTS
 from app.profiles.cloud_api import CloudObserver, read_owner_gate
 from app.domain.comparison_campaign import CampaignGateError
 from app.adapters.postgres import LOCK_ID
 from sqlalchemy import text
 
 
-def _observe_worker(snapshot_dir: str, hashes: dict, image: bytes, output) -> None:
+def _observe_worker(snapshot_dir: str, hashes: dict, image: bytes, output, extended: bool = False) -> None:
     os.environ["HF_HUB_OFFLINE"] = "1"
     os.environ["TRANSFORMERS_OFFLINE"] = "1"
     try:
-        output.put(("ok", GroundingDinoCpu(Path(snapshot_dir), hashes).observe(image)))
+        observer = (GroundingDinoCpuV2 if extended else GroundingDinoCpu)(Path(snapshot_dir), hashes)
+        output.put(("ok", observer.observe(image)))
     except Exception:
         output.put(("error", None))
 
 
-def _observe_bounded(snapshot_dir: str, hashes: dict, image: bytes, seconds: float) -> dict:
+def _observe_bounded(snapshot_dir: str, hashes: dict, image: bytes, seconds: float,
+                     extended: bool = False) -> dict:
     context = multiprocessing.get_context("spawn")
     output = context.Queue(maxsize=1)
-    process = context.Process(target=_observe_worker, args=(snapshot_dir, hashes, image, output))
+    process = context.Process(target=_observe_worker, args=(snapshot_dir, hashes, image, output, extended))
     process.start()
     try:
         try:
@@ -80,9 +83,10 @@ def _decode_image(image: bytes) -> None:
         source.load()
 
 
-def _validate_result(result: dict) -> None:
+def _validate_result(result: dict, prompts: dict[str, str] | None = None) -> None:
     try:
-        normalized_states(result["states"])
+        prompts = prompts or {"excavator": "an excavator", "dump_truck": "a dump truck"}
+        normalized_states(result["states"], tuple(prompts))
         native = result["native"]
         detections = native["detections"]
         dimensions = native["image_size"]
@@ -97,8 +101,7 @@ def _validate_result(result: dict) -> None:
                     or not 0 <= item["score"] <= 1 or len(item["box"]) != 4
                     or any(not math.isfinite(value) for value in item["box"])):
                 raise ValueError
-        expected = {"excavator": "an excavator", "dump_truck": "a dump truck"}
-        for name, label in expected.items():
+        for name, label in prompts.items():
             detected = any(item["label"] == label for item in detections)
             if (result["states"][name] == "detected") != detected:
                 raise ValueError
@@ -211,7 +214,11 @@ class ClaimLoop:
                 if len(work["frames"]) == 1:
                     single_image = image
                 del image
-            supported = bool(set(work["requested_classes"]) & set(CLASSES))
+            supported_classes = (tuple(EQUIPMENT_PROMPTS) if snapshot.get("observation_contract") == "equipment-boxes-v2"
+                                 else CLASSES)
+            extended = supported_classes != CLASSES
+            prompts = EQUIPMENT_PROMPTS if extended else None
+            supported = bool(set(work["requested_classes"]) & set(supported_classes))
             for frame in work["frames"]:
                 if supported:
                     image = (single_image if single_image is not None else
@@ -228,7 +235,7 @@ class ClaimLoop:
                 invocation = await run_step(self.store.reserve_ordinary, run_id, owner, revision,
                     frame["sha256"], supported, frame["input_id"], campaign)
                 if invocation is None:
-                    states = {name: "insufficient_data" for name in CLASSES}
+                    states = {name: "insufficient_data" for name in supported_classes}
                     result, native_intent = None, None
                 else:
                     timeout = min(float(work["profile_snapshot"]["runtime"]["per_image_timeout_seconds"]),
@@ -238,13 +245,18 @@ class ClaimLoop:
                             raise RuntimeError("cloud_credential_missing")
                         result = await run_provider(
                             lambda: CloudObserver(snapshot, config.cloud_api_key).observe(image, timeout))
-                        normalized_states(result["states"])
+                        normalized_states(result["states"], supported_classes)
                         result["native"]["credential_key_id"] = fresh["api_key_id"]
                         result["native"]["owner_gate"] = fresh
                     else:
-                        result = await run_provider(_observe_bounded, self.snapshot_dir,
-                            snapshot["model_files"], image, timeout)
-                        _validate_result(result)
+                        observer_args = (self.snapshot_dir, snapshot["model_files"], image, timeout)
+                        result = await run_provider(_observe_bounded, *observer_args, True) if extended else await run_provider(
+                            _observe_bounded, *observer_args)
+                        _validate_result(result, prompts)
+                        if not extended:
+                            with Image.open(io.BytesIO(image)) as source:
+                                orientation = source.getexif().get(274, 1)
+                                result["source_orientation"] = orientation if orientation in range(1, 9) else 1
                         result["preprocessing_revision"] = PREPROCESSING_REVISION
                     native = canonical_bytes({"response" if cloud else "detections": result["native"],
                         "returned_model_identity": result["returned_model_identity"],
@@ -259,7 +271,7 @@ class ClaimLoop:
                     await run_step(self.artifacts.read_verified, f"sha256/{hash_}", hash_, size)
                     states = result["states"]
                 remaining_batch()
-                observations = closed_observations(states, work["requested_classes"], str(frame["artifact_id"]))
+                observations = closed_observations(states, work["requested_classes"], str(frame["artifact_id"]), supported_classes)
                 if renewal.done():
                     raise RuntimeError("campaign_lease_rejected" if campaign else "ordinary_lease_rejected")
                 await asyncio.to_thread(self.store.finish_ordinary, run_id, owner, revision,

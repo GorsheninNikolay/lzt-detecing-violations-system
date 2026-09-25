@@ -7,7 +7,7 @@ sources:
   - ../../../specs/spec-construction-monitoring-concepts/SPEC.md
   - ../../../specs/spec-construction-monitoring-concepts/prototype-scenarios.md
   - ../../architecture/architecture-lzt-detecing-violations-system-2026-09-21/ARCHITECTURE-SPINE.md
-updated: 2026-09-21
+updated: 2026-09-25
 colors:
   canvas: '#211331'
   surface: '#2B1A3D'
@@ -35,7 +35,7 @@ colors:
 typography:
   display:
     fontFamily: 'Onest, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif'
-    fontSize: 36px
+    fontSize: 40px
     fontWeight: '650'
     lineHeight: '1.15'
     letterSpacing: -0.02em
@@ -67,7 +67,7 @@ typography:
     lineHeight: '1.4'
   caption:
     fontFamily: 'Onest, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif'
-    fontSize: 13px
+    fontSize: 14px
     fontWeight: '400'
     lineHeight: '1.45'
 rounded:
@@ -235,13 +235,13 @@ Contrast targets: body text and control labels meet 4.5:1; large text and essent
 
 Onest is the only product typeface. The fallback stack is `system-ui`, `-apple-system`, `BlinkMacSystemFont`, `Segoe UI`, and `sans-serif`. There is no decorative or monospace family in the MVP.
 
-Use `display` only for the stage overview title and major jury-facing outcome. Most surfaces use `heading-md`, `body`, `label`, and `caption`. Russian status phrases remain sentence case. Avoid all-caps labels and wide tracking; the information hierarchy must come from size, weight, grouping, and position.
+Use the 40px display size for desktop page titles and the main result, reducing it to 28px on phones. Block headings use 22px; body text uses 16px and captions remain at least 14px. Russian status phrases remain sentence case. Avoid all-caps labels and wide tracking; the information hierarchy comes from size, weight, grouping, and position.
 
 Do not encode technicality with tiny type. Evidence provenance, uncertainty, timestamps, and policy revision remain at least 13px on laptop and 14px on phone. User zoom to 200% must not cause clipped controls or hidden content.
 
 ## Layout & Spacing
 
-The base rhythm is 4px, with 16px mobile page margins, 24px tablet margins, and 32px laptop margins. Content is centered in a container with a maximum width of 1440px. Use a 12-column grid on laptop and a strict single-column flow below 768px.
+The base rhythm is 4px, with 16px mobile page margins, 24px tablet margins, and 32px laptop margins. Content is centered in a container with a maximum width of 1440px. New Analysis uses a one-third context column and a wider image column from 1024px; the columns stack below that width. Signals uses a list/detail split on desktop and expands the selected detail immediately after its row on phones.
 
 The stage overview uses a wide stage map plus a narrower inspector on laptop. The inspector becomes a full-width continuation after the selected stage on phone. The analysis surface uses a six-step horizontal route at 1024px and above; it becomes a numbered vertical list on narrower screens. Evidence images use a responsive thumbnail grid and open into one image viewer, never into nested dialogs.
 
@@ -263,21 +263,21 @@ The logo remains irregular artwork inside a rectangular clear-space box. Do not 
 
 ## Components
 
-- **Application Shell:** Full-night `{colors.canvas}` field. Laptop top bar contains product name, primary navigation, text-only team attribution, and `Новый анализ`. Phone uses a compact header and labeled bottom navigation.
+- **Application Shell:** Full-night `{colors.canvas}` field. The top bar contains `Этапы`, `Анализы`, `План`, `Сигналы`, the persistent `Новый анализ` action, and a keyboard-accessible `Ещё` menu for `Готовность`, `Сравнение провайдеров`, and `О проекте`. Phone uses a compact header and labeled four-destination bottom navigation.
 - **Team Brand Block:** Spacious attribution block on Stages Overview and About Project. Uses the unedited full logo with its exact text name; compact contexts fall back to text only.
 - **Stage Tile:** Title, one Russian status, and the latest completed-analysis context when present. Selection uses `{colors.surface-selected}` plus a `{colors.brand}` border. A status cannot be inferred from selection styling.
 - **Stage Inspector:** Summarizes the selected stage, latest outcome, affected area and period, and routes to evidence or a new analysis. It never displays schedule completion or a plan-health percentage.
 - **Primary Button:** `{colors.brand}` with `{colors.on-brand}`. One primary action per decision area. Active press changes position or tone subtly; there is no glow.
 - **Secondary Button:** `{colors.surface-raised}` with `{colors.text-primary}` and a `{colors.border-essential}` boundary. It supports editing, examples, cancellation, and secondary navigation.
 - **Status Label:** Compact rectangular label using one semantic pair from `{components.status-label}`. Include the complete Russian phrase. Icons are supplemental and must have an accessible name or be hidden as decorative.
-- **Analysis Context:** Compact, scannable summary of intent, stage, area, period, and, for rule evaluation, rule name/revision and provenance. Expanded fields retain the same tonal surface and persistent labels.
+- **Analysis Context:** Persistent labeled fields for intent, stage, area, and period, plus optional project, zone, and saved plan revision. Each frame in a plan-bound analysis retains its capture time. The rule name, revision, expectation, and provenance are visible when rule evaluation is selected.
 - **Analysis Intent Selector:** Two-option segmented choice with selected background and border; it is never a toggle whose meaning depends on position alone.
-- **Image Uploader:** Bounded drop/select region on laptop and a standard file/camera action group on phone. It uses no decorative construction imagery.
-- **Input Manifest:** Ordered image rows with source thumbnail, `Кадр N`, file state, and explicit reorder/remove controls. Rows do not masquerade as cards.
+- **Image Uploader:** Bounded drop/select region on laptop and phone; dropped files use the same JPEG/PNG, 16 MB, 40-million-pixel, and eight-frame checks as picked files. Camera capture remains a separate available action. Examples are closed by default in a disclosure.
+- **Input Manifest:** Ordered image rows with local object-URL preview, `Кадр N`, filename, size, optional capture time, and explicit reorder/remove/restore controls. Preview URLs are released when rows leave the screen.
 - **Pipeline Route:** Six ordered steps with label, lifecycle state, factual summary, and optional timestamp. Completed uses success styling, active uses brand plus motion-independent emphasis, pending is neutral, failed is error, and skipped remains neutral with its reason visible. No client-generated percentages.
 - **Observation Row:** Equipment class, translated observation state, evaluated input reference, and a disclosure for evidence. Do not show object counts as portable facts.
 - **Series Evidence:** Separate aggregation block after per-frame Observation Rows. Shows usable-frame count, same-area confirmation, upload order, persistence statement, and exact supporting frame references without inventing a series-level absence observation.
-- **Result Summary:** One outcome block using backend-derived wording and the corresponding semantic pair. It never combines readiness, model confidence, and run outcome.
+- **Result Summary:** One outcome block using backend-derived wording and the corresponding semantic pair, presented before completed-run processing detail. The selected source frame is large, with a thumbnail strip and a neighboring `Основание вывода` column. On phones the order is outcome, basis, image, technical details. Supporting frames are marked only from saved result references.
 - **Check-request Panel:** Attention surface with outcome, plain-language reason, recommended human check, area, period, rule revision, provenance, uncertainty, and the statement `Это рекомендация для проверки, а не подтверждение нарушения.`
 - **Evidence Thumbnail:** Fixed aspect-ratio preview with ordinal `Кадр 1`, `Кадр 2`, and so on outside the image. Preserve source-image colors; no decorative filters. The viewer supports zoom and previous/next controls.
 - **Evidence Viewer:** High-contrast image stage on `{colors.canvas}` with restrained chrome, source metadata, optional supplied evidence geometry, and persistent zoom/reset/close/previous/next controls. Provider-native detail visibly attributes provider/adapter, execution-profile revision, invocation, exact source frames, preprocessing revision when applicable, and artifact identity/checksum.
@@ -285,7 +285,8 @@ The logo remains irregular artwork inside a rectangular clear-space box. Do not 
 - **Run Row:** Compact history row separated by `{colors.border}`. Lifecycle and outcome are different labeled fields, never one overloaded badge.
 - **Readiness Criterion:** Plain row with criterion name, `Пройдено`, `Не пройдено`, or `Нет данных`, and a link to its evidence. Evaluation-set size/identity, checksums, manual-label coverage, fixture sufficiency, error counts, stability, and comprehension remain literal values from the report and never become ornamental scores.
 - **Provider Comparison:** Secondary evidence panel with the same surface grammar as readiness but a separate heading and no shared overall score.
-- **Bottom Navigation:** Phone-only labeled navigation on `{colors.surface}`. Selected state uses `{colors.brand}`, weight, and shape; text remains visible.
+- **Signal List and Detail:** Filterable rows use the saved signal type, current zone name, date, human state, and available source preview. The detail retains the stored basis, saved plan revision, linked run, and per-signal comment draft. Amber describes a recommendation; closing a signal only completes manual handling.
+- **Bottom Navigation:** Phone-only labeled navigation on `{colors.surface}` for `Этапы`, `Анализы`, `План`, and `Сигналы`. Selected state uses `{colors.brand}`, weight, and shape; text remains visible.
 - **Inline Notice:** Contextual message adjacent to the affected form or run state. Attention, error, and reconnect variants use semantic text/surface pairs and never rely on a toast for required action.
 
 State and overlay references: [Recovery States](mockups/key-recovery-states.html) and [Evidence Viewer](mockups/key-evidence-viewer.html).

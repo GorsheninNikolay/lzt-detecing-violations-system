@@ -1,0 +1,3574 @@
+{
+  "schema_revision": "expansion-annotation-queue-v1",
+  "status": "machine_candidates_not_ground_truth",
+  "archive_sha256": "6bb648edbc97e7ee3d3f3d4cfd0793c01f3a05dbeae158c36e3930406cea3038",
+  "model_file_sha256": "1519d39d48a5409cd53831a5ca73397224834a0f76ecd4a9f51630012d4f9af8",
+  "adapter_bundle_sha256": "54d3a499b5b8859681719d64370afc7a106e7c91bb8dad158bc4810b023fd57b",
+  "equipment_classes": [
+    "excavator",
+    "dump_truck",
+    "road_roller",
+    "truck_mounted_crane",
+    "concrete_mixer_truck",
+    "bulldozer",
+    "truck",
+    "mobile_crane"
+  ],
+  "scene_features": [
+    "excavation_or_trench",
+    "formwork",
+    "rebar",
+    "concrete_surface",
+    "road_base_or_surface"
+  ],
+  "split": null,
+  "split_reason": "Site/camera/series provenance is unknown; no independent evaluation split is justified.",
+  "images": [
+    {
+      "id": "organizer-png-001",
+      "archive_member": "Строительная_техника/Screenshot_1.png",
+      "sha256": "d29d78a09e276c7c2c30b9e2a0da21e0dda15f5d40912bf509b383afc1729a5f",
+      "bytes": 2090717,
+      "oriented_image_size": [
+        1212,
+        813
+      ],
+      "source_site_camera_sequence_group": null,
+      "capture_at": null,
+      "review_state": "unreviewed",
+      "equipment_candidates": [],
+      "scene_candidates": [],
+      "stage_candidates": []
+    },
+    {
+      "id": "organizer-png-002",
+      "archive_member": "Строительная_техника/Screenshot_2.png",
+      "sha256": "983e4c922b3f7911f39629db87018b724f685216aa0787a74218614d3f3cc593",
+      "bytes": 2540004,
+      "oriented_image_size": [
+        1213,
+        811
+      ],
+      "source_site_camera_sequence_group": null,
+      "capture_at": null,
+      "review_state": "unreviewed",
+      "equipment_candidates": [
+        {
+          "class_name": "concrete_mixer_truck",
+          "score": 0.3510006368160248,
+          "box": [
+            0.3459781605845528,
+            0.8219207123969251,
+            0.4314416191937603,
+            0.8833897375443126
+          ],
+          "image_size": [
+            1213,
+            811
+          ]
+        }
+      ],
+      "scene_candidates": [
+        {
+          "feature_name": "concrete_surface",
+          "score": 0.462445467710495
+        },
+        {
+          "feature_name": "rebar",
+          "score": 0.35987144708633423
+        }
+      ],
+      "stage_candidates": [
+        {
+          "stage": "concreting",
+          "equipment": "concrete_mixer_truck",
+          "scene_features": [
+            "concrete_surface",
+            "rebar"
+          ],
+          "supporting_input_ids": [
+            "organizer-png-002"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "organizer-png-003",
+      "archive_member": "Строительная_техника/Screenshot_3.png",
+      "sha256": "d24aad00a7ba43418226343f212cfe3dbaf97d76b2b55ccfd971f1e9181e4d4c",
+      "bytes": 2902704,
+      "oriented_image_size": [
+        1217,
+        809
+      ],
+      "source_site_camera_sequence_group": null,
+      "capture_at": null,
+      "review_state": "unreviewed",
+      "equipment_candidates": [],
+      "scene_candidates": [
+        {
+          "feature_name": "rebar",
+          "score": 0.35177356004714966
+        }
+      ],
+      "stage_candidates": []
+    },
+    {
+      "id": "organizer-png-004",
+      "archive_member": "Строительная_техника/Screenshot_4.png",
+      "sha256": "3fc026bf395fdcc7b12db6d83e7af512ba9299816efa1ef7b9bbbc6191576155",
+      "bytes": 2763466,
+      "oriented_image_size": [
+        1218,
+        809
+      ],
+      "source_site_camera_sequence_group": null,
+      "capture_at": null,
+      "review_state": "unreviewed",
+      "equipment_candidates": [],
+      "scene_candidates": [
+        {
+          "feature_name": "concrete_surface",
+          "score": 0.4136924743652344
+        }
+      ],
+      "stage_candidates": []
+    },
+    {
+      "id": "organizer-png-005",
+      "archive_member": "Строительная_техника/Screenshot_5.png",
+      "sha256": "b88e35383b1ec988d0112266fe450adaa250757a7563a7f2da06f24f3b6152ce",
+      "bytes": 2362908,
+      "oriented_image_size": [
+        1179,
+        813
+      ],
+      "source_site_camera_sequence_group": null,
+      "capture_at": null,
+      "review_state": "unreviewed",
+      "equipment_candidates": [
+        {
+          "class_name": "concrete_mixer_truck",
+          "score": 0.3682030737400055,
+          "box": [
+            0.7546081284125848,
+            0.0035203098517648996,
+            0.9838838197094996,
+            0.5338599849011185
+          ],
+          "image_size": [
+            1179,
+            813
+          ]
+        },
+        {
+          "class_name": "excavator",
+          "score": 0.4441770017147064,
+          "box": [
+            0.35468008156243375,
+            0.2857196615484221,
+            0.40792396293038324,
+            0.49671067053688117
+          ],
+          "image_size": [
+            1179,
+            813
+          ]
+        }
+      ],
+      "scene_candidates": [
+        {
+          "feature_name": "concrete_surface",
+          "score": 0.49700549244880676
+        }
+      ],
+      "stage_candidates": [
+        {
+          "stage": "concreting",
+          "equipment": "concrete_mixer_truck",
+          "scene_features": [
+            "concrete_surface"
+          ],
+          "supporting_input_ids": [
+            "organizer-png-005"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "organizer-png-006",
+      "archive_member": "Строительная_техника/Screenshot_6.png",
+      "sha256": "f6bd42035b890043e8ee52f7b611ffe19857aa6a5829c691b38cc4831d98948e",
+      "bytes": 2157480,
+      "oriented_image_size": [
+        1219,
+        809
+      ],
+      "source_site_camera_sequence_group": null,
+      "capture_at": null,
+      "review_state": "unreviewed",
+      "equipment_candidates": [],
+      "scene_candidates": [],
+      "stage_candidates": []
+    },
+    {
+      "id": "organizer-png-007",
+      "archive_member": "Строительная_техника/Screenshot_7.png",
+      "sha256": "2e7fbb210c6ea1712a710f56c4e44558a468d58e62325ed5003534d27fac6b25",
+      "bytes": 2431007,
+      "oriented_image_size": [
+        1217,
+        808
+      ],
+      "source_site_camera_sequence_group": null,
+      "capture_at": null,
+      "review_state": "unreviewed",
+      "equipment_candidates": [
+        {
+          "class_name": "excavator",
+          "score": 0.5718746781349182,
+          "box": [
+            0.11142519446994402,
+            0.37101488774365715,
+            0.3789715480882806,
+            0.756989054160543
+          ],
+          "image_size": [
+            1217,
+            808
+          ]
+        },
+        {
+          "class_name": "concrete_mixer_truck",
+          "score": 0.4915350675582886,
+          "box": [
+            0.38618332573695563,
+            0.5504693890562152,
+            0.4766594942417317,
+            0.6793978096234916
+          ],
+          "image_size": [
+            1217,
+            808
+          ]
+        },
+        {
+          "class_name": "bulldozer",
+          "score": 0.40722864866256714,
+          "box": [
+            0.22237073385823233,
+            0.5928910510374767,
+            0.37793106668389226,
+            0.7557778688940672
+          ],
+          "image_size": [
+            1217,
+            808
+          ]
+        }
+      ],
+      "scene_candidates": [],
+      "stage_candidates": []
+    },
+    {
+      "id": "organizer-png-008",
+      "archive_member": "Строительная_техника/Screenshot_8.png",
+      "sha256": "f23c0641430ab8caeac5dfebdeae3f0ef72fca3c3fe8ca4d35efbd7a0ea9859a",
+      "bytes": 2570867,
+      "oriented_image_size": [
+        1221,
+        808
+      ],
+      "source_site_camera_sequence_group": null,
+      "capture_at": null,
+      "review_state": "unreviewed",
+      "equipment_candidates": [],
+      "scene_candidates": [],
+      "stage_candidates": []
+    },
+    {
+      "id": "organizer-png-009",
+      "archive_member": "Строительная_техника/Screenshot_9.png",
+      "sha256": "23989f2f63ccfb1ba2a6ccb2b957c01bd2747dda6b293524b8f6d06b797298e9",
+      "bytes": 2266571,
+      "oriented_image_size": [
+        1217,
+        805
+      ],
+      "source_site_camera_sequence_group": null,
+      "capture_at": null,
+      "review_state": "unreviewed",
+      "equipment_candidates": [
+        {
+          "class_name": "excavator",
+          "score": 0.38607698678970337,
+          "box": [
+            0.2674451716727866,
+            0.37658619377183616,
+            0.4247929017467389,
+            0.5832682923500583
+          ],
+          "image_size": [
+            1217,
+            805
+          ]
+        },
+        {
+          "class_name": "concrete_mixer_truck",
+          "score": 0.3864474296569824,
+          "box": [
+            0.6248499949446641,
+            0.43630204289596275,
+            0.7800463987552639,
+            0.5364156971807065
+          ],
+          "image_size": [
+            1217,
+            805
+          ]
+        }
+      ],
+      "scene_candidates": [
+        {
+          "feature_name": "concrete_surface",
+          "score": 0.47557055950164795
+        }
+      ],
+      "stage_candidates": [
+        {
+          "stage": "concreting",
+          "equipment": "concrete_mixer_truck",
+          "scene_features": [
+            "concrete_surface"
+          ],
+          "supporting_input_ids": [
+            "organizer-png-009"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "organizer-png-010",
+      "archive_member": "Строительная_техника/Screenshot_10.png",
+      "sha256": "97684d82480567953b9b609379726bed1e2979788d227b855298fbca0673d3a7",
+      "bytes": 2017890,
+      "oriented_image_size": [
+        1084,
+        808
+      ],
+      "source_site_camera_sequence_group": null,
+      "capture_at": null,
+      "review_state": "unreviewed",
+      "equipment_candidates": [
+        {
+          "class_name": "excavator",
+          "score": 0.5200241208076477,
+          "box": [
+            0.3990957675384859,
+            0.0031516849994659424,
+            0.5982507234129959,
+            0.5034802125232054
+          ],
+          "image_size": [
+            1084,
+            808
+          ]
+        }
+      ],
+      "scene_candidates": [],
+      "stage_candidates": []
+    },
+    {
+      "id": "organizer-png-011",
+      "archive_member": "Строительная_техника/Screenshot_11.png",
+      "sha256": "8cff1a018bd5553031368d8dd3c03b1db7bfee5dd5a4451b31e44ee4e618f976",
+      "bytes": 1850810,
+      "oriented_image_size": [
+        1084,
+        810
+      ],
+      "source_site_camera_sequence_group": null,
+      "capture_at": null,
+      "review_state": "unreviewed",
+      "equipment_candidates": [
+        {
+          "class_name": "bulldozer",
+          "score": 0.4223445653915405,
+          "box": [
+            0.3000984332658268,
+            0.553097082067419,
+            0.4243370985193006,
+            0.6466659734278549
+          ],
+          "image_size": [
+            1084,
+            810
+          ]
+        },
+        {
+          "class_name": "concrete_mixer_truck",
+          "score": 0.5095656514167786,
+          "box": [
+            0.6096745452317804,
+            0.5600683518397955,
+            0.7468915988598362,
+            0.6885773835358796
+          ],
+          "image_size": [
+            1084,
+            810
+          ]
+        },
+        {
+          "class_name": "excavator",
+          "score": 0.49612686038017273,
+          "box": [
+            0.709012302525369,
+            0.29639110800660684,
+            0.8948899160012108,
+            0.6242375503351659
+          ],
+          "image_size": [
+            1084,
+            810
+          ]
+        }
+      ],
+      "scene_candidates": [],
+      "stage_candidates": []
+    },
+    {
+      "id": "organizer-png-012",
+      "archive_member": "Строительная_техника/Screenshot_12.png",
+      "sha256": "c4ad4e1056a2bae9bef299944e5409004f56d327c1e5ed434cfb1c77ac7c41b8",
+      "bytes": 2457968,
+      "oriented_image_size": [
+        1218,
+        808
+      ],
+      "source_site_camera_sequence_group": null,
+      "capture_at": null,
+      "review_state": "unreviewed",
+      "equipment_candidates": [
+        {
+          "class_name": "concrete_mixer_truck",
+          "score": 0.3757336735725403,
+          "box": [
+            0.014747001071673113,
+            0.49544853739219136,
+            0.17834740749916617,
+            0.648663586909228
+          ],
+          "image_size": [
+            1218,
+            808
+          ]
+        }
+      ],
+      "scene_candidates": [
+        {
+          "feature_name": "excavation_or_trench",
+          "score": 0.4306282103061676
+        }
+      ],
+      "stage_candidates": []
+    },
+    {
+      "id": "organizer-png-013",
+      "archive_member": "Строительная_техника/Screenshot_13.png",
+      "sha256": "70ba045c3799aebedb2d9339c977124826fbe9776e1b714e58bd15c03f9bdd1e",
+      "bytes": 2575801,
+      "oriented_image_size": [
+        1219,
+        811
+      ],
+      "source_site_camera_sequence_group": null,
+      "capture_at": null,
+      "review_state": "unreviewed",
+      "equipment_candidates": [],
+      "scene_candidates": [],
+      "stage_candidates": []
+    },
+    {
+      "id": "organizer-png-014",
+      "archive_member": "Строительная_техника/Screenshot_14.png",
+      "sha256": "6608309a9a079e47fd22b681a85f11c09424ad959b0a1232d3a6497dd5b71cf4",
+      "bytes": 2324519,
+      "oriented_image_size": [
+        1216,
+        808
+      ],
+      "source_site_camera_sequence_group": null,
+      "capture_at": null,
+      "review_state": "unreviewed",
+      "equipment_candidates": [
+        {
+          "class_name": "concrete_mixer_truck",
+          "score": 0.47385093569755554,
+          "box": [
+            0.7677762382908871,
+            0.5173183856624188,
+            0.8080241554661801,
+            0.5803904391751431
+          ],
+          "image_size": [
+            1216,
+            808
+          ]
+        }
+      ],
+      "scene_candidates": [
+        {
+          "feature_name": "concrete_surface",
+          "score": 0.45857760310173035
+        }
+      ],
+      "stage_candidates": [
+        {
+          "stage": "concreting",
+          "equipment": "concrete_mixer_truck",
+          "scene_features": [
+            "concrete_surface"
+          ],
+          "supporting_input_ids": [
+            "organizer-png-014"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "organizer-png-015",
+      "archive_member": "Строительная_техника/Screenshot_15.png",
+      "sha256": "64967cdccc0fcf76106d48c0c7896bfed718e10f81871d59091db2d45622d786",
+      "bytes": 2401287,
+      "oriented_image_size": [
+        1218,
+        809
+      ],
+      "source_site_camera_sequence_group": null,
+      "capture_at": null,
+      "review_state": "unreviewed",
+      "equipment_candidates": [
+        {
+          "class_name": "concrete_mixer_truck",
+          "score": 0.5840325355529785,
+          "box": [
+            0.519939353704844,
+            0.36863084187171663,
+            0.8607301007350677,
+            0.6206797822591548
+          ],
+          "image_size": [
+            1218,
+            809
+          ]
+        },
+        {
+          "class_name": "excavator",
+          "score": 0.5693695545196533,
+          "box": [
+            0.15358131546496562,
+            0.41203238318670815,
+            0.32083843964074044,
+            0.5021338916679543
+          ],
+          "image_size": [
+            1218,
+            809
+          ]
+        }
+      ],
+      "scene_candidates": [
+        {
+          "feature_name": "concrete_surface",
+          "score": 0.5049137473106384
+        }
+      ],
+      "stage_candidates": [
+        {
+          "stage": "concreting",
+          "equipment": "concrete_mixer_truck",
+          "scene_features": [
+            "concrete_surface"
+          ],
+          "supporting_input_ids": [
+            "organizer-png-015"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "organizer-png-016",
+      "archive_member": "Строительная_техника/Screenshot_16.png",
+      "sha256": "31f9fd3967d9077780c5f2438b258a556fb46193b38e7fa6152ebba16d916a6d",
+      "bytes": 2940828,
+      "oriented_image_size": [
+        1219,
+        808
+      ],
+      "source_site_camera_sequence_group": null,
+      "capture_at": null,
+      "review_state": "unreviewed",
+      "equipment_candidates": [
+        {
+          "class_name": "excavator",
+          "score": 0.3505924642086029,
+          "box": [
+            0.37277895119270404,
+            0.3010771911923248,
+            0.8559040573408019,
+            0.9937502417233911
+          ],
+          "image_size": [
+            1219,
+            808
+          ]
+        }
+      ],
+      "scene_candidates": [],
+      "stage_candidates": []
+    },
+    {
+      "id": "organizer-png-017",
+      "archive_member": "Строительная_техника/Screenshot_17.png",
+      "sha256": "92de128eb86b440827ed7beb480e9854280cb7b3297ac7269fc42a16cb95dc4d",
+      "bytes": 2941706,
+      "oriented_image_size": [
+        1222,
+        813
+      ],
+      "source_site_camera_sequence_group": null,
+      "capture_at": null,
+      "review_state": "unreviewed",
+      "equipment_candidates": [
+        {
+          "class_name": "excavator",
+          "score": 0.4132503569126129,
+          "box": [
+            0.5055015052008746,
+            0.7284124733337177,
+            0.5961571925985832,
+            0.8173997792224016
+          ],
+          "image_size": [
+            1222,
+            813
+          ]
+        },
+        {
+          "class_name": "bulldozer",
+          "score": 0.3503333628177643,
+          "box": [
+            0.49938395448675327,
+            0.7511175514587177,
+            0.557943940357764,
+            0.8247908889000999
+          ],
+          "image_size": [
+            1222,
+            813
+          ]
+        }
+      ],
+      "scene_candidates": [],
+      "stage_candidates": []
+    },
+    {
+      "id": "organizer-png-018",
+      "archive_member": "Строительная_техника/Screenshot_18.png",
+      "sha256": "c114d3fb0624e1f788775e723ff8707b98707a37e4f55bb7385eabdc61e97400",
+      "bytes": 2533317,
+      "oriented_image_size": [
+        1218,
+        808
+      ],
+      "source_site_camera_sequence_group": null,
+      "capture_at": null,
+      "review_state": "unreviewed",
+      "equipment_candidates": [
+        {
+          "class_name": "excavator",
+          "score": 0.4315994381904602,
+          "box": [
+            0.1178358106190348,
+            0.3231110147910543,
+            0.23344541653036485,
+            0.4626122276381691
+          ],
+          "image_size": [
+            1218,
+            808
+          ]
+        }
+      ],
+      "scene_candidates": [],
+      "stage_candidates": []
+    },
+    {
+      "id": "organizer-png-019",
+      "archive_member": "Строительная_техника/Screenshot_19.png",
+      "sha256": "8554062ee02c3068f01363f3036a9200608554b4d7f8c52e8fad2a2a11c54d0e",
+      "bytes": 2122253,
+      "oriented_image_size": [
+        1219,
+        805
+      ],
+      "source_site_camera_sequence_group": null,
+      "capture_at": null,
+      "review_state": "unreviewed",
+      "equipment_candidates": [
+        {
+          "class_name": "excavator",
+          "score": 0.3545078933238983,
+          "box": [
+            0.5737729780589879,
+            0.2351697459724379,
+            0.8379756936878333,
+            0.8250566375921972
+          ],
+          "image_size": [
+            1219,
+            805
+          ]
+        }
+      ],
+      "scene_candidates": [],
+      "stage_candidates": []
+    },
+    {
+      "id": "organizer-png-020",
+      "archive_member": "Строительная_техника/Screenshot_20.png",
+      "sha256": "48ad711c4f544f4d64a75549321eb93036dd4bd5492e55eaf8f37ff654ed8f14",
+      "bytes": 2618565,
+      "oriented_image_size": [
+        1218,
+        814
+      ],
+      "source_site_camera_sequence_group": null,
+      "capture_at": null,
+      "review_state": "unreviewed",
+      "equipment_candidates": [
+        {
+          "class_name": "excavator",
+          "score": 0.42432957887649536,
+          "box": [
+            0.5751406414363968,
+            0.44422597674245623,
+            0.6745043223714594,
+            0.7060423155088682
+          ],
+          "image_size": [
+            1218,
+            814
+          ]
+        }
+      ],
+      "scene_candidates": [
+        {
+          "feature_name": "concrete_surface",
+          "score": 0.3819913864135742
+        }
+      ],
+      "stage_candidates": []
+    },
+    {
+      "id": "organizer-png-021",
+      "archive_member": "Строительная_техника/Screenshot_21.png",
+      "sha256": "9d71d4f75611f0ab8e2474654ac4b4ebd4f75e62ea43a2b1ef41a6f51eadd561",
+      "bytes": 3031817,
+      "oriented_image_size": [
+        1217,
+        805
+      ],
+      "source_site_camera_sequence_group": null,
+      "capture_at": null,
+      "review_state": "unreviewed",
+      "equipment_candidates": [
+        {
+          "class_name": "excavator",
+          "score": 0.49129173159599304,
+          "box": [
+            0.6923231314515715,
+            0.6654953476805124,
+            0.7584322300129673,
+            0.7391112523049301
+          ],
+          "image_size": [
+            1217,
+            805
+          ]
+        }
+      ],
+      "scene_candidates": [],
+      "stage_candidates": []
+    },
+    {
+      "id": "organizer-png-022",
+      "archive_member": "Строительная_техника/Screenshot_22.png",
+      "sha256": "d12fbc045982830f843350e22a59c89bab3b48ad28e055d7995ee84bbc42c60e",
+      "bytes": 1279003,
+      "oriented_image_size": [
+        1209,
+        800
+      ],
+      "source_site_camera_sequence_group": null,
+      "capture_at": null,
+      "review_state": "unreviewed",
+      "equipment_candidates": [],
+      "scene_candidates": [],
+      "stage_candidates": []
+    },
+    {
+      "id": "organizer-png-023",
+      "archive_member": "Строительная_техника/Screenshot_23.png",
+      "sha256": "f03313fd866605aed702c598c0fa534f385eb4db615fc1d4c93964b1ce90e81b",
+      "bytes": 2146213,
+      "oriented_image_size": [
+        1215,
+        811
+      ],
+      "source_site_camera_sequence_group": null,
+      "capture_at": null,
+      "review_state": "unreviewed",
+      "equipment_candidates": [],
+      "scene_candidates": [
+        {
+          "feature_name": "concrete_surface",
+          "score": 0.3825700879096985
+        }
+      ],
+      "stage_candidates": []
+    },
+    {
+      "id": "organizer-png-024",
+      "archive_member": "Строительная_техника/Screenshot_24.png",
+      "sha256": "6a4fcb02acfcd1bd854481b88f2d34117b32d94f6add08ac94dc6d6ff3f72b57",
+      "bytes": 1738970,
+      "oriented_image_size": [
+        1217,
+        808
+      ],
+      "source_site_camera_sequence_group": null,
+      "capture_at": null,
+      "review_state": "unreviewed",
+      "equipment_candidates": [],
+      "scene_candidates": [
+        {
+          "feature_name": "concrete_surface",
+          "score": 0.42279893159866333
+        },
+        {
+          "feature_name": "formwork",
+          "score": 0.4542520344257355
+        }
+      ],
+      "stage_candidates": []
+    },
+    {
+      "id": "organizer-png-025",
+      "archive_member": "Строительная_техника/Screenshot_25.png",
+      "sha256": "409b0df5a36aea6015bb9f703c73928863d96ad9f31d4f06db7919fb454b5305",
+      "bytes": 1795732,
+      "oriented_image_size": [
+        1219,
+        807
+      ],
+      "source_site_camera_sequence_group": null,
+      "capture_at": null,
+      "review_state": "unreviewed",
+      "equipment_candidates": [],
+      "scene_candidates": [],
+      "stage_candidates": []
+    },
+    {
+      "id": "organizer-png-026",
+      "archive_member": "Строительная_техника/Screenshot_26.png",
+      "sha256": "9f208089c6e3e9d6576036bfd9eff91b5685ea4a1ec85837144a606ee96c447b",
+      "bytes": 1742613,
+      "oriented_image_size": [
+        1219,
+        805
+      ],
+      "source_site_camera_sequence_group": null,
+      "capture_at": null,
+      "review_state": "unreviewed",
+      "equipment_candidates": [],
+      "scene_candidates": [
+        {
+          "feature_name": "concrete_surface",
+          "score": 0.3649943470954895
+        }
+      ],
+      "stage_candidates": []
+    },
+    {
+      "id": "organizer-png-027",
+      "archive_member": "Строительная_техника/Screenshot_27.png",
+      "sha256": "b71fc67b30648f02753c5cbc84fa63a0d417e1ad0814b56927f5cb71ddf209ea",
+      "bytes": 2067922,
+      "oriented_image_size": [
+        1143,
+        806
+      ],
+      "source_site_camera_sequence_group": null,
+      "capture_at": null,
+      "review_state": "unreviewed",
+      "equipment_candidates": [],
+      "scene_candidates": [],
+      "stage_candidates": []
+    },
+    {
+      "id": "organizer-png-028",
+      "archive_member": "Строительная_техника/Screenshot_28.png",
+      "sha256": "1e70cf8fcf25b0367958299f633d7d69834f55b9ce6bd22414560544ca59f14e",
+      "bytes": 2148756,
+      "oriented_image_size": [
+        1110,
+        811
+      ],
+      "source_site_camera_sequence_group": null,
+      "capture_at": null,
+      "review_state": "unreviewed",
+      "equipment_candidates": [
+        {
+          "class_name": "excavator",
+          "score": 0.4325011372566223,
+          "box": [
+            0.24796318535332207,
+            0.283484255488498,
+            0.37599039163675396,
+            0.8650696327595175
+          ],
+          "image_size": [
+            1110,
+            811
+          ]
+        }
+      ],
+      "scene_candidates": [],
+      "stage_candidates": []
+    },
+    {
+      "id": "organizer-png-029",
+      "archive_member": "Строительная_техника/Screenshot_29.png",
+      "sha256": "9cf6df859293d11a0d5fab3359025477ef8feecafcb84216bf8c6164d1c22d21",
+      "bytes": 2273248,
+      "oriented_image_size": [
+        1163,
+        809
+      ],
+      "source_site_camera_sequence_group": null,
+      "capture_at": null,
+      "review_state": "unreviewed",
+      "equipment_candidates": [
+        {
+          "class_name": "concrete_mixer_truck",
+          "score": 0.47792989015579224,
+          "box": [
+            0.1916428989925368,
+            0.4786437309274567,
+            0.23636989970711522,
+            0.5919264521086024
+          ],
+          "image_size": [
+            1163,
+            809
+          ]
+        },
+        {
+          "class_name": "excavator",
+          "score": 0.3628520965576172,
+          "box": [
+            0.6109799674535146,
+            0.3028026528941981,
+            0.6823669066228235,
+            0.4793057624430238
+          ],
+          "image_size": [
+            1163,
+            809
+          ]
+        }
+      ],
+      "scene_candidates": [],
+      "stage_candidates": []
+    },
+    {
+      "id": "organizer-png-030",
+      "archive_member": "Строительная_техника/Screenshot_30.png",
+      "sha256": "ecc3d5f07f05caa057587edec1fd1eea0ae52e5148677b2bb9a7cda0ebf9feaf",
+      "bytes": 2440577,
+      "oriented_image_size": [
+        1203,
+        809
+      ],
+      "source_site_camera_sequence_group": null,
+      "capture_at": null,
+      "review_state": "unreviewed",
+      "equipment_candidates": [
+        {
+          "class_name": "concrete_mixer_truck",
+          "score": 0.4334421455860138,
+          "box": [
+            0.6492399372662094,
+            0.46997971882484163,
+            0.7145994064318371,
+            0.5246124078965158
+          ],
+          "image_size": [
+            1203,
+            809
+          ]
+        },
+        {
+          "class_name": "excavator",
+          "score": 0.4101642072200775,
+          "box": [
+            0.7243532607283873,
+            0.3653538801761434,
+            0.8054127173927161,
+            0.6342807387834132
+          ],
+          "image_size": [
+            1203,
+            809
+          ]
+        }
+      ],
+      "scene_candidates": [],
+      "stage_candidates": []
+    },
+    {
+      "id": "organizer-png-031",
+      "archive_member": "Строительная_техника/Screenshot_31.png",
+      "sha256": "f2dcd226a9a925c16bd785a27e32b6ad04b498153dfd3e016459fb482aa33764",
+      "bytes": 2294442,
+      "oriented_image_size": [
+        1163,
+        808
+      ],
+      "source_site_camera_sequence_group": null,
+      "capture_at": null,
+      "review_state": "unreviewed",
+      "equipment_candidates": [
+        {
+          "class_name": "concrete_mixer_truck",
+          "score": 0.6658583283424377,
+          "box": [
+            0.4654221407627096,
+            0.6811100421565595,
+            0.5600268953541487,
+            0.7622444983756188
+          ],
+          "image_size": [
+            1163,
+            808
+          ]
+        },
+        {
+          "class_name": "bulldozer",
+          "score": 0.4428485929965973,
+          "box": [
+            0.5811272159487855,
+            0.8689103834699876,
+            0.6856245465659931,
+            0.9908444244082611
+          ],
+          "image_size": [
+            1163,
+            808
+          ]
+        }
+      ],
+      "scene_candidates": [],
+      "stage_candidates": []
+    },
+    {
+      "id": "organizer-png-032",
+      "archive_member": "Строительная_техника/Screenshot_32.png",
+      "sha256": "ccda74933d2afb13f4e960ab999f38dc55ca992875d6a08c8609185e9b88565b",
+      "bytes": 2068459,
+      "oriented_image_size": [
+        1309,
+        804
+      ],
+      "source_site_camera_sequence_group": null,
+      "capture_at": null,
+      "review_state": "unreviewed",
+      "equipment_candidates": [],
+      "scene_candidates": [],
+      "stage_candidates": []
+    },
+    {
+      "id": "organizer-png-033",
+      "archive_member": "Строительная_техника/Screenshot_33.png",
+      "sha256": "b6c62b22aba98f78d92c54c1e65ec4afa5e884dc6909ff896f14d495e1c1af63",
+      "bytes": 2056039,
+      "oriented_image_size": [
+        1080,
+        809
+      ],
+      "source_site_camera_sequence_group": null,
+      "capture_at": null,
+      "review_state": "unreviewed",
+      "equipment_candidates": [
+        {
+          "class_name": "concrete_mixer_truck",
+          "score": 0.5479841232299805,
+          "box": [
+            0.10589685793276186,
+            0.5204385538183715,
+            0.1840609939010055,
+            0.5646628248971531
+          ],
+          "image_size": [
+            1080,
+            809
+          ]
+        },
+        {
+          "class_name": "bulldozer",
+          "score": 0.35745906829833984,
+          "box": [
+            0.6637632581922743,
+            0.6145975421768773,
+            0.7304383454499421,
+            0.6884093408384193
+          ],
+          "image_size": [
+            1080,
+            809
+          ]
+        }
+      ],
+      "scene_candidates": [
+        {
+          "feature_name": "formwork",
+          "score": 0.3844473659992218
+        }
+      ],
+      "stage_candidates": [
+        {
+          "stage": "concreting",
+          "equipment": "concrete_mixer_truck",
+          "scene_features": [
+            "formwork"
+          ],
+          "supporting_input_ids": [
+            "organizer-png-033"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "organizer-png-034",
+      "archive_member": "Строительная_техника/Screenshot_34.png",
+      "sha256": "f857de774c18e61434ba3f6b9cbfa2c35fce2e69ed8578a6dc7e9d273319bd09",
+      "bytes": 2508960,
+      "oriented_image_size": [
+        1083,
+        808
+      ],
+      "source_site_camera_sequence_group": null,
+      "capture_at": null,
+      "review_state": "unreviewed",
+      "equipment_candidates": [
+        {
+          "class_name": "excavator",
+          "score": 0.5328009128570557,
+          "box": [
+            0.6397734947592048,
+            0.3123024100124246,
+            0.7533834216116978,
+            0.8863083490050665
+          ],
+          "image_size": [
+            1083,
+            808
+          ]
+        },
+        {
+          "class_name": "concrete_mixer_truck",
+          "score": 0.4524158537387848,
+          "box": [
+            0.26154437994142427,
+            0.6972949339611696,
+            0.34167173320456773,
+            0.8212049125444771
+          ],
+          "image_size": [
+            1083,
+            808
+          ]
+        }
+      ],
+      "scene_candidates": [],
+      "stage_candidates": []
+    },
+    {
+      "id": "organizer-png-035",
+      "archive_member": "Строительная_техника/Screenshot_35.png",
+      "sha256": "dfb990207c8946c79b95438f06773550fd0a9bc79e0462efaac36de2cbee75b5",
+      "bytes": 2687154,
+      "oriented_image_size": [
+        1218,
+        809
+      ],
+      "source_site_camera_sequence_group": null,
+      "capture_at": null,
+      "review_state": "unreviewed",
+      "equipment_candidates": [
+        {
+          "class_name": "excavator",
+          "score": 0.5375030636787415,
+          "box": [
+            0.21471972535983683,
+            0.2665158756289111,
+            0.33395563636115816,
+            0.38160296276267
+          ],
+          "image_size": [
+            1218,
+            809
+          ]
+        },
+        {
+          "class_name": "concrete_mixer_truck",
+          "score": 0.45954465866088867,
+          "box": [
+            0.09957907039347932,
+            0.3041186621516243,
+            0.20906030564081102,
+            0.390664797336121
+          ],
+          "image_size": [
+            1218,
+            809
+          ]
+        }
+      ],
+      "scene_candidates": [
+        {
+          "feature_name": "concrete_surface",
+          "score": 0.45252901315689087
+        }
+      ],
+      "stage_candidates": [
+        {
+          "stage": "concreting",
+          "equipment": "concrete_mixer_truck",
+          "scene_features": [
+            "concrete_surface"
+          ],
+          "supporting_input_ids": [
+            "organizer-png-035"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "organizer-png-036",
+      "archive_member": "Строительная_техника/Screenshot_36.png",
+      "sha256": "205b29a2b7a0b97e9797e4069b481c8deca0a4a14f0a98751db69e6c08d15d9e",
+      "bytes": 2156016,
+      "oriented_image_size": [
+        1218,
+        808
+      ],
+      "source_site_camera_sequence_group": null,
+      "capture_at": null,
+      "review_state": "unreviewed",
+      "equipment_candidates": [],
+      "scene_candidates": [],
+      "stage_candidates": []
+    },
+    {
+      "id": "organizer-png-037",
+      "archive_member": "Строительная_техника/Screenshot_37.png",
+      "sha256": "838b5d474a918d72ab348adee7b6bd1f017d2245854c0966800833cdf4f712c3",
+      "bytes": 2427582,
+      "oriented_image_size": [
+        1219,
+        809
+      ],
+      "source_site_camera_sequence_group": null,
+      "capture_at": null,
+      "review_state": "unreviewed",
+      "equipment_candidates": [
+        {
+          "class_name": "bulldozer",
+          "score": 0.3547539710998535,
+          "box": [
+            0.674375288402379,
+            0.5561776178876313,
+            0.8140300347044196,
+            0.6697194555633884
+          ],
+          "image_size": [
+            1219,
+            809
+          ]
+        }
+      ],
+      "scene_candidates": [],
+      "stage_candidates": []
+    },
+    {
+      "id": "organizer-png-038",
+      "archive_member": "Строительная_техника/Screenshot_38.png",
+      "sha256": "0ced25f1e1b58b0092e62355610b5680fc611027114e94d9889884f520627d97",
+      "bytes": 2646193,
+      "oriented_image_size": [
+        1221,
+        811
+      ],
+      "source_site_camera_sequence_group": null,
+      "capture_at": null,
+      "review_state": "unreviewed",
+      "equipment_candidates": [
+        {
+          "class_name": "excavator",
+          "score": 0.46617892384529114,
+          "box": [
+            0.6085153590646755,
+            0.004320919587197639,
+            0.9742529616797195,
+            0.7079010950504778
+          ],
+          "image_size": [
+            1221,
+            811
+          ]
+        },
+        {
+          "class_name": "concrete_mixer_truck",
+          "score": 0.3626255393028259,
+          "box": [
+            0.16956639895177492,
+            0.45585148784294083,
+            0.4507902178190264,
+            0.5880933354726996
+          ],
+          "image_size": [
+            1221,
+            811
+          ]
+        }
+      ],
+      "scene_candidates": [
+        {
+          "feature_name": "concrete_surface",
+          "score": 0.39262259006500244
+        }
+      ],
+      "stage_candidates": [
+        {
+          "stage": "concreting",
+          "equipment": "concrete_mixer_truck",
+          "scene_features": [
+            "concrete_surface"
+          ],
+          "supporting_input_ids": [
+            "organizer-png-038"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "organizer-png-039",
+      "archive_member": "Строительная_техника/Screenshot_39.png",
+      "sha256": "65629de714b3ba69a24ee8dc1566b23298e4c38e30fcfc6e81c8d5ded8fecfb1",
+      "bytes": 2160429,
+      "oriented_image_size": [
+        1080,
+        808
+      ],
+      "source_site_camera_sequence_group": null,
+      "capture_at": null,
+      "review_state": "unreviewed",
+      "equipment_candidates": [
+        {
+          "class_name": "concrete_mixer_truck",
+          "score": 0.36681869626045227,
+          "box": [
+            0.5794323956524884,
+            0.5410000262874188,
+            0.6658092922634549,
+            0.5842237566957379
+          ],
+          "image_size": [
+            1080,
+            808
+          ]
+        }
+      ],
+      "scene_candidates": [
+        {
+          "feature_name": "concrete_surface",
+          "score": 0.35015836358070374
+        }
+      ],
+      "stage_candidates": [
+        {
+          "stage": "concreting",
+          "equipment": "concrete_mixer_truck",
+          "scene_features": [
+            "concrete_surface"
+          ],
+          "supporting_input_ids": [
+            "organizer-png-039"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "organizer-png-040",
+      "archive_member": "Строительная_техника/Screenshot_40.png",
+      "sha256": "40416168fff9991f8bc345a93a999970fe0cc08bab708baa3c27a84e2d77166f",
+      "bytes": 2237973,
+      "oriented_image_size": [
+        1081,
+        811
+      ],
+      "source_site_camera_sequence_group": null,
+      "capture_at": null,
+      "review_state": "unreviewed",
+      "equipment_candidates": [],
+      "scene_candidates": [],
+      "stage_candidates": []
+    },
+    {
+      "id": "organizer-png-041",
+      "archive_member": "Строительная_техника/Screenshot_41.png",
+      "sha256": "9c27b939af0bd81379f2cf74b891c23d069f392e032e9b1a729606f6f25c9420",
+      "bytes": 2560886,
+      "oriented_image_size": [
+        1083,
+        811
+      ],
+      "source_site_camera_sequence_group": null,
+      "capture_at": null,
+      "review_state": "unreviewed",
+      "equipment_candidates": [],
+      "scene_candidates": [
+        {
+          "feature_name": "concrete_surface",
+          "score": 0.44843101501464844
+        }
+      ],
+      "stage_candidates": []
+    },
+    {
+      "id": "organizer-png-042",
+      "archive_member": "Строительная_техника/Screenshot_42.png",
+      "sha256": "575b5dc4dd7b4c65c1b497646cb470bd99764563c9e41237880c327b4ab45110",
+      "bytes": 2030517,
+      "oriented_image_size": [
+        1079,
+        809
+      ],
+      "source_site_camera_sequence_group": null,
+      "capture_at": null,
+      "review_state": "unreviewed",
+      "equipment_candidates": [
+        {
+          "class_name": "concrete_mixer_truck",
+          "score": 0.4998413920402527,
+          "box": [
+            0.4162764809991167,
+            0.5671608904825595,
+            0.4981984164120424,
+            0.6255776460739532
+          ],
+          "image_size": [
+            1079,
+            809
+          ]
+        }
+      ],
+      "scene_candidates": [],
+      "stage_candidates": []
+    },
+    {
+      "id": "organizer-png-043",
+      "archive_member": "Строительная_техника/Screenshot_43.png",
+      "sha256": "012e0ffed4d400c30c4bc99c3801fa09fc331e71d7e0dd1fc348ed6f66c56fbb",
+      "bytes": 2143103,
+      "oriented_image_size": [
+        1085,
+        808
+      ],
+      "source_site_camera_sequence_group": null,
+      "capture_at": null,
+      "review_state": "unreviewed",
+      "equipment_candidates": [
+        {
+          "class_name": "concrete_mixer_truck",
+          "score": 0.44225993752479553,
+          "box": [
+            0.4189305740567396,
+            0.5379339539178527,
+            0.47046967255904376,
+            0.5818756783362662
+          ],
+          "image_size": [
+            1085,
+            808
+          ]
+        }
+      ],
+      "scene_candidates": [],
+      "stage_candidates": []
+    },
+    {
+      "id": "organizer-png-044",
+      "archive_member": "Строительная_техника/Screenshot_44.png",
+      "sha256": "3e57afe16f9b8718c7aedd680efe950f09618f125ea5c36287470f4b815b0c54",
+      "bytes": 1890916,
+      "oriented_image_size": [
+        1087,
+        809
+      ],
+      "source_site_camera_sequence_group": null,
+      "capture_at": null,
+      "review_state": "unreviewed",
+      "equipment_candidates": [
+        {
+          "class_name": "concrete_mixer_truck",
+          "score": 0.40297994017601013,
+          "box": [
+            0.6288899103215558,
+            0.610935168743723,
+            0.6614202448503622,
+            0.6725565718189895
+          ],
+          "image_size": [
+            1087,
+            809
+          ]
+        }
+      ],
+      "scene_candidates": [],
+      "stage_candidates": []
+    },
+    {
+      "id": "organizer-png-045",
+      "archive_member": "Строительная_техника/Screenshot_45.png",
+      "sha256": "1b5381d2c1b4463e199cf4b537f73cc47f0c63d2cb0515e46545e7c49e295c78",
+      "bytes": 1920425,
+      "oriented_image_size": [
+        1082,
+        807
+      ],
+      "source_site_camera_sequence_group": null,
+      "capture_at": null,
+      "review_state": "unreviewed",
+      "equipment_candidates": [],
+      "scene_candidates": [
+        {
+          "feature_name": "concrete_surface",
+          "score": 0.360397070646286
+        },
+        {
+          "feature_name": "concrete_surface",
+          "score": 0.35073378682136536
+        }
+      ],
+      "stage_candidates": []
+    },
+    {
+      "id": "organizer-png-046",
+      "archive_member": "Строительная_техника/Screenshot_46.png",
+      "sha256": "cd73a1ebcfdf419de0272941c8ae25273e715b17239f74280d0c9a406ca80f58",
+      "bytes": 2253884,
+      "oriented_image_size": [
+        1085,
+        810
+      ],
+      "source_site_camera_sequence_group": null,
+      "capture_at": null,
+      "review_state": "unreviewed",
+      "equipment_candidates": [],
+      "scene_candidates": [],
+      "stage_candidates": []
+    },
+    {
+      "id": "organizer-png-047",
+      "archive_member": "Строительная_техника/Screenshot_47.png",
+      "sha256": "2ce0381a7c5b31bd3c1b857599fc1e11ea3b461a94b0fe8ebc947727e3c88639",
+      "bytes": 3007136,
+      "oriented_image_size": [
+        1222,
+        811
+      ],
+      "source_site_camera_sequence_group": null,
+      "capture_at": null,
+      "review_state": "unreviewed",
+      "equipment_candidates": [],
+      "scene_candidates": [
+        {
+          "feature_name": "concrete_surface",
+          "score": 0.42203935980796814
+        }
+      ],
+      "stage_candidates": []
+    },
+    {
+      "id": "organizer-png-048",
+      "archive_member": "Строительная_техника/Screenshot_48.png",
+      "sha256": "32f4416faf9046893efb5697dcce9a88e3a9b9df147cfe2f191bf112a577c34c",
+      "bytes": 2173301,
+      "oriented_image_size": [
+        1217,
+        808
+      ],
+      "source_site_camera_sequence_group": null,
+      "capture_at": null,
+      "review_state": "unreviewed",
+      "equipment_candidates": [
+        {
+          "class_name": "excavator",
+          "score": 0.5601838231086731,
+          "box": [
+            0.019481510046376688,
+            0.4887007533913792,
+            0.3441021683378698,
+            0.71895697565362
+          ],
+          "image_size": [
+            1217,
+            808
+          ]
+        },
+        {
+          "class_name": "concrete_mixer_truck",
+          "score": 0.4140318036079407,
+          "box": [
+            0.579899783984696,
+            0.5336685180664062,
+            0.7200664435631933,
+            0.6502602454459313
+          ],
+          "image_size": [
+            1217,
+            808
+          ]
+        }
+      ],
+      "scene_candidates": [],
+      "stage_candidates": []
+    },
+    {
+      "id": "organizer-png-049",
+      "archive_member": "Строительная_техника/Screenshot_49.png",
+      "sha256": "d39b1ec89831ce68bb6a0bb90dd78986ea07165e5c141c8b9940df289db4e368",
+      "bytes": 2373419,
+      "oriented_image_size": [
+        1080,
+        809
+      ],
+      "source_site_camera_sequence_group": null,
+      "capture_at": null,
+      "review_state": "unreviewed",
+      "equipment_candidates": [
+        {
+          "class_name": "excavator",
+          "score": 0.5592144131660461,
+          "box": [
+            0.42217110527886287,
+            0.3639055966446809,
+            0.6111889874493635,
+            0.8910140708291486
+          ],
+          "image_size": [
+            1080,
+            809
+          ]
+        },
+        {
+          "class_name": "concrete_mixer_truck",
+          "score": 0.47036340832710266,
+          "box": [
+            0.3283864904333044,
+            0.7111112502655671,
+            0.3726549219202112,
+            0.775938130721763
+          ],
+          "image_size": [
+            1080,
+            809
+          ]
+        }
+      ],
+      "scene_candidates": [
+        {
+          "feature_name": "concrete_surface",
+          "score": 0.40148383378982544
+        }
+      ],
+      "stage_candidates": [
+        {
+          "stage": "concreting",
+          "equipment": "concrete_mixer_truck",
+          "scene_features": [
+            "concrete_surface"
+          ],
+          "supporting_input_ids": [
+            "organizer-png-049"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "organizer-png-050",
+      "archive_member": "Строительная_техника/Screenshot_50.png",
+      "sha256": "e134ed10718499a4125d571eef8ef8e7b62e7a15daef26d42164150d0c531e01",
+      "bytes": 2648640,
+      "oriented_image_size": [
+        1081,
+        805
+      ],
+      "source_site_camera_sequence_group": null,
+      "capture_at": null,
+      "review_state": "unreviewed",
+      "equipment_candidates": [],
+      "scene_candidates": [],
+      "stage_candidates": []
+    },
+    {
+      "id": "organizer-png-051",
+      "archive_member": "Строительная_техника/Screenshot_51.png",
+      "sha256": "069df451b854db8d6f3dfcc6315591c1c736157779248a0314e1c9670772411c",
+      "bytes": 2029428,
+      "oriented_image_size": [
+        1083,
+        808
+      ],
+      "source_site_camera_sequence_group": null,
+      "capture_at": null,
+      "review_state": "unreviewed",
+      "equipment_candidates": [],
+      "scene_candidates": [
+        {
+          "feature_name": "concrete_surface",
+          "score": 0.41261518001556396
+        }
+      ],
+      "stage_candidates": []
+    },
+    {
+      "id": "organizer-png-052",
+      "archive_member": "Строительная_техника/Screenshot_52.png",
+      "sha256": "f589f604554f9bf77999c7155fbe7839ff96fd3436bf9dbbbe645d3652e19b55",
+      "bytes": 2445478,
+      "oriented_image_size": [
+        1086,
+        814
+      ],
+      "source_site_camera_sequence_group": null,
+      "capture_at": null,
+      "review_state": "unreviewed",
+      "equipment_candidates": [
+        {
+          "class_name": "concrete_mixer_truck",
+          "score": 0.6393687129020691,
+          "box": [
+            0.5601317684953384,
+            0.49086560898389514,
+            0.6332064746273596,
+            0.5439081965266047
+          ],
+          "image_size": [
+            1086,
+            814
+          ]
+        }
+      ],
+      "scene_candidates": [],
+      "stage_candidates": []
+    },
+    {
+      "id": "organizer-png-053",
+      "archive_member": "Строительная_техника/Screenshot_53.png",
+      "sha256": "2fc02f4e4cf7730358cb91d2bc66e5df8dd4a9f18c065af96312b3f4a5cdedd0",
+      "bytes": 2075798,
+      "oriented_image_size": [
+        1085,
+        810
+      ],
+      "source_site_camera_sequence_group": null,
+      "capture_at": null,
+      "review_state": "unreviewed",
+      "equipment_candidates": [
+        {
+          "class_name": "concrete_mixer_truck",
+          "score": 0.5074290633201599,
+          "box": [
+            0.20740215811311924,
+            0.8353846420476466,
+            0.2561564502628168,
+            0.9241026324990355
+          ],
+          "image_size": [
+            1085,
+            810
+          ]
+        }
+      ],
+      "scene_candidates": [],
+      "stage_candidates": []
+    },
+    {
+      "id": "organizer-png-054",
+      "archive_member": "Строительная_техника/Screenshot_54.png",
+      "sha256": "1c2cd6d685fb754fdead179ad8ff2bbf2963f82d58dc50f56bf1682f95a41177",
+      "bytes": 2068110,
+      "oriented_image_size": [
+        1085,
+        807
+      ],
+      "source_site_camera_sequence_group": null,
+      "capture_at": null,
+      "review_state": "unreviewed",
+      "equipment_candidates": [
+        {
+          "class_name": "excavator",
+          "score": 0.6368059515953064,
+          "box": [
+            0.25183617376512096,
+            0.861721109723513,
+            0.4216529107862903,
+            0.9962653593798405
+          ],
+          "image_size": [
+            1085,
+            807
+          ]
+        }
+      ],
+      "scene_candidates": [],
+      "stage_candidates": []
+    },
+    {
+      "id": "organizer-png-055",
+      "archive_member": "Строительная_техника/Screenshot_55.png",
+      "sha256": "367fca6668b79096ff39277302eaf098f33a4d2c115c070abca57dd282d0b8d6",
+      "bytes": 2450455,
+      "oriented_image_size": [
+        1083,
+        809
+      ],
+      "source_site_camera_sequence_group": null,
+      "capture_at": null,
+      "review_state": "unreviewed",
+      "equipment_candidates": [
+        {
+          "class_name": "concrete_mixer_truck",
+          "score": 0.4183007776737213,
+          "box": [
+            0.7897881026193155,
+            0.1996123475403662,
+            0.831799958881579,
+            0.2313947453634406
+          ],
+          "image_size": [
+            1083,
+            809
+          ]
+        }
+      ],
+      "scene_candidates": [
+        {
+          "feature_name": "rebar",
+          "score": 0.3512045741081238
+        }
+      ],
+      "stage_candidates": [
+        {
+          "stage": "concreting",
+          "equipment": "concrete_mixer_truck",
+          "scene_features": [
+            "rebar"
+          ],
+          "supporting_input_ids": [
+            "organizer-png-055"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "organizer-png-056",
+      "archive_member": "Строительная_техника/Screenshot_56.png",
+      "sha256": "bc625a33f2e76da55dc976614886be4f32584caca787b709752c46927bdc4026",
+      "bytes": 2551283,
+      "oriented_image_size": [
+        1081,
+        809
+      ],
+      "source_site_camera_sequence_group": null,
+      "capture_at": null,
+      "review_state": "unreviewed",
+      "equipment_candidates": [
+        {
+          "class_name": "concrete_mixer_truck",
+          "score": 0.4788873791694641,
+          "box": [
+            0.031961770988414955,
+            0.7576745861982386,
+            0.13355655299635755,
+            0.9275862006528122
+          ],
+          "image_size": [
+            1081,
+            809
+          ]
+        }
+      ],
+      "scene_candidates": [
+        {
+          "feature_name": "concrete_surface",
+          "score": 0.42686375975608826
+        }
+      ],
+      "stage_candidates": [
+        {
+          "stage": "concreting",
+          "equipment": "concrete_mixer_truck",
+          "scene_features": [
+            "concrete_surface"
+          ],
+          "supporting_input_ids": [
+            "organizer-png-056"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "organizer-png-057",
+      "archive_member": "Строительная_техника/Screenshot_57.png",
+      "sha256": "d6a82a865a98d1273b451833d4b0e9bc67a7a0c71f4ed33066041eb6f71f0b77",
+      "bytes": 1988213,
+      "oriented_image_size": [
+        1084,
+        810
+      ],
+      "source_site_camera_sequence_group": null,
+      "capture_at": null,
+      "review_state": "unreviewed",
+      "equipment_candidates": [
+        {
+          "class_name": "concrete_mixer_truck",
+          "score": 0.463006854057312,
+          "box": [
+            0.05004125151687003,
+            0.526991441514757,
+            0.14809024993783873,
+            0.6129124770929784
+          ],
+          "image_size": [
+            1084,
+            810
+          ]
+        }
+      ],
+      "scene_candidates": [
+        {
+          "feature_name": "concrete_surface",
+          "score": 0.3556850254535675
+        }
+      ],
+      "stage_candidates": [
+        {
+          "stage": "concreting",
+          "equipment": "concrete_mixer_truck",
+          "scene_features": [
+            "concrete_surface"
+          ],
+          "supporting_input_ids": [
+            "organizer-png-057"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "organizer-png-058",
+      "archive_member": "Строительная_техника/Screenshot_58.png",
+      "sha256": "b38169f3d50437a15f5d510080c1e4f6274600ed6be34afc4d5dad92eec21248",
+      "bytes": 2218503,
+      "oriented_image_size": [
+        1082,
+        808
+      ],
+      "source_site_camera_sequence_group": null,
+      "capture_at": null,
+      "review_state": "unreviewed",
+      "equipment_candidates": [
+        {
+          "class_name": "concrete_mixer_truck",
+          "score": 0.40062788128852844,
+          "box": [
+            0.6505081825467883,
+            0.642141587663405,
+            0.7372063656170575,
+            0.7153985807211092
+          ],
+          "image_size": [
+            1082,
+            808
+          ]
+        },
+        {
+          "class_name": "excavator",
+          "score": 0.4476681053638458,
+          "box": [
+            0.8596035715832948,
+            0.32604508352751777,
+            0.924672068597649,
+            0.4950094695138459
+          ],
+          "image_size": [
+            1082,
+            808
+          ]
+        }
+      ],
+      "scene_candidates": [],
+      "stage_candidates": []
+    },
+    {
+      "id": "organizer-png-059",
+      "archive_member": "Строительная_техника/Screenshot_59.png",
+      "sha256": "4652f38ee8dd63c4a1fb91affcf30b8cc84a445286d18d8929a69d9171b33fdd",
+      "bytes": 2224815,
+      "oriented_image_size": [
+        1079,
+        805
+      ],
+      "source_site_camera_sequence_group": null,
+      "capture_at": null,
+      "review_state": "unreviewed",
+      "equipment_candidates": [
+        {
+          "class_name": "concrete_mixer_truck",
+          "score": 0.5222439765930176,
+          "box": [
+            0.5240954239132009,
+            0.8538487783870342,
+            0.6094669204160391,
+            0.9953623137859083
+          ],
+          "image_size": [
+            1079,
+            805
+          ]
+        }
+      ],
+      "scene_candidates": [
+        {
+          "feature_name": "concrete_surface",
+          "score": 0.35068070888519287
+        }
+      ],
+      "stage_candidates": [
+        {
+          "stage": "concreting",
+          "equipment": "concrete_mixer_truck",
+          "scene_features": [
+            "concrete_surface"
+          ],
+          "supporting_input_ids": [
+            "organizer-png-059"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "organizer-png-060",
+      "archive_member": "Строительная_техника/Screenshot_60.png",
+      "sha256": "1abfb0b7143086f788589d861f684d59cbcc87527606817eee267264e3efd6ea",
+      "bytes": 2393695,
+      "oriented_image_size": [
+        1217,
+        807
+      ],
+      "source_site_camera_sequence_group": null,
+      "capture_at": null,
+      "review_state": "unreviewed",
+      "equipment_candidates": [],
+      "scene_candidates": [
+        {
+          "feature_name": "concrete_surface",
+          "score": 0.5545356869697571
+        }
+      ],
+      "stage_candidates": []
+    },
+    {
+      "id": "organizer-png-061",
+      "archive_member": "Строительная_техника/Screenshot_61.png",
+      "sha256": "7694d8ae692e9ecdba0a1115bc4374cd18c7bf1f4336b41ebbdc1dd6b621fc64",
+      "bytes": 2280915,
+      "oriented_image_size": [
+        1217,
+        808
+      ],
+      "source_site_camera_sequence_group": null,
+      "capture_at": null,
+      "review_state": "unreviewed",
+      "equipment_candidates": [
+        {
+          "class_name": "concrete_mixer_truck",
+          "score": 0.6387772560119629,
+          "box": [
+            0.8340599542772956,
+            0.4716248087363668,
+            0.9507530043138867,
+            0.5770971090486734
+          ],
+          "image_size": [
+            1217,
+            808
+          ]
+        },
+        {
+          "class_name": "road_roller",
+          "score": 0.3512484133243561,
+          "box": [
+            0.8672452752670501,
+            0.5276732491974784,
+            0.9543379796952034,
+            0.6931936433999846
+          ],
+          "image_size": [
+            1217,
+            808
+          ]
+        }
+      ],
+      "scene_candidates": [
+        {
+          "feature_name": "rebar",
+          "score": 0.3903529644012451
+        },
+        {
+          "feature_name": "excavation_or_trench",
+          "score": 0.37406840920448303
+        }
+      ],
+      "stage_candidates": [
+        {
+          "stage": "concreting",
+          "equipment": "concrete_mixer_truck",
+          "scene_features": [
+            "rebar"
+          ],
+          "supporting_input_ids": [
+            "organizer-png-061"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "organizer-png-062",
+      "archive_member": "Строительная_техника/Screenshot_62.png",
+      "sha256": "f3bbbdfc611028ef444e77c318ba13f7e5e43fb6d90dcbe2cc71376d2f87339c",
+      "bytes": 2541198,
+      "oriented_image_size": [
+        1216,
+        808
+      ],
+      "source_site_camera_sequence_group": null,
+      "capture_at": null,
+      "review_state": "unreviewed",
+      "equipment_candidates": [
+        {
+          "class_name": "concrete_mixer_truck",
+          "score": 0.4701938331127167,
+          "box": [
+            0.08972816718252082,
+            0.536965549582302,
+            0.27203326476247686,
+            0.7502219322884437
+          ],
+          "image_size": [
+            1216,
+            808
+          ]
+        }
+      ],
+      "scene_candidates": [],
+      "stage_candidates": []
+    },
+    {
+      "id": "organizer-png-063",
+      "archive_member": "Строительная_техника/Screenshot_63.png",
+      "sha256": "16ed24c67d8aabf6fb35561d728e68a2b6b0afd58d2637ccd3dd91330f0f864c",
+      "bytes": 2962463,
+      "oriented_image_size": [
+        1223,
+        810
+      ],
+      "source_site_camera_sequence_group": null,
+      "capture_at": null,
+      "review_state": "unreviewed",
+      "equipment_candidates": [
+        {
+          "class_name": "excavator",
+          "score": 0.39146938920021057,
+          "box": [
+            0.8475110232586366,
+            0.3136821417160976,
+            0.9658051410466068,
+            0.5294597107687115
+          ],
+          "image_size": [
+            1223,
+            810
+          ]
+        }
+      ],
+      "scene_candidates": [],
+      "stage_candidates": []
+    },
+    {
+      "id": "organizer-png-064",
+      "archive_member": "Строительная_техника/Screenshot_64.png",
+      "sha256": "fedad3d17d203a39df2e34d838a8a5e8983198eecddc5b21f99c51e3e8b2a9a3",
+      "bytes": 2779364,
+      "oriented_image_size": [
+        1222,
+        812
+      ],
+      "source_site_camera_sequence_group": null,
+      "capture_at": null,
+      "review_state": "unreviewed",
+      "equipment_candidates": [
+        {
+          "class_name": "concrete_mixer_truck",
+          "score": 0.5629947781562805,
+          "box": [
+            0.0007892418805198857,
+            0.5840565723738647,
+            0.04520051334961737,
+            0.6876714546692195
+          ],
+          "image_size": [
+            1222,
+            812
+          ]
+        }
+      ],
+      "scene_candidates": [],
+      "stage_candidates": []
+    },
+    {
+      "id": "organizer-png-065",
+      "archive_member": "Строительная_техника/Screenshot_65.png",
+      "sha256": "740961244b7beaaaab5e4030a70cdcaafe9242e622298852babaa7ebb9188260",
+      "bytes": 2299229,
+      "oriented_image_size": [
+        1221,
+        809
+      ],
+      "source_site_camera_sequence_group": null,
+      "capture_at": null,
+      "review_state": "unreviewed",
+      "equipment_candidates": [
+        {
+          "class_name": "excavator",
+          "score": 0.44861871004104614,
+          "box": [
+            0.4205914621564036,
+            0.4818165782650263,
+            0.4840567274038954,
+            0.6306434885975162
+          ],
+          "image_size": [
+            1221,
+            809
+          ]
+        }
+      ],
+      "scene_candidates": [
+        {
+          "feature_name": "concrete_surface",
+          "score": 0.584613561630249
+        }
+      ],
+      "stage_candidates": []
+    },
+    {
+      "id": "organizer-png-066",
+      "archive_member": "Строительная_техника/Screenshot_66.png",
+      "sha256": "3daeb4ceaef7b1e3a3da375e3a8336abd077471b913788c640381bd889e4e738",
+      "bytes": 2626956,
+      "oriented_image_size": [
+        1222,
+        809
+      ],
+      "source_site_camera_sequence_group": null,
+      "capture_at": null,
+      "review_state": "unreviewed",
+      "equipment_candidates": [],
+      "scene_candidates": [],
+      "stage_candidates": []
+    },
+    {
+      "id": "organizer-png-067",
+      "archive_member": "Строительная_техника/Screenshot_67.png",
+      "sha256": "3ce495f1631dff831e76af5389a7dc35928c847a36dc33715c90a41ed3d022f1",
+      "bytes": 1801632,
+      "oriented_image_size": [
+        1212,
+        808
+      ],
+      "source_site_camera_sequence_group": null,
+      "capture_at": null,
+      "review_state": "unreviewed",
+      "equipment_candidates": [],
+      "scene_candidates": [],
+      "stage_candidates": []
+    },
+    {
+      "id": "organizer-png-068",
+      "archive_member": "Строительная_техника/Screenshot_68.png",
+      "sha256": "53404b035ad1ae60e90d3cd7db20a3b0b3bfddedec5675fcd5c8e5fc91c0f8c3",
+      "bytes": 1744162,
+      "oriented_image_size": [
+        1077,
+        807
+      ],
+      "source_site_camera_sequence_group": null,
+      "capture_at": null,
+      "review_state": "unreviewed",
+      "equipment_candidates": [
+        {
+          "class_name": "bulldozer",
+          "score": 0.36772117018699646,
+          "box": [
+            0.5333980748026926,
+            0.5308213925273002,
+            0.720132896827124,
+            0.6760165416618262
+          ],
+          "image_size": [
+            1077,
+            807
+          ]
+        }
+      ],
+      "scene_candidates": [
+        {
+          "feature_name": "formwork",
+          "score": 0.3566747009754181
+        }
+      ],
+      "stage_candidates": []
+    },
+    {
+      "id": "organizer-png-069",
+      "archive_member": "Строительная_техника/Screenshot_69.png",
+      "sha256": "966b6fb6f5f616280e45ca5b020ab43bd14512dc28581e8c62c49cc9187f6063",
+      "bytes": 2088424,
+      "oriented_image_size": [
+        1218,
+        810
+      ],
+      "source_site_camera_sequence_group": null,
+      "capture_at": null,
+      "review_state": "unreviewed",
+      "equipment_candidates": [
+        {
+          "class_name": "bulldozer",
+          "score": 0.3944905400276184,
+          "box": [
+            0.5260992441662818,
+            0.5725023811246142,
+            0.6807068071537613,
+            0.7368538562162423
+          ],
+          "image_size": [
+            1218,
+            810
+          ]
+        }
+      ],
+      "scene_candidates": [
+        {
+          "feature_name": "concrete_surface",
+          "score": 0.5089476108551025
+        }
+      ],
+      "stage_candidates": []
+    },
+    {
+      "id": "organizer-png-070",
+      "archive_member": "Строительная_техника/Screenshot_70.png",
+      "sha256": "9a889640428afad1663c897b5ace77631d926076408137daded5df0f8ac318dc",
+      "bytes": 2446245,
+      "oriented_image_size": [
+        1222,
+        811
+      ],
+      "source_site_camera_sequence_group": null,
+      "capture_at": null,
+      "review_state": "unreviewed",
+      "equipment_candidates": [
+        {
+          "class_name": "excavator",
+          "score": 0.6042792201042175,
+          "box": [
+            0.21083283619482662,
+            0.30717259417626774,
+            0.583051915644819,
+            0.7683922782926171
+          ],
+          "image_size": [
+            1222,
+            811
+          ]
+        },
+        {
+          "class_name": "bulldozer",
+          "score": 0.4048606753349304,
+          "box": [
+            0.21168193411319813,
+            0.5330173854616215,
+            0.45030204910303295,
+            0.7627920204849338
+          ],
+          "image_size": [
+            1222,
+            811
+          ]
+        }
+      ],
+      "scene_candidates": [
+        {
+          "feature_name": "concrete_surface",
+          "score": 0.38095393776893616
+        }
+      ],
+      "stage_candidates": []
+    },
+    {
+      "id": "organizer-png-071",
+      "archive_member": "Строительная_техника/Screenshot_71.png",
+      "sha256": "acf0c3ed194830b0d3dc28e78b23d9f476c945d21106d74810441db661dc733b",
+      "bytes": 2119979,
+      "oriented_image_size": [
+        1214,
+        807
+      ],
+      "source_site_camera_sequence_group": null,
+      "capture_at": null,
+      "review_state": "unreviewed",
+      "equipment_candidates": [
+        {
+          "class_name": "excavator",
+          "score": 0.409148246049881,
+          "box": [
+            0.3017238258726318,
+            0.4623639226107497,
+            0.3903482050636455,
+            0.5761238485759371
+          ],
+          "image_size": [
+            1214,
+            807
+          ]
+        }
+      ],
+      "scene_candidates": [
+        {
+          "feature_name": "concrete_surface",
+          "score": 0.4955838918685913
+        }
+      ],
+      "stage_candidates": []
+    },
+    {
+      "id": "organizer-png-072",
+      "archive_member": "Строительная_техника/Screenshot_72.png",
+      "sha256": "46620a017a351d240f5c1ba400dc7012a17958d2ee31c0f142c439de7e3c39a4",
+      "bytes": 2252261,
+      "oriented_image_size": [
+        1218,
+        809
+      ],
+      "source_site_camera_sequence_group": null,
+      "capture_at": null,
+      "review_state": "unreviewed",
+      "equipment_candidates": [
+        {
+          "class_name": "concrete_mixer_truck",
+          "score": 0.35101938247680664,
+          "box": [
+            0.46346539777683704,
+            0.5512536123155516,
+            0.5094921193490867,
+            0.6118721225205693
+          ],
+          "image_size": [
+            1218,
+            809
+          ]
+        }
+      ],
+      "scene_candidates": [
+        {
+          "feature_name": "concrete_surface",
+          "score": 0.3628302812576294
+        }
+      ],
+      "stage_candidates": [
+        {
+          "stage": "concreting",
+          "equipment": "concrete_mixer_truck",
+          "scene_features": [
+            "concrete_surface"
+          ],
+          "supporting_input_ids": [
+            "organizer-png-072"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "organizer-png-073",
+      "archive_member": "Строительная_техника/Screenshot_73.png",
+      "sha256": "9821246d894ea75172de936cac6acd39c2cf7e900db2431d0b6ce98116b1389c",
+      "bytes": 3046487,
+      "oriented_image_size": [
+        1216,
+        810
+      ],
+      "source_site_camera_sequence_group": null,
+      "capture_at": null,
+      "review_state": "unreviewed",
+      "equipment_candidates": [],
+      "scene_candidates": [],
+      "stage_candidates": []
+    },
+    {
+      "id": "organizer-png-074",
+      "archive_member": "Строительная_техника/Screenshot_74.png",
+      "sha256": "8e1a2e519f5fb4a3674b86c37e935720859969c89395fdd36076b26326ddd330",
+      "bytes": 2953391,
+      "oriented_image_size": [
+        1213,
+        806
+      ],
+      "source_site_camera_sequence_group": null,
+      "capture_at": null,
+      "review_state": "unreviewed",
+      "equipment_candidates": [],
+      "scene_candidates": [],
+      "stage_candidates": []
+    },
+    {
+      "id": "organizer-png-075",
+      "archive_member": "Строительная_техника/Screenshot_75.png",
+      "sha256": "18cdd8a5f24338b71cfb4e674aa41d0231c4fc9ce1cc84392c90eaa949730c94",
+      "bytes": 2214817,
+      "oriented_image_size": [
+        1217,
+        811
+      ],
+      "source_site_camera_sequence_group": null,
+      "capture_at": null,
+      "review_state": "unreviewed",
+      "equipment_candidates": [],
+      "scene_candidates": [],
+      "stage_candidates": []
+    },
+    {
+      "id": "organizer-png-076",
+      "archive_member": "Строительная_техника/Screenshot_76.png",
+      "sha256": "9c14bc8b8ffe98a10ba358140e40cf850e0a23e3d524c5e7c40741b993a54b43",
+      "bytes": 2774660,
+      "oriented_image_size": [
+        1216,
+        804
+      ],
+      "source_site_camera_sequence_group": null,
+      "capture_at": null,
+      "review_state": "unreviewed",
+      "equipment_candidates": [],
+      "scene_candidates": [],
+      "stage_candidates": []
+    },
+    {
+      "id": "organizer-png-077",
+      "archive_member": "Строительная_техника/Screenshot_77.png",
+      "sha256": "8b76a120d29a88a0a5bb7c49d8669915e512a7d2315743d6b2c67ebd283eb4b5",
+      "bytes": 1791347,
+      "oriented_image_size": [
+        1222,
+        808
+      ],
+      "source_site_camera_sequence_group": null,
+      "capture_at": null,
+      "review_state": "unreviewed",
+      "equipment_candidates": [
+        {
+          "class_name": "concrete_mixer_truck",
+          "score": 0.42770007252693176,
+          "box": [
+            0.7117806542329429,
+            0.45277408562084237,
+            0.8097847846447934,
+            0.5858962559463954
+          ],
+          "image_size": [
+            1222,
+            808
+          ]
+        },
+        {
+          "class_name": "concrete_mixer_truck",
+          "score": 0.38091376423835754,
+          "box": [
+            0.8030472426094517,
+            0.48484923107789296,
+            0.8385794931464812,
+            0.5762415970906173
+          ],
+          "image_size": [
+            1222,
+            808
+          ]
+        }
+      ],
+      "scene_candidates": [
+        {
+          "feature_name": "concrete_surface",
+          "score": 0.43569624423980713
+        }
+      ],
+      "stage_candidates": [
+        {
+          "stage": "concreting",
+          "equipment": "concrete_mixer_truck",
+          "scene_features": [
+            "concrete_surface"
+          ],
+          "supporting_input_ids": [
+            "organizer-png-077"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "organizer-png-078",
+      "archive_member": "Строительная_техника/Screenshot_78.png",
+      "sha256": "4d2d1a59795c5cf932b140c2a336dc29e8091e7a713564efd8d339e4deb15cd5",
+      "bytes": 2189051,
+      "oriented_image_size": [
+        1215,
+        803
+      ],
+      "source_site_camera_sequence_group": null,
+      "capture_at": null,
+      "review_state": "unreviewed",
+      "equipment_candidates": [],
+      "scene_candidates": [],
+      "stage_candidates": []
+    },
+    {
+      "id": "organizer-png-079",
+      "archive_member": "Строительная_техника/Screenshot_79.png",
+      "sha256": "49ff8a4112a359c6c3606bb2e3b20423d4f2ddf1646002670771ddd229fea618",
+      "bytes": 1950624,
+      "oriented_image_size": [
+        1218,
+        810
+      ],
+      "source_site_camera_sequence_group": null,
+      "capture_at": null,
+      "review_state": "unreviewed",
+      "equipment_candidates": [
+        {
+          "class_name": "concrete_mixer_truck",
+          "score": 0.3945101797580719,
+          "box": [
+            0.0823653460723426,
+            0.6742155852141204,
+            0.2680767792199046,
+            0.8420367959104939
+          ],
+          "image_size": [
+            1218,
+            810
+          ]
+        }
+      ],
+      "scene_candidates": [],
+      "stage_candidates": []
+    },
+    {
+      "id": "organizer-png-080",
+      "archive_member": "Строительная_техника/Screenshot_80.png",
+      "sha256": "b8b5654d531b1327729bd916ac7ebd881bc9d09944d6572fd34687cbf96e3e93",
+      "bytes": 2096049,
+      "oriented_image_size": [
+        1220,
+        811
+      ],
+      "source_site_camera_sequence_group": null,
+      "capture_at": null,
+      "review_state": "unreviewed",
+      "equipment_candidates": [
+        {
+          "class_name": "bulldozer",
+          "score": 0.4808586537837982,
+          "box": [
+            0.1691648389472336,
+            0.6104056361865174,
+            0.3128761916864114,
+            0.7487284217016029
+          ],
+          "image_size": [
+            1220,
+            811
+          ]
+        },
+        {
+          "class_name": "bulldozer",
+          "score": 0.36898401379585266,
+          "box": [
+            0.15657712592453252,
+            0.5898007017763564,
+            0.33636289502753586,
+            0.7759344474895962
+          ],
+          "image_size": [
+            1220,
+            811
+          ]
+        }
+      ],
+      "scene_candidates": [
+        {
+          "feature_name": "formwork",
+          "score": 0.41590985655784607
+        }
+      ],
+      "stage_candidates": []
+    },
+    {
+      "id": "organizer-png-081",
+      "archive_member": "Строительная_техника/Screenshot_81.png",
+      "sha256": "42b1c7f5eb3d9523eeb9f74468304c610ae9973150acfaef53d2774c9f1c54f8",
+      "bytes": 2001826,
+      "oriented_image_size": [
+        1219,
+        814
+      ],
+      "source_site_camera_sequence_group": null,
+      "capture_at": null,
+      "review_state": "unreviewed",
+      "equipment_candidates": [],
+      "scene_candidates": [
+        {
+          "feature_name": "concrete_surface",
+          "score": 0.3952508866786957
+        },
+        {
+          "feature_name": "formwork",
+          "score": 0.4123227894306183
+        }
+      ],
+      "stage_candidates": []
+    },
+    {
+      "id": "organizer-png-082",
+      "archive_member": "Строительная_техника/Screenshot_82.png",
+      "sha256": "7327dcb149b334e46b9afbfd08a01040a883609a028c3fd4813f7d5d87c87619",
+      "bytes": 1696978,
+      "oriented_image_size": [
+        1211,
+        812
+      ],
+      "source_site_camera_sequence_group": null,
+      "capture_at": null,
+      "review_state": "unreviewed",
+      "equipment_candidates": [
+        {
+          "class_name": "concrete_mixer_truck",
+          "score": 0.619284987449646,
+          "box": [
+            0.29430620617161696,
+            0.5924692012993573,
+            0.4062340230020386,
+            0.7083418521975061
+          ],
+          "image_size": [
+            1211,
+            812
+          ]
+        },
+        {
+          "class_name": "road_roller",
+          "score": 0.37700650095939636,
+          "box": [
+            0.7441520659417579,
+            0.6887428020608837,
+            0.867678906088718,
+            0.7700722980969058
+          ],
+          "image_size": [
+            1211,
+            812
+          ]
+        },
+        {
+          "class_name": "bulldozer",
+          "score": 0.3737901747226715,
+          "box": [
+            0.43134991419797686,
+            0.6403311743524861,
+            0.5448362443390019,
+            0.7733973611164563
+          ],
+          "image_size": [
+            1211,
+            812
+          ]
+        }
+      ],
+      "scene_candidates": [
+        {
+          "feature_name": "rebar",
+          "score": 0.35383039712905884
+        }
+      ],
+      "stage_candidates": [
+        {
+          "stage": "concreting",
+          "equipment": "concrete_mixer_truck",
+          "scene_features": [
+            "rebar"
+          ],
+          "supporting_input_ids": [
+            "organizer-png-082"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "organizer-png-083",
+      "archive_member": "Строительная_техника/Screenshot_83.png",
+      "sha256": "6b7c3620f6dbaa19956c3d7484e7531bb374e93b080ceab4d2c4eedfba25e66a",
+      "bytes": 2994941,
+      "oriented_image_size": [
+        1217,
+        812
+      ],
+      "source_site_camera_sequence_group": null,
+      "capture_at": null,
+      "review_state": "unreviewed",
+      "equipment_candidates": [],
+      "scene_candidates": [
+        {
+          "feature_name": "formwork",
+          "score": 0.405888170003891
+        },
+        {
+          "feature_name": "concrete_surface",
+          "score": 0.3514360785484314
+        }
+      ],
+      "stage_candidates": []
+    },
+    {
+      "id": "organizer-png-084",
+      "archive_member": "Строительная_техника/Screenshot_84.png",
+      "sha256": "60a57d0fca04ed64585ab29b14a1ab5fba8ba42117f0c7cedd708458d25d4a81",
+      "bytes": 1769378,
+      "oriented_image_size": [
+        1215,
+        808
+      ],
+      "source_site_camera_sequence_group": null,
+      "capture_at": null,
+      "review_state": "unreviewed",
+      "equipment_candidates": [
+        {
+          "class_name": "excavator",
+          "score": 0.5659197568893433,
+          "box": [
+            0.6980806829507459,
+            0.3753308588915532,
+            0.9007664809992284,
+            0.8462477580155476
+          ],
+          "image_size": [
+            1215,
+            808
+          ]
+        }
+      ],
+      "scene_candidates": [
+        {
+          "feature_name": "formwork",
+          "score": 0.36285701394081116
+        }
+      ],
+      "stage_candidates": []
+    },
+    {
+      "id": "organizer-png-085",
+      "archive_member": "Строительная_техника/Screenshot_85.png",
+      "sha256": "8e8225acf6461449b9ca0b6710cfc37d0799e24d7cdad608996bb55b7a549e3c",
+      "bytes": 2461036,
+      "oriented_image_size": [
+        1218,
+        812
+      ],
+      "source_site_camera_sequence_group": null,
+      "capture_at": null,
+      "review_state": "unreviewed",
+      "equipment_candidates": [],
+      "scene_candidates": [
+        {
+          "feature_name": "concrete_surface",
+          "score": 0.416503369808197
+        }
+      ],
+      "stage_candidates": []
+    },
+    {
+      "id": "organizer-png-086",
+      "archive_member": "Строительная_техника/Screenshot_86.png",
+      "sha256": "c3e23a14e71f14ac894753d7c18b1e4733c28e7951293ba41c1ed1efa0b945a1",
+      "bytes": 1473583,
+      "oriented_image_size": [
+        1213,
+        808
+      ],
+      "source_site_camera_sequence_group": null,
+      "capture_at": null,
+      "review_state": "unreviewed",
+      "equipment_candidates": [
+        {
+          "class_name": "excavator",
+          "score": 0.6401934027671814,
+          "box": [
+            0.5813259492702751,
+            0.5969351966782371,
+            0.7282847682012572,
+            0.7482983428652924
+          ],
+          "image_size": [
+            1213,
+            808
+          ]
+        },
+        {
+          "class_name": "bulldozer",
+          "score": 0.43723824620246887,
+          "box": [
+            0.21503382444578267,
+            0.6581911143690052,
+            0.3177877679307502,
+            0.7641621202525526
+          ],
+          "image_size": [
+            1213,
+            808
+          ]
+        }
+      ],
+      "scene_candidates": [],
+      "stage_candidates": []
+    },
+    {
+      "id": "organizer-png-087",
+      "archive_member": "Строительная_техника/Screenshot_87.png",
+      "sha256": "a0b8d744d9aeef74a88230ac28a5a69137c2d26085a3862e30598de4699880ce",
+      "bytes": 1839881,
+      "oriented_image_size": [
+        1212,
+        807
+      ],
+      "source_site_camera_sequence_group": null,
+      "capture_at": null,
+      "review_state": "unreviewed",
+      "equipment_candidates": [
+        {
+          "class_name": "concrete_mixer_truck",
+          "score": 0.5748418569564819,
+          "box": [
+            0.592812969346251,
+            0.7392798970918525,
+            0.8098090143487005,
+            0.89181333255886
+          ],
+          "image_size": [
+            1212,
+            807
+          ]
+        },
+        {
+          "class_name": "bulldozer",
+          "score": 0.47295504808425903,
+          "box": [
+            0.2665453366320519,
+            0.7178191193269826,
+            0.4102919424327687,
+            0.8768828627197568
+          ],
+          "image_size": [
+            1212,
+            807
+          ]
+        },
+        {
+          "class_name": "excavator",
+          "score": 0.583719789981842,
+          "box": [
+            0.69387419546398,
+            0.6245176936909465,
+            0.989357321962665,
+            0.8822063082065134
+          ],
+          "image_size": [
+            1212,
+            807
+          ]
+        }
+      ],
+      "scene_candidates": [
+        {
+          "feature_name": "concrete_surface",
+          "score": 0.41008052229881287
+        }
+      ],
+      "stage_candidates": [
+        {
+          "stage": "concreting",
+          "equipment": "concrete_mixer_truck",
+          "scene_features": [
+            "concrete_surface"
+          ],
+          "supporting_input_ids": [
+            "organizer-png-087"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "organizer-png-088",
+      "archive_member": "Строительная_техника/Screenshot_88.png",
+      "sha256": "48b05f7c0410ca86bca5c14fc6abe6860c3e9d954b472902913dbe00a0440858",
+      "bytes": 1921243,
+      "oriented_image_size": [
+        1220,
+        812
+      ],
+      "source_site_camera_sequence_group": null,
+      "capture_at": null,
+      "review_state": "unreviewed",
+      "equipment_candidates": [],
+      "scene_candidates": [
+        {
+          "feature_name": "concrete_surface",
+          "score": 0.46340063214302063
+        }
+      ],
+      "stage_candidates": []
+    },
+    {
+      "id": "organizer-png-089",
+      "archive_member": "Строительная_техника/Screenshot_89.png",
+      "sha256": "bfbb99aff81bb774b2d22c7531714f6027293a2bff131d21e4a9afcb9aad5e1f",
+      "bytes": 2712524,
+      "oriented_image_size": [
+        1221,
+        814
+      ],
+      "source_site_camera_sequence_group": null,
+      "capture_at": null,
+      "review_state": "unreviewed",
+      "equipment_candidates": [
+        {
+          "class_name": "excavator",
+          "score": 0.4586217403411865,
+          "box": [
+            0.8361147069032812,
+            0.35395003185225354,
+            0.9957284388436732,
+            0.6307451027910013
+          ],
+          "image_size": [
+            1221,
+            814
+          ]
+        }
+      ],
+      "scene_candidates": [
+        {
+          "feature_name": "concrete_surface",
+          "score": 0.3666522204875946
+        }
+      ],
+      "stage_candidates": []
+    },
+    {
+      "id": "organizer-png-090",
+      "archive_member": "Строительная_техника/Screenshot_90.png",
+      "sha256": "dc7b133138670798d99e98c930f92ba845081769fa927930371d6bcd9bb33703",
+      "bytes": 1981109,
+      "oriented_image_size": [
+        1216,
+        810
+      ],
+      "source_site_camera_sequence_group": null,
+      "capture_at": null,
+      "review_state": "unreviewed",
+      "equipment_candidates": [
+        {
+          "class_name": "excavator",
+          "score": 0.45460984110832214,
+          "box": [
+            0.4881734848022461,
+            0.49839368278597607,
+            0.631138801574707,
+            0.7829648618344908
+          ],
+          "image_size": [
+            1216,
+            810
+          ]
+        }
+      ],
+      "scene_candidates": [
+        {
+          "feature_name": "concrete_surface",
+          "score": 0.4477325975894928
+        }
+      ],
+      "stage_candidates": []
+    },
+    {
+      "id": "organizer-png-091",
+      "archive_member": "Строительная_техника/Screenshot_91.png",
+      "sha256": "c1fea3275b33a44326c99617c5708dc4a2e9fe5f2ee0bc1148585f4d5a2238c4",
+      "bytes": 2485763,
+      "oriented_image_size": [
+        1223,
+        807
+      ],
+      "source_site_camera_sequence_group": null,
+      "capture_at": null,
+      "review_state": "unreviewed",
+      "equipment_candidates": [
+        {
+          "class_name": "concrete_mixer_truck",
+          "score": 0.42535147070884705,
+          "box": [
+            0.6723286464188982,
+            0.7003440809663491,
+            0.7523742326438573,
+            0.8716876137507745
+          ],
+          "image_size": [
+            1223,
+            807
+          ]
+        }
+      ],
+      "scene_candidates": [],
+      "stage_candidates": []
+    },
+    {
+      "id": "organizer-png-092",
+      "archive_member": "Строительная_техника/Screenshot_92.png",
+      "sha256": "a206de684908aee63bfc80f64a5cd47a2232ab087e68095874457d1b6fd354ad",
+      "bytes": 1912399,
+      "oriented_image_size": [
+        1221,
+        815
+      ],
+      "source_site_camera_sequence_group": null,
+      "capture_at": null,
+      "review_state": "unreviewed",
+      "equipment_candidates": [
+        {
+          "class_name": "excavator",
+          "score": 0.6288910508155823,
+          "box": [
+            0.08425615265367463,
+            0.6306430933665644,
+            0.17444080099719747,
+            0.7958705785084356
+          ],
+          "image_size": [
+            1221,
+            815
+          ]
+        }
+      ],
+      "scene_candidates": [
+        {
+          "feature_name": "concrete_surface",
+          "score": 0.3681832551956177
+        }
+      ],
+      "stage_candidates": []
+    },
+    {
+      "id": "organizer-png-093",
+      "archive_member": "Строительная_техника/Screenshot_93.png",
+      "sha256": "b946a3d2edb231f6bc2500b574a32c252c02f54c4ccae5dd5be5bd99114879f6",
+      "bytes": 2923893,
+      "oriented_image_size": [
+        1219,
+        809
+      ],
+      "source_site_camera_sequence_group": null,
+      "capture_at": null,
+      "review_state": "unreviewed",
+      "equipment_candidates": [
+        {
+          "class_name": "concrete_mixer_truck",
+          "score": 0.5989399552345276,
+          "box": [
+            0.8898031533595673,
+            0.16367563594256992,
+            0.9482989667183654,
+            0.22136653339022908
+          ],
+          "image_size": [
+            1219,
+            809
+          ]
+        },
+        {
+          "class_name": "excavator",
+          "score": 0.42709818482398987,
+          "box": [
+            0.43096718541709395,
+            0.2014738254995075,
+            0.5098217032403609,
+            0.3231871879587067
+          ],
+          "image_size": [
+            1219,
+            809
+          ]
+        }
+      ],
+      "scene_candidates": [
+        {
+          "feature_name": "concrete_surface",
+          "score": 0.3551073372364044
+        }
+      ],
+      "stage_candidates": [
+        {
+          "stage": "concreting",
+          "equipment": "concrete_mixer_truck",
+          "scene_features": [
+            "concrete_surface"
+          ],
+          "supporting_input_ids": [
+            "organizer-png-093"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "organizer-png-094",
+      "archive_member": "Строительная_техника/Screenshot_94.png",
+      "sha256": "bf8630fc1eb4f51e51dc25c6cda3ac35af4d0e356998449d112f50d75b79235e",
+      "bytes": 2357799,
+      "oriented_image_size": [
+        1215,
+        814
+      ],
+      "source_site_camera_sequence_group": null,
+      "capture_at": null,
+      "review_state": "unreviewed",
+      "equipment_candidates": [
+        {
+          "class_name": "excavator",
+          "score": 0.612550675868988,
+          "box": [
+            0.5609901459619342,
+            0.5456437994279791,
+            0.8052939834908693,
+            0.9457530928478194
+          ],
+          "image_size": [
+            1215,
+            814
+          ]
+        },
+        {
+          "class_name": "bulldozer",
+          "score": 0.39030513167381287,
+          "box": [
+            0.6120748135288065,
+            0.7208992023139973,
+            0.8058206440489969,
+            0.9437231115392737
+          ],
+          "image_size": [
+            1215,
+            814
+          ]
+        }
+      ],
+      "scene_candidates": [
+        {
+          "feature_name": "concrete_surface",
+          "score": 0.42775002121925354
+        }
+      ],
+      "stage_candidates": []
+    },
+    {
+      "id": "organizer-png-095",
+      "archive_member": "Строительная_техника/Screenshot_95.png",
+      "sha256": "99e533298093dc49ab390938d41dfa20f26f4dc9c53644009086292c7e63fe44",
+      "bytes": 2618757,
+      "oriented_image_size": [
+        1217,
+        810
+      ],
+      "source_site_camera_sequence_group": null,
+      "capture_at": null,
+      "review_state": "unreviewed",
+      "equipment_candidates": [],
+      "scene_candidates": [],
+      "stage_candidates": []
+    },
+    {
+      "id": "organizer-png-096",
+      "archive_member": "Строительная_техника/Screenshot_96.png",
+      "sha256": "1f27fc78a85c9e9c04a7a3b79ead8141d4b0883be3c04b6eb6a126e89ab1980d",
+      "bytes": 2176692,
+      "oriented_image_size": [
+        1219,
+        807
+      ],
+      "source_site_camera_sequence_group": null,
+      "capture_at": null,
+      "review_state": "unreviewed",
+      "equipment_candidates": [
+        {
+          "class_name": "excavator",
+          "score": 0.47438377141952515,
+          "box": [
+            0.7674921049848749,
+            0.4414340826363073,
+            0.9097341611015689,
+            0.6116098926265295
+          ],
+          "image_size": [
+            1219,
+            807
+          ]
+        }
+      ],
+      "scene_candidates": [
+        {
+          "feature_name": "concrete_surface",
+          "score": 0.4292692542076111
+        }
+      ],
+      "stage_candidates": []
+    },
+    {
+      "id": "organizer-png-097",
+      "archive_member": "Строительная_техника/Screenshot_97.png",
+      "sha256": "5b5fd8840414f172869d133d6cc7cdcf09b256a8fe8a3c047f56692489ed33a8",
+      "bytes": 3051702,
+      "oriented_image_size": [
+        1221,
+        810
+      ],
+      "source_site_camera_sequence_group": null,
+      "capture_at": null,
+      "review_state": "unreviewed",
+      "equipment_candidates": [
+        {
+          "class_name": "concrete_mixer_truck",
+          "score": 0.5729379653930664,
+          "box": [
+            0.5989513350353194,
+            0.2548418398256655,
+            0.7467468911560708,
+            0.4079211576485339
+          ],
+          "image_size": [
+            1221,
+            810
+          ]
+        },
+        {
+          "class_name": "excavator",
+          "score": 0.4063737690448761,
+          "box": [
+            0.38451341133836253,
+            0.2717990074628665,
+            0.6069004518101198,
+            0.8706814989631558
+          ],
+          "image_size": [
+            1221,
+            810
+          ]
+        }
+      ],
+      "scene_candidates": [
+        {
+          "feature_name": "rebar",
+          "score": 0.4043756425380707
+        }
+      ],
+      "stage_candidates": [
+        {
+          "stage": "concreting",
+          "equipment": "concrete_mixer_truck",
+          "scene_features": [
+            "rebar"
+          ],
+          "supporting_input_ids": [
+            "organizer-png-097"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "organizer-png-098",
+      "archive_member": "Строительная_техника/Screenshot_98.png",
+      "sha256": "548b1d22a7078822c740ba0362db10f6d280618eecd32c176f56ecb223d6ba66",
+      "bytes": 3095273,
+      "oriented_image_size": [
+        1221,
+        810
+      ],
+      "source_site_camera_sequence_group": null,
+      "capture_at": null,
+      "review_state": "unreviewed",
+      "equipment_candidates": [
+        {
+          "class_name": "excavator",
+          "score": 0.553010880947113,
+          "box": [
+            0.13609513916215576,
+            0.23815032582224152,
+            0.8141573469332258,
+            0.9125814555603781
+          ],
+          "image_size": [
+            1221,
+            810
+          ]
+        },
+        {
+          "class_name": "concrete_mixer_truck",
+          "score": 0.37308573722839355,
+          "box": [
+            0.13631549807086915,
+            0.24205058533468365,
+            0.4074421350727503,
+            0.5040620026765046
+          ],
+          "image_size": [
+            1221,
+            810
+          ]
+        }
+      ],
+      "scene_candidates": [],
+      "stage_candidates": []
+    },
+    {
+      "id": "organizer-png-099",
+      "archive_member": "Строительная_техника/Screenshot_99.png",
+      "sha256": "c4d2cede161a85e29bb81ff751a9cd2fbe108f07ed397dfe170eceec8085da46",
+      "bytes": 3036894,
+      "oriented_image_size": [
+        1216,
+        813
+      ],
+      "source_site_camera_sequence_group": null,
+      "capture_at": null,
+      "review_state": "unreviewed",
+      "equipment_candidates": [
+        {
+          "class_name": "concrete_mixer_truck",
+          "score": 0.5697532296180725,
+          "box": [
+            0.12112185829564144,
+            0.533391823481223,
+            0.5569598549290707,
+            0.7889089736844634
+          ],
+          "image_size": [
+            1216,
+            813
+          ]
+        }
+      ],
+      "scene_candidates": [
+        {
+          "feature_name": "concrete_surface",
+          "score": 0.38197562098503113
+        }
+      ],
+      "stage_candidates": [
+        {
+          "stage": "concreting",
+          "equipment": "concrete_mixer_truck",
+          "scene_features": [
+            "concrete_surface"
+          ],
+          "supporting_input_ids": [
+            "organizer-png-099"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "organizer-png-100",
+      "archive_member": "Строительная_техника/Screenshot_100.png",
+      "sha256": "cec4b90dfed4ce504f620a27176b8e28c72f14dc9b313efdfe791873236a2322",
+      "bytes": 2039895,
+      "oriented_image_size": [
+        1220,
+        810
+      ],
+      "source_site_camera_sequence_group": null,
+      "capture_at": null,
+      "review_state": "unreviewed",
+      "equipment_candidates": [
+        {
+          "class_name": "excavator",
+          "score": 0.4443070590496063,
+          "box": [
+            0.7424177326139857,
+            0.4879904287832755,
+            0.8524234959336577,
+            0.6086042616102431
+          ],
+          "image_size": [
+            1220,
+            810
+          ]
+        }
+      ],
+      "scene_candidates": [
+        {
+          "feature_name": "concrete_surface",
+          "score": 0.3749319612979889
+        }
+      ],
+      "stage_candidates": []
+    }
+  ]
+}
