@@ -12,7 +12,8 @@ from pathlib import Path
 from time import monotonic
 
 from app.domain.observations import CLASSES, STAGES, normalized_states
-from app.domain.evaluation_set import inspect_evaluation_set, reserve_held_out_inventory
+from app.domain.evaluation_set import inspect_evaluation_set, reserve_held_out_inventory, canonical_hash
+from app.domain.comparison_campaign import CampaignGateError, build_manifest
 from app.profiles import cloud_api, grounding_dino
 from app.profiles.grounding_dino import canonical_bytes, digest
 from app.adapters.artifacts import ArtifactGateError, ArtifactStore
@@ -92,6 +93,97 @@ class PostgresStore:
              "status": decision["status"], "evidence": json.dumps(decision["inventory_evidence"]),
              "errors": json.dumps(decision["errors"])})
         return revision_id
+
+    def freeze_comparison_campaign(self, evaluation_revision_id: uuid.UUID,
+                                   local_profile_id: uuid.UUID, cloud_profile_id: uuid.UUID) -> uuid.UUID:
+        with self.engine.begin() as connection:
+            connection.execute(text("SELECT pg_advisory_xact_lock(:id)"), {"id": LOCK_ID + 2})
+            evaluation = connection.execute(text("""SELECT manifest, manifest_hash FROM evaluation_set_revisions
+                WHERE id = :id FOR SHARE"""), {"id": evaluation_revision_id}).one_or_none()
+            if not evaluation:
+                raise CampaignGateError("evaluation_revision_missing")
+            if not connection.execute(text("""SELECT 1 FROM evaluation_freeze_decisions
+                WHERE revision_id = :id AND status = 'accepted' AND manifest_hash = :hash"""),
+                {"id": evaluation_revision_id, "hash": evaluation.manifest_hash}).first():
+                raise CampaignGateError("evaluation_decision_mismatch")
+            local, local_revision = self._require_authorized(connection, local_profile_id)
+            cloud, cloud_revision = self._require_authorized(connection, cloud_profile_id)
+            manifest = build_manifest(evaluation.manifest, local, cloud)
+            hashes = [frame["image"]["sha256"] for fixture in manifest["fixtures"] for frame in fixture["frames"]]
+            canary_hashes = [item.sha256 for item in connection.execute(text(
+                "SELECT sha256 FROM run_inputs WHERE run_id = ANY(:ids)"),
+                {"ids": [uuid.UUID(value) for value in cloud["audit_run_ids"]]}).all()]
+            if sorted(cloud.get("allowed_input_sha256", [])) != sorted(set(canary_hashes + hashes)):
+                raise CampaignGateError("cloud_image_not_authorized")
+            for candidate, profile_id, revision in zip(manifest["candidates"],
+                    (local_profile_id, cloud_profile_id), (local_revision, cloud_revision)):
+                candidate["profile_id"] = str(profile_id)
+                candidate["authorization_revision"] = revision
+                candidate["profile_hash"] = digest(canonical_bytes(candidate["snapshot"]))
+            manifest["evaluation_revision_id"] = str(evaluation_revision_id)
+            manifest["evaluation_manifest_hash"] = evaluation.manifest_hash
+            manifest_hash = canonical_hash(manifest)
+            if connection.execute(text("SELECT 1 FROM comparison_campaigns WHERE manifest_hash = :hash"),
+                                  {"hash": manifest_hash}).first():
+                raise CampaignGateError("campaign_already_frozen")
+            campaign_id = uuid.uuid4()
+            connection.execute(text("""INSERT INTO comparison_campaigns
+                (id, revision_number, evaluation_revision_id, manifest_hash, manifest)
+                VALUES (:id, (SELECT coalesce(max(revision_number), 0) + 1 FROM comparison_campaigns),
+                        :evaluation, :hash, CAST(:manifest AS jsonb))"""),
+                {"id": campaign_id, "evaluation": evaluation_revision_id,
+                 "hash": manifest_hash, "manifest": json.dumps(manifest)})
+            for repeat in range(3):
+                for fixture in manifest["fixtures"]:
+                    areas = [frame["context"]["observation_area"] for frame in fixture["frames"]]
+                    context = {"scenario": fixture["scenario"], "observation_area": areas[0] if len(set(areas)) == 1 else "multiple_observation_areas",
+                               "observation_areas": areas, "period": "held_out_comparison",
+                               "frame_contexts": [frame["context"] for frame in fixture["frames"]],
+                               "expected_outcome": fixture["expected_outcome"]}
+                    rule_run = fixture["scenario"].endswith("_series")
+                    for candidate in manifest["candidates"]:
+                        run_id = uuid.uuid4()
+                        connection.execute(text("""INSERT INTO analysis_runs
+                            (id, state, purpose, profile_id, authorization_revision, binding_kind,
+                             profile_snapshot, request_context, policy_snapshot, rule_snapshot,
+                             analysis_intent, stage_key, taxonomy_snapshot, requested_classes)
+                            VALUES (:id, 'planned', 'comparison_campaign', :profile, :revision,
+                                'comparison_cell', CAST(:snapshot AS jsonb), CAST(:context AS jsonb),
+                                CAST(:policy AS jsonb), CAST(:rule AS jsonb), :intent, :stage,
+                                CAST(:taxonomy AS jsonb), CAST(:classes AS jsonb))"""),
+                            {"id": run_id, "profile": uuid.UUID(candidate["profile_id"]),
+                             "revision": candidate["authorization_revision"],
+                             "snapshot": json.dumps(candidate["snapshot"]), "context": json.dumps(context),
+                             "policy": json.dumps({"intent": "rule_evaluation", **manifest["rule_policy"]}
+                                                  if rule_run else manifest["observation_policy"]),
+                             "rule": json.dumps(manifest["rule"]),
+                             "intent": "rule_evaluation" if rule_run else "observation_only",
+                             "stage": "excavation" if rule_run else None,
+                             "taxonomy": json.dumps(manifest["taxonomy"]),
+                             "classes": json.dumps(fixture["requested_classes"])})
+                        connection.execute(text("""INSERT INTO comparison_cells
+                            (campaign_id, repeat_ordinal, fixture_ordinal, candidate_ordinal, run_id)
+                            VALUES (:campaign, :repeat, :fixture, :candidate, :run)"""),
+                            {"campaign": campaign_id, "repeat": repeat,
+                             "fixture": fixture["ordinal"], "candidate": candidate["ordinal"], "run": run_id})
+            return campaign_id
+
+    def read_comparison_campaign(self, campaign_id: uuid.UUID) -> dict:
+        with self.engine.begin() as connection:
+            row = connection.execute(text("""SELECT revision_number, evaluation_revision_id, manifest_hash, manifest
+                FROM comparison_campaigns WHERE id = :id"""), {"id": campaign_id}).one_or_none()
+            if not row:
+                raise CampaignGateError("campaign_missing")
+            cells = connection.execute(text("""SELECT c.repeat_ordinal, c.fixture_ordinal, c.candidate_ordinal,
+                c.run_id, r.state FROM comparison_cells c JOIN analysis_runs r ON r.id = c.run_id
+                WHERE c.campaign_id = :id ORDER BY c.repeat_ordinal, c.fixture_ordinal, c.candidate_ordinal"""),
+                {"id": campaign_id}).all()
+            return {"id": str(campaign_id), "revision_number": row.revision_number,
+                    "evaluation_revision_id": str(row.evaluation_revision_id),
+                    "manifest_hash": row.manifest_hash, "manifest": row.manifest,
+                    "cells": [{"repeat_ordinal": item.repeat_ordinal, "fixture_ordinal": item.fixture_ordinal,
+                               "candidate_ordinal": item.candidate_ordinal, "run_id": str(item.run_id),
+                               "state": item.state} for item in cells]}
 
     def bind_evaluation_report(self, report_id: uuid.UUID, revision_id: uuid.UUID) -> None:
         with self.engine.begin() as connection:
@@ -515,48 +607,53 @@ class PostgresStore:
 
     def require_authorized(self, profile_id: uuid.UUID, expected_revision: int | None = None) -> tuple[dict, int]:
         with self.engine.begin() as connection:
-            row = connection.execute(text("""SELECT p.status, p.parent_id, p.profile_hash, p.snapshot, p.audit_hash,
-                a.state, a.revision, a.audit_hash AS authorization_audit
-                FROM observer_profiles p LEFT JOIN profile_authorizations a ON a.profile_id = p.id
-                WHERE p.id = :id FOR UPDATE OF p"""), {"id": profile_id}).one_or_none()
-            if not row or row.status != "admitted" or not row.audit_hash or row.state != "enabled" or row.authorization_audit != row.audit_hash:
-                raise AdmissionStoreError("profile_unauthorized")
-            if expected_revision is not None and row.revision != expected_revision:
-                raise AdmissionStoreError("authorization_revision_changed")
-            cloud = row.snapshot.get("kind") == "cloud_api"
-            if row.snapshot.get("adapter", {}).get("code") != ("yandex_ai_studio" if cloud else "grounding_dino"):
-                raise AdmissionStoreError("profile_unauthorized")
-            run_ids = row.snapshot.get("audit_run_ids", [])
-            if (not row.parent_id or not isinstance(run_ids, list) or not run_ids
-                    or not all(isinstance(value, str) for value in run_ids) or len(set(run_ids)) != len(run_ids)
-                    or digest(canonical_bytes(row.snapshot)) != row.profile_hash
-                    or digest(canonical_bytes(row.snapshot.get("audit_report"))) != row.audit_hash):
-                raise AdmissionStoreError("profile_admission_evidence_missing")
-            evidenced = connection.execute(text("""SELECT count(*) FROM analysis_runs r
-                JOIN observer_invocations i ON i.run_id = r.id
-                JOIN result_projections p ON p.run_id = r.id
-                WHERE r.id = ANY(:ids) AND r.profile_id = :parent AND r.purpose = 'profile_admission'
-                  AND r.state = 'succeeded' AND i.state = 'completed' AND i.actual_device = :device
-                  AND i.returned_model_identity = :identity
-                  AND p.outcome = 'observations_only'"""), {"ids": [uuid.UUID(value) for value in run_ids],
-                    "parent": row.parent_id, "device": "remote_unreported" if cloud else "cpu",
-                    "identity": row.snapshot["returned_model_identity"]}).scalar_one()
-            if evidenced != len(run_ids):
-                raise AdmissionStoreError("profile_admission_evidence_missing")
-            adapter_hash = digest(Path((cloud_api if cloud else grounding_dino).__file__).read_bytes())
-            lock_hash = digest((Path(__file__).resolve().parents[2] / "uv.lock").read_bytes())
-            if row.snapshot.get("adapter", {}).get("bundle_sha256") != adapter_hash or row.snapshot.get("runtime", {}).get("uv_lock_sha256") != lock_hash:
-                raise AdmissionStoreError("profile_runtime_mismatch")
-            if cloud:
-                canary_hashes = [item.sha256 for item in connection.execute(text(
-                    "SELECT sha256 FROM run_inputs WHERE run_id = ANY(:ids)"),
-                    {"ids": [uuid.UUID(value) for value in run_ids]}).all()]
-                try:
-                    cloud_api.validate_owner_evidence(row.snapshot.get("owner_evidence"),
-                        canary_hashes, row.snapshot["allowed_input_sha256"])
-                except cloud_api.CloudObserverError:
-                    raise AdmissionStoreError("profile_owner_evidence_expired") from None
-            return row.snapshot, row.revision
+            return self._require_authorized(connection, profile_id, expected_revision)
+
+    def _require_authorized(self, connection, profile_id: uuid.UUID,
+                            expected_revision: int | None = None) -> tuple[dict, int]:
+        row = connection.execute(text("""SELECT p.status, p.parent_id, p.profile_hash, p.snapshot, p.audit_hash,
+            a.state, a.revision, a.audit_hash AS authorization_audit
+            FROM observer_profiles p JOIN profile_authorizations a ON a.profile_id = p.id
+            WHERE p.id = :id FOR UPDATE OF p, a"""), {"id": profile_id}).one_or_none()
+        if not row or row.status != "admitted" or not row.audit_hash or row.state != "enabled" or row.authorization_audit != row.audit_hash:
+            raise AdmissionStoreError("profile_unauthorized")
+        if expected_revision is not None and row.revision != expected_revision:
+            raise AdmissionStoreError("authorization_revision_changed")
+        cloud = row.snapshot.get("kind") == "cloud_api"
+        if row.snapshot.get("adapter", {}).get("code") != ("yandex_ai_studio" if cloud else "grounding_dino"):
+            raise AdmissionStoreError("profile_unauthorized")
+        run_ids = row.snapshot.get("audit_run_ids", [])
+        if (not row.parent_id or not isinstance(run_ids, list) or not run_ids
+                or not all(isinstance(value, str) for value in run_ids) or len(set(run_ids)) != len(run_ids)
+                or digest(canonical_bytes(row.snapshot)) != row.profile_hash
+                or digest(canonical_bytes(row.snapshot.get("audit_report"))) != row.audit_hash):
+            raise AdmissionStoreError("profile_admission_evidence_missing")
+        evidenced = connection.execute(text("""SELECT count(*) FROM analysis_runs r
+            JOIN observer_invocations i ON i.run_id = r.id
+            JOIN result_projections p ON p.run_id = r.id
+            WHERE r.id = ANY(:ids) AND r.profile_id = :parent AND r.purpose = 'profile_admission'
+              AND r.state = 'succeeded' AND i.state = 'completed' AND i.actual_device = :device
+              AND i.returned_model_identity = :identity
+              AND p.outcome = 'observations_only'"""), {"ids": [uuid.UUID(value) for value in run_ids],
+                "parent": row.parent_id, "device": "remote_unreported" if cloud else "cpu",
+                "identity": row.snapshot["returned_model_identity"]}).scalar_one()
+        if evidenced != len(run_ids):
+            raise AdmissionStoreError("profile_admission_evidence_missing")
+        adapter_hash = digest(Path((cloud_api if cloud else grounding_dino).__file__).read_bytes())
+        lock_hash = digest((Path(__file__).resolve().parents[2] / "uv.lock").read_bytes())
+        if row.snapshot.get("adapter", {}).get("bundle_sha256") != adapter_hash or row.snapshot.get("runtime", {}).get("uv_lock_sha256") != lock_hash:
+            raise AdmissionStoreError("profile_runtime_mismatch")
+        if cloud:
+            canary_hashes = [item.sha256 for item in connection.execute(text(
+                "SELECT sha256 FROM run_inputs WHERE run_id = ANY(:ids)"),
+                {"ids": [uuid.UUID(value) for value in run_ids]}).all()]
+            try:
+                cloud_api.validate_owner_evidence(row.snapshot.get("owner_evidence"),
+                    canary_hashes, row.snapshot["allowed_input_sha256"])
+            except cloud_api.CloudObserverError:
+                raise AdmissionStoreError("profile_owner_evidence_expired") from None
+        return row.snapshot, row.revision
+
 
     def revoke_authorization(self, profile_id: uuid.UUID, expected_revision: int, reason: str) -> None:
         if not reason.isidentifier():
