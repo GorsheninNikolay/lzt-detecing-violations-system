@@ -4,7 +4,7 @@
 # Retrospective: optional, done
 # Action item: open, in-progress, done
 generated: 09-22-2026 21:57
-last_updated: 09-25-2026 17:50
+last_updated: 09-25-2026 18:22
 project: lzt-detecing-violations-system
 project_key: NOKEY
 tracking_system: file-system
@@ -46,7 +46,7 @@ development_status:
   4-4-execute-and-recover-every-planned-cell: done
   4-5-calculate-criterion-level-readiness: done
   4-6-inspect-prototype-readiness: done
-  4-7-inspect-provider-comparison-separately: backlog
+  4-7-inspect-provider-comparison-separately: done
   epic-4-retrospective: optional
 action_items:
   - id: "epic-1-retro-protect-live-submissions"
@@ -87,8 +87,8 @@ action_items:
   - id: "epic-1-retro-verify-rendered-ui"
     epic: 1
     action: "F6 complete: Headless local-fixture evidence covers 320px and 200%-equivalent
-      rendering, emulated touch input, dialog focus, and source-image loading; no live
-      backend, production, or physical-device verification is claimed."
+      rendering, emulated touch input, dialog focus, and source-image loading; no
+      live backend, production, or physical-device verification is claimed."
     owner: "QA owner / Gorshenin-nik"
     status: done
     ref: "_bmad-output/implementation-artifacts/spec-f6-verify-rendered-ui.md"

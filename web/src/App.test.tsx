@@ -11,6 +11,174 @@ const snapshot = (state: string, states = Array(6).fill('pending'), reasons: Rec
   state, stages: stageNames.map((name, index) => ({ name, state: states[index], ...(reasons[index] ? { reason: reasons[index] } : {}) })),
 })
 
+describe('Provider comparison', () => {
+  const runId = '11111111-1111-1111-1111-111111111111'
+  const successRunId = '33333333-3333-3333-3333-333333333333'
+  const comparison = {
+    campaign: { id: 'campaign', revision_number: 2, evaluation_revision_id: 'evaluation' }, repeats: 3,
+    fixtures: [{ ordinal: 0, scenario: 'single_both', expected_outcome: 'observations_only',
+      frames: [{ ordinal: 0, manual_labels: { excavator: 'yes', dump_truck: 'unknown' } }] }], complete: false,
+    candidates: [{ ordinal: 0, kind: 'grounding_dino', profile_revision: 'model-v1',
+      requested_identity: 'Grounding DINO', returned_identity: 'checkpoint-sha256:model',
+      authorization_revision: 1, identity_gap: null,
+      admission: { status: 'admitted', authorization_state: 'enabled', current_revision: 1,
+        evidence: 'present', cloud_data_gate: 'not_applicable', data_decision_revision: null, data_checked_at: null, commercial_gate: 'not_applicable' },
+      accounting: { planned: 3, terminal: 2, succeeded: 1, failed: 0, timed_out: 1, pending: 0, missing: 1 },
+      repeat_disagreement: { numerator: 0, denominator: 0, evidence: [] },
+      latency_ms: { availability: 'observed', succeeded_count: 1, failed_count: 1 },
+      cost: { availability: 'unavailable', reason: 'cost_not_recorded' } }],
+    cells: [{ fixture_ordinal: 0, repeat_ordinal: 0, candidate_ordinal: 0, run_id: runId,
+      state: 'failed', error_code: 'observer_timeout', latency_ms: 42, observed_outcome: null, observations: [] },
+      { fixture_ordinal: 0, repeat_ordinal: 1, candidate_ordinal: 0, run_id: null,
+        state: 'missing', error_code: null, latency_ms: null, observed_outcome: null, observations: [] },
+      { fixture_ordinal: 0, repeat_ordinal: 2, candidate_ordinal: 0, run_id: successRunId,
+        state: 'succeeded', error_code: null, latency_ms: 25, observed_outcome: 'observations_only',
+        observations: [{ frame_ordinal: 0, class_name: 'excavator', state: 'detected' }] }],
+  }
+
+  beforeEach(() => history.replaceState({}, '', '/provider-comparison'))
+
+  it('shows absence, then candidate detail, incomplete matrix, and run navigation', async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce({ status: 404 })
+      .mockResolvedValueOnce({ ok: true, json: async () => comparison })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ ...snapshot('failed'), purpose: 'comparison_campaign' }) })
+    vi.stubGlobal('fetch', fetchMock)
+    render(<App />)
+    expect(await screen.findByText('Нет данных: сравнительная кампания пока не сохранена.')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Повторить загрузку' }))
+    expect(await screen.findByText('Сравнение не завершено')).toBeTruthy()
+    expect(screen.getByText(/тайм-аутов 1; ожидают 0; отсутствуют 1/)).toBeTruthy()
+    expect(screen.getByText(/Расхождения повторов: не оценено: нет полных групп повторов/)).toBeTruthy()
+    expect(screen.getByText(/Задержка измерена: успешные запуски — 1; запуски с ошибкой — 1.*Значения и ссылки на запуски — в матрице ниже/)).toBeTruthy()
+    expect(screen.getAllByText('Только наблюдения').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Кадр 1: Экскаватор — Да; Самосвал — Неизвестно')).toHaveLength(3)
+    expect(screen.getByText(/Кадр 1: Экскаватор — Обнаружен; ручная метка Да/)).toBeTruthy()
+    expect(screen.getAllByText(/Сравнение не измерено/).length).toBeGreaterThan(0)
+    expect(screen.getByText('Наблюдения запуска с ошибкой — частичные доказательства.')).toBeTruthy()
+    expect(screen.getByText('42 мс (запуск с ошибкой)')).toBeTruthy()
+    expect(screen.queryByText('Итог не совпадает с ожидаемым.')).toBeNull()
+    fireEvent.click(screen.getByText('Технические сведения и ограничения'))
+    expect(screen.getByText('checkpoint-sha256:model')).toBeTruthy()
+    expect(screen.getByText('Возвращённая модель по замороженному профилю допуска')).toBeTruthy()
+    expect(screen.getByText('Запуск недоступен')).toBeTruthy()
+    expect(screen.getByRole('table').querySelector('caption')?.textContent).toContain('Все запланированные ячейки')
+    fireEvent.click(screen.getByRole('link', { name: `Открыть запуск ${runId}` }))
+    expect(await screen.findByText(`Номер анализа:`)).toBeTruthy()
+    expect(location.pathname).toBe(`/runs/${runId}`)
+  })
+
+  it('retains the last successful read and its time after refresh failure and later 404', async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce({ ok: true, json: async () => comparison })
+      .mockRejectedValueOnce(new Error('offline')).mockResolvedValueOnce({ status: 404 })
+    vi.stubGlobal('fetch', fetchMock)
+    render(<App />)
+    await screen.findByText('Сравнение не завершено')
+    const savedTime = screen.getByText(/Время успешной загрузки:/).querySelector('time')?.dateTime
+    fireEvent.click(screen.getByRole('button', { name: 'Обновить сравнение' }))
+    expect(await screen.findByRole('alert')).toHaveProperty('textContent', expect.stringContaining('устаревшими'))
+    expect(screen.getByRole('alert').querySelector('time')?.dateTime).toBe(savedTime)
+    fireEvent.click(screen.getByRole('button', { name: 'Повторить загрузку' }))
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3))
+    expect(screen.getByText('Сравнение не завершено')).toBeTruthy()
+    expect(screen.getByRole('alert').querySelector('time')?.dateTime).toBe(savedTime)
+  })
+
+  it('renders a terminal campaign without an incomplete banner and exposes missing admission', async () => {
+    const terminal = { ...comparison, complete: true,
+      candidates: [{ ...comparison.candidates[0], admission: { status: 'missing', authorization_state: null,
+        current_revision: null, evidence: 'missing', cloud_data_gate: 'missing', data_decision_revision: null, data_checked_at: null, commercial_gate: 'unresolved' },
+      accounting: { planned: 3, terminal: 3, succeeded: 3, failed: 0, timed_out: 0, pending: 0, missing: 0 } }] }
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => terminal }))
+    render(<App />)
+    await screen.findByText('Кампания № 2')
+    expect(screen.queryByText('Сравнение не завершено')).toBeNull()
+    fireEvent.click(screen.getByText('Технические сведения и ограничения'))
+    expect(screen.getByText(/отсутствует; состояние неизвестно/)).toBeTruthy()
+    expect(screen.getByText('Решение о данных отсутствует. Коммерческие условия не подтверждены')).toBeTruthy()
+  })
+
+  it('shows recorded cloud data and commercial gates apart from current authorization', async () => {
+    const cloud = { ...comparison.candidates[0], ordinal: 1, kind: 'qwen3.6',
+      requested_identity: 'qwen3.6', returned_identity: 'qwen3.6/latest',
+      admission: { status: 'admitted', authorization_state: 'revoked', current_revision: 2,
+        evidence: 'present', cloud_data_gate: 'recorded', data_decision_revision: 'owner-v1',
+        data_checked_at: '2026-09-25T10:00:00Z', commercial_gate: 'paid_recorded' } }
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => ({
+      ...comparison, candidates: [comparison.candidates[0], cloud],
+    }) }))
+    render(<App />)
+    await screen.findByText('Qwen 3.6 (облако)')
+    const cloudCard = screen.getByText('Qwen 3.6 (облако)').closest('article')!
+    fireEvent.click(within(cloudCard).getByText('Технические сведения и ограничения'))
+    expect(within(cloudCard).getByText('Замороженное доказательство допуска')).toBeTruthy()
+    expect(within(cloudCard).getByText('Текущее записанное состояние профиля и авторизации')).toBeTruthy()
+    expect(within(cloudCard).getByText(/допущен; отозван; записанная ревизия 2/)).toBeTruthy()
+    expect(within(cloudCard).getByText(/Решение о данных сохранено \(owner-v1\); проверено 2026-09-25T10:00:00Z/)).toBeTruthy()
+    expect(within(cloudCard).getByText(/Оплаченный аккаунт подтверждён в сохранённом решении/)).toBeTruthy()
+  })
+
+  it('marks a completed cell whose observed outcome differs from its frozen expectation', async () => {
+    const changed = { ...comparison, cells: comparison.cells.map(cell => cell.run_id === successRunId
+      ? { ...cell, observed_outcome: 'check_requested' } : cell) }
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => changed }))
+    render(<App />)
+    await screen.findByText('Кампания № 2')
+    const rows = screen.getByRole('table').querySelectorAll('tbody tr')
+    expect(rows[2].textContent).toContain('Только наблюдения')
+    expect(rows[2].textContent).toContain('Запрошена проверка человеком')
+    expect(rows[2].textContent).toContain('Итог не совпадает с ожидаемым.')
+  })
+
+  it('marks missed and false detections only for measured yes/no classes', async () => {
+    const fixture = { ...comparison.fixtures[0], frames: [{ ordinal: 0,
+      manual_labels: { excavator: 'yes', dump_truck: 'no' } }] }
+    const changed = { ...comparison, fixtures: [fixture], cells: comparison.cells.map(cell => cell.run_id === successRunId
+      ? { ...cell, observations: [
+        { frame_ordinal: 0, class_name: 'excavator', state: 'not_detected_in_frame' },
+        { frame_ordinal: 0, class_name: 'dump_truck', state: 'detected' },
+      ] } : cell) }
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => changed }))
+    render(<App />)
+    await screen.findByText('Кампания № 2')
+    const rows = screen.getByRole('table').querySelectorAll('tbody tr')
+    expect(rows[2].textContent).toContain('Пропуск обнаружения')
+    expect(rows[2].textContent).toContain('Ложное обнаружение')
+    expect(rows[0].textContent).toContain('Сравнение не измерено')
+  })
+
+  it('marks a terminal campaign with failures as completed with failures', async () => {
+    const terminal = { ...comparison, complete: true, candidates: [{ ...comparison.candidates[0],
+      accounting: { planned: 3, terminal: 3, succeeded: 1, failed: 1, timed_out: 1, pending: 0, missing: 0 } }] }
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => terminal }))
+    render(<App />)
+    expect(await screen.findByText(/Кампания завершена с ошибками/)).toBeTruthy()
+    expect(screen.queryByText('Сравнение не завершено')).toBeNull()
+  })
+
+  it('maps distinct local and cloud cells to their own outcomes, observations and runs', async () => {
+    const cloudRunId = '44444444-4444-4444-4444-444444444444'
+    const cloud = { ...comparison.candidates[0], ordinal: 1, kind: 'qwen3.6' }
+    const cloudCell = { fixture_ordinal: 0, repeat_ordinal: 2, candidate_ordinal: 1,
+      run_id: cloudRunId, state: 'succeeded', error_code: null, latency_ms: 58,
+      observed_outcome: 'check_requested', observations: [
+        { frame_ordinal: 0, class_name: 'excavator', state: 'not_detected_in_frame' },
+      ] }
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => ({
+      ...comparison, candidates: [comparison.candidates[0], cloud], cells: [...comparison.cells, cloudCell],
+    }) }))
+    render(<App />)
+    await screen.findByText('Кампания № 2')
+    const rows = screen.getByRole('table').querySelectorAll('tbody tr')
+    expect(rows[2].textContent).toContain('Grounding DINO (локально)')
+    expect(rows[2].textContent).toContain('Кадр 1: Экскаватор — Обнаружен')
+    expect(rows[3].textContent).toContain('Qwen 3.6 (облако)')
+    expect(rows[3].textContent).toContain('Запрошена проверка человеком')
+    expect(rows[3].textContent).toContain('Кадр 1: Экскаватор — Не обнаружен в кадре')
+    expect(within(rows[3] as HTMLElement).getByRole('link', { name: `Открыть запуск ${cloudRunId}` })).toBeTruthy()
+    expect(rows[3].textContent).not.toContain(successRunId)
+  })
+})
+
 describe('Prototype readiness', () => {
   const runId = '11111111-1111-1111-1111-111111111111'
   const artifactId = '22222222-2222-2222-2222-222222222222'

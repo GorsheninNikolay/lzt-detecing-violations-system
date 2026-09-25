@@ -185,6 +185,16 @@ def create_app() -> FastAPI:
         except Exception:
             return JSONResponse({"code": "readiness_unavailable"}, status_code=503, headers=headers)
 
+    @app.get("/provider-comparison")
+    async def read_provider_comparison() -> JSONResponse:
+        headers = {"Cache-Control": "no-store"}
+        try:
+            comparison = await asyncio.to_thread(app.state.store.read_latest_provider_comparison)
+            return JSONResponse(comparison if comparison else {"code": "provider_comparison_missing"},
+                                status_code=200 if comparison else 404, headers=headers)
+        except Exception:
+            return JSONResponse({"code": "provider_comparison_unavailable"}, status_code=503, headers=headers)
+
     @app.get("/runs/{run_id}")
     async def read_run(run_id: str) -> JSONResponse:
         headers = {"Cache-Control": "no-store"}

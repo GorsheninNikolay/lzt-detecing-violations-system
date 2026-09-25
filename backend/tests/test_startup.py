@@ -92,6 +92,39 @@ def test_readiness_http_is_read_only_and_no_store():
     asyncio.run(check())
 
 
+def test_provider_comparison_http_is_read_only_and_no_store():
+    class Store:
+        comparison = None
+        calls = 0
+
+        def read_latest_provider_comparison(self):
+            self.calls += 1
+            if self.comparison == "error":
+                raise RuntimeError("database unavailable")
+            return self.comparison
+
+    async def check():
+        app = create_app()
+        store = Store()
+        app.state.store = store
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            absent = await client.get("/provider-comparison")
+            assert absent.status_code == 404
+            assert absent.json() == {"code": "provider_comparison_missing"}
+            store.comparison = {"campaign": {"id": "campaign"}, "complete": False}
+            present = await client.get("/provider-comparison")
+            assert present.status_code == 200 and present.json() == store.comparison
+            store.comparison = "error"
+            unavailable = await client.get("/provider-comparison")
+            assert unavailable.status_code == 503
+            assert unavailable.json() == {"code": "provider_comparison_unavailable"}
+            assert all(response.headers["cache-control"] == "no-store"
+                       for response in (absent, present, unavailable))
+            assert store.calls == 3
+
+    asyncio.run(check())
+
+
 def test_comparison_run_http_read_keeps_retry_scoped_to_ordinary():
     run_id, artifact_id = uuid.uuid4(), uuid.uuid4()
 

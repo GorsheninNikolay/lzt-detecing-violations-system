@@ -3,16 +3,19 @@ import json
 import math
 import uuid
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import nullcontext
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from sqlalchemy import text
 
-from app.adapters.postgres import AdmissionStoreError
+from app.adapters.postgres import AdmissionStoreError, PostgresStore
 from app.domain.comparison_campaign import CampaignGateError, build_manifest
 from app.domain.evaluation_set import canonical_hash
 from app.domain.evaluation_report import POLICY_REVISION, build_report
+from app.domain.provider_comparison import project_comparison
 from app.profiles import cloud_api, grounding_dino
 from test_startup import database, integration
 from test_admission import isolated_admission_database
@@ -84,6 +87,105 @@ def report_snapshot():
             "evaluation_frames": [{"id": frame["id"], "ordinal": frame["ordinal"],
                                    "manual_labels": frame["manual_labels"]}
                                   for frame in EVALUATION["frames"]]}
+
+
+def test_provider_projection_is_safe_and_accounts_for_each_planned_cell():
+    snapshot = report_snapshot()
+    snapshot["revision_number"] = 3
+    for candidate in snapshot["manifest"]["candidates"]:
+        candidate["profile_hash"] = "profile-revision-" + str(candidate["ordinal"])
+    snapshot["manifest"]["candidates"][0]["snapshot"].update(
+        returned_model_identity="checkpoint-sha256:model-only", audit_hash="private-audit")
+    snapshot["manifest"]["candidates"][1]["snapshot"].update(
+        returned_model_identity="gpt://private-folder/qwen3.6/latest",
+        owner_evidence={"service_account_id": "private-service", "allowed_image_sha256": ["private-hash"],
+                        "authorization_revision": "owner-v1", "checked_at": "2026-09-25T10:00:00Z",
+                        "paid_account": True}, rights={"cloud_upload_authorization": "owner-v1"})
+    snapshot["cells"][0].update(state="failed", error_code="observer_timeout")
+    snapshot["cells"][1].update(state="failed", error_code="observer_error")
+    snapshot["cells"].pop(2)
+    result = project_comparison(snapshot, {0: {"status": "admitted", "authorization_state": "enabled", "revision": 1}, 1: None})
+    assert result["complete"] is False
+    assert len(result["cells"]) == 36
+    assert result["cells"][2]["state"] == "missing" and result["cells"][2]["run_id"] is None
+    assert result["cells"][0]["error_code"] == "observer_timeout"
+    assert result["cells"][1]["error_code"] == "campaign_failure"
+    assert result["fixtures"][0]["expected_outcome"] == "observations_only"
+    assert result["fixtures"][0]["frames"][0]["manual_labels"] == {"excavator": "yes", "dump_truck": "yes"}
+    assert result["cells"][0]["observed_outcome"] == "observations_only"
+    assert result["cells"][0]["observations"] == [
+        {"frame_ordinal": 0, "class_name": "dump_truck", "state": "detected"},
+        {"frame_ordinal": 0, "class_name": "excavator", "state": "detected"}]
+    assert result["cells"][2]["observed_outcome"] is None and result["cells"][2]["observations"] == []
+    assert result["candidates"][0]["accounting"] == {"planned": 18, "terminal": 17, "succeeded": 16,
+        "failed": 0, "timed_out": 1, "pending": 0, "missing": 1}
+    assert result["candidates"][1]["accounting"]["failed"] == 1
+    assert result["candidates"][1]["admission"]["status"] == "missing"
+    assert result["candidates"][1]["admission"]["cloud_data_gate"] == "recorded"
+    assert result["candidates"][1]["admission"]["commercial_gate"] == "paid_recorded"
+    assert result["candidates"][0]["admission"]["evidence"] == "present"
+    assert result["candidates"][1]["returned_identity"] == "qwen3.6/latest"
+    assert result["candidates"][0]["profile_revision"] == snapshot["manifest"]["candidates"][0]["profile_hash"]
+    encoded = json.dumps(result)
+    for secret in ("private-folder", "private-service", "private-hash", "private-audit", '"audit_hash"', '"owner_evidence"',
+                   '"profile_id"', '"profile_hash"', '"allowed_input_sha256"', '"winner"', '"score"'):
+        assert secret not in encoded
+
+    complete = report_snapshot()
+    complete["revision_number"] = 4
+    complete["cells"][12]["state"] = "failed"
+    complete["cells"][12]["error_code"] = "observer_error"
+    result = project_comparison(complete, {})
+    assert result["complete"] is True
+    assert result["candidates"][0]["repeat_disagreement"]["numerator"] == 1
+    assert result["candidates"][0]["repeat_disagreement"]["denominator"] == 6
+    assert result["candidates"][0]["latency_ms"]["succeeded_count"] == 17
+    assert result["candidates"][0]["latency_ms"]["failed_count"] == 1
+    assert "values" not in result["candidates"][0]["latency_ms"]
+    assert result["candidates"][0]["cost"]["availability"] == "unavailable"
+
+
+@pytest.mark.parametrize("corruption", ("outcome", "observation_class", "observation_state", "manual_label"))
+def test_provider_projection_rejects_corrupt_evidence(corruption):
+    snapshot = report_snapshot()
+    snapshot["revision_number"] = 1
+    cell = snapshot["cells"][0]
+    if corruption == "outcome":
+        cell["outcome"] = "private-outcome"
+    elif corruption == "observation_class":
+        cell["observations"][0]["class_name"] = "private-class"
+    elif corruption == "observation_state":
+        cell["observations"][0]["state"] = "private-state"
+    else:
+        snapshot["evaluation_frames"][0]["manual_labels"]["excavator"] = "private-label"
+    with pytest.raises(CampaignGateError, match="comparison_(outcome|observation|labels)_invalid"):
+        project_comparison(snapshot, {})
+
+
+def test_latest_provider_comparison_rejects_manifest_hash_mismatch():
+    class Connection:
+        def execute(self, *_):
+            return SimpleNamespace(scalar_one_or_none=lambda: uuid.uuid4())
+
+    store = PostgresStore.__new__(PostgresStore)
+    store.engine = SimpleNamespace(connect=lambda: nullcontext(Connection()))
+    store.read_comparison_campaign = lambda _: {"manifest": {"changed": True}, "manifest_hash": "0" * 64}
+    with pytest.raises(CampaignGateError, match="campaign_manifest_integrity_failed"):
+        store.read_latest_provider_comparison()
+
+
+def test_latest_provider_comparison_rejects_evaluation_manifest_hash_mismatch():
+    class Connection:
+        def execute(self, *_):
+            return SimpleNamespace(scalar_one_or_none=lambda: uuid.uuid4())
+
+    manifest = {"evaluation_manifest_hash": "a" * 64}
+    store = PostgresStore.__new__(PostgresStore)
+    store.engine = SimpleNamespace(connect=lambda: nullcontext(Connection()))
+    store.read_comparison_campaign = lambda _: {"manifest": manifest,
+        "manifest_hash": canonical_hash(manifest), "evaluation_manifest_hash": "b" * 64}
+    with pytest.raises(CampaignGateError, match="campaign_manifest_integrity_failed"):
+        store.read_latest_provider_comparison()
 
 
 def test_criterion_report_matrix_and_literal_populations(monkeypatch):
@@ -344,6 +446,23 @@ def patch_admission(monkeypatch, database, local_id, cloud_id, local, cloud):
     def authorized(_, profile_id, expected_revision=None):
         return ({local_id: local, cloud_id: cloud}[profile_id], 1)
     monkeypatch.setattr(database, "_require_authorized", authorized)
+
+
+def test_latest_provider_comparison_reads_frozen_cells_without_mutation(database, monkeypatch):
+    for _ in range(2):
+        revision, local_id, cloud_id, local, cloud = seed(database)
+        patch_admission(monkeypatch, database, local_id, cloud_id, local, cloud)
+        campaign_id = database.freeze_comparison_campaign(revision, local_id, cloud_id)
+    before = database.read_comparison_campaign(campaign_id)
+    comparison = database.read_latest_provider_comparison()
+    assert comparison["campaign"]["id"] == str(campaign_id)
+    assert comparison["campaign"]["revision_number"] == before["revision_number"]
+    assert comparison["complete"] is False
+    assert len(comparison["cells"]) == 36
+    assert comparison["candidates"][0]["accounting"]["pending"] == 18
+    assert comparison["candidates"][1]["admission"]["status"] == "admitted"
+    assert comparison["candidates"][1]["admission"]["evidence"] == "missing"
+    assert database.read_comparison_campaign(campaign_id) == before
 
 
 

@@ -9,6 +9,24 @@ CRITERIA = ("campaign_coverage", "mandatory_detections", "mandatory_outcomes", "
 TERMINAL = {"succeeded", "failed"}
 
 
+def repeat_disagreement(groups: dict, repeats: int) -> tuple[list[dict], int]:
+    disagreement = []
+    complete_groups = 0
+    for group, group_cells in sorted(groups.items()):
+        if len(group_cells) != repeats or any(cell["state"] not in TERMINAL for cell in group_cells):
+            continue
+        complete_groups += 1
+        signatures = {json.dumps([cell["state"], cell.get("error_code"), cell.get("outcome"),
+            sorted((item["class_name"], item["state"],
+                    next((source["ordinal"] for source in cell["inputs"]
+                          if source["input_id"] == item["input_id"]), None))
+                   for item in cell["observations"])], sort_keys=True) for cell in group_cells}
+        if len(signatures) > 1:
+            disagreement.append({"fixture_ordinal": group[0], "candidate_ordinal": group[1],
+                                 "run_ids": [cell["run_id"] for cell in group_cells]})
+    return disagreement, complete_groups
+
+
 def _digest(value: dict) -> str:
     return hashlib.sha256(json.dumps(value, sort_keys=True, separators=(",", ":"), default=str,
                                      allow_nan=False).encode()).hexdigest()
@@ -118,20 +136,7 @@ def build_report(snapshot: dict, policy_revision: str) -> dict:
                     if observation and observation["state"] == "detected":
                         false_detections.append(detail)
 
-    disagreement = []
-    complete_groups = 0
-    for group, group_cells in sorted(by_repeat_group.items()):
-        if len(group_cells) != repeats or any(cell["state"] not in TERMINAL for cell in group_cells):
-            continue
-        complete_groups += 1
-        signatures = {json.dumps([cell["state"], cell.get("error_code"), cell.get("outcome"),
-            sorted((item["class_name"], item["state"],
-                    next((source["ordinal"] for source in cell["inputs"]
-                          if source["input_id"] == item["input_id"]), None))
-                   for item in cell["observations"])], sort_keys=True) for cell in group_cells}
-        if len(signatures) > 1:
-            disagreement.append({"fixture_ordinal": group[0], "candidate_ordinal": group[1],
-                                 "run_ids": [cell["run_id"] for cell in group_cells]})
+    disagreement, complete_groups = repeat_disagreement(by_repeat_group, repeats)
 
     def criterion(key: str, misses: list, population: list, pending_population: list) -> dict:
         status = "fail" if misses else "not_evaluated" if pending_population else "pass"

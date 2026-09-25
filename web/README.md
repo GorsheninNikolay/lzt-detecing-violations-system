@@ -9,7 +9,7 @@ npm ci
 npm run dev
 ```
 
-Open `http://127.0.0.1:5173`. Vite serves the Run Workspace document at `/runs/{run_id}` and proxies `/api/runs/*` to backend `/runs/*` at `http://127.0.0.1:8000`; start the backend separately with an admitted `OBSERVER_PROFILE_ID` and `OBSERVER_SNAPSHOT_DIR` as described in the root README. The backend must be ready before submission. For a production deployment, proxy `/api/runs/*` to backend `/runs/*` and serve the app with history fallback for `/runs/{run_id}` and `/about`.
+Open `http://127.0.0.1:5173`. Vite serves the app at `/runs/{run_id}` and `/provider-comparison`, and proxies `/api/*` to the matching backend paths at `http://127.0.0.1:8000`. Start the backend separately with an admitted `OBSERVER_PROFILE_ID` and `OBSERVER_SNAPSHOT_DIR` as described in the root README. The backend must be ready before submission. For production, proxy `/api/runs/*` to `/runs/*` and `/api/provider-comparison` to `/provider-comparison` on the backend; serve the app with history fallback for `/runs/{run_id}`, `/provider-comparison`, and `/about`.
 
 ```sh
 npm test -- --run

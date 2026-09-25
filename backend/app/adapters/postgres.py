@@ -15,6 +15,7 @@ from app.domain.observations import CLASSES, STAGES, normalized_states
 from app.domain.evaluation_set import inspect_evaluation_set, reserve_held_out_inventory, canonical_hash
 from app.domain.comparison_campaign import CampaignGateError, build_manifest
 from app.domain.evaluation_report import POLICY_REVISION, build_report
+from app.domain.provider_comparison import project_comparison
 from app.profiles import cloud_api, grounding_dino
 from app.profiles.grounding_dino import canonical_bytes, digest
 from app.adapters.artifacts import ArtifactGateError, ArtifactStore
@@ -219,6 +220,7 @@ class PostgresStore:
             failed = sum(item.state == "failed" for item in cells) - timed_out
             return {"id": str(campaign_id), "revision_number": row.revision_number,
                     "evaluation_revision_id": str(row.evaluation_revision_id),
+                    "evaluation_manifest_hash": canonical_hash(row.evaluation_manifest),
                     "manifest_hash": row.manifest_hash, "manifest": row.manifest,
                     "evaluation_frames": [{"id": frame["id"], "ordinal": frame["ordinal"],
                                            "manual_labels": frame["manual_labels"]}
@@ -238,6 +240,26 @@ class PostgresStore:
                                "input_ids": item.input_ids, "invocation_ids": item.invocation_ids,
                                "observation_ids": item.observation_ids,
                                "artifact_ids": item.artifact_ids} for item in cells]}
+
+    def read_latest_provider_comparison(self) -> dict | None:
+        with self.engine.connect() as connection:
+            campaign_id = connection.execute(text("""SELECT id FROM comparison_campaigns
+                ORDER BY revision_number DESC, id DESC LIMIT 1""")).scalar_one_or_none()
+        if campaign_id is None:
+            return None
+        snapshot = self.read_comparison_campaign(campaign_id)
+        if (canonical_hash(snapshot["manifest"]) != snapshot["manifest_hash"]
+                or snapshot["evaluation_manifest_hash"] != snapshot["manifest"]["evaluation_manifest_hash"]):
+            raise CampaignGateError("campaign_manifest_integrity_failed")
+        admissions = {}
+        with self.engine.connect() as connection:
+            for candidate in snapshot["manifest"]["candidates"]:
+                row = connection.execute(text("""SELECT p.status, a.state AS authorization_state, a.revision
+                    FROM observer_profiles p LEFT JOIN profile_authorizations a ON a.profile_id = p.id
+                    WHERE p.id = :id"""), {"id": uuid.UUID(candidate["profile_id"])}).one_or_none()
+                admissions[candidate["ordinal"]] = ({"status": row.status,
+                    "authorization_state": row.authorization_state, "revision": row.revision} if row else None)
+        return project_comparison(snapshot, admissions)
 
     def generate_evaluation_report(self, campaign_id: uuid.UUID, policy_revision: str,
                                    artifacts: ArtifactStore) -> dict:
