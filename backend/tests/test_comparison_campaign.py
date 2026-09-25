@@ -318,7 +318,7 @@ def test_cli_safe_rejection_and_missing_campaign(database, monkeypatch, capsys):
     import sys
     from app.application import evaluation
 
-    monkeypatch.setattr(evaluation.Config, "database_url_from_env", lambda: str(database.engine.url))
+    monkeypatch.setattr(evaluation.Config, "database_url_from_env", lambda: database.engine.url.render_as_string(hide_password=False))
     monkeypatch.setattr(sys, "argv", ["evidence-evaluation", "read-campaign", "--campaign", str(uuid.uuid4())])
     with pytest.raises(SystemExit) as exit_code:
         evaluation.main()
@@ -358,7 +358,7 @@ def test_downgrade_refuses_planned_campaign_and_keeps_evidence(database, monkeyp
     admit_for_test(database, cloud_id, cloud)
     campaign_id = database.freeze_comparison_campaign(revision, local_id, cloud_id)
     assert len(database.read_comparison_campaign(campaign_id)["cells"]) == 36
-    monkeypatch.setenv("DATABASE_URL", str(database.engine.url))
+    monkeypatch.setenv("DATABASE_URL", database.engine.url.render_as_string(hide_password=False))
     with pytest.raises(RuntimeError, match="comparison_campaign_evidence_exists"):
         command.downgrade(AlembicConfig(str(ROOT / "backend/alembic.ini")), "0009_evaluation_set")
     assert len(database.read_comparison_campaign(campaign_id)["cells"]) == 36
@@ -394,7 +394,7 @@ def test_successful_freeze_campaign_cli_uses_real_admission(database, monkeypatc
     revision, local_id, cloud_id, local, cloud = seed(database)
     admit_for_test(database, local_id, local)
     admit_for_test(database, cloud_id, cloud)
-    monkeypatch.setattr(evaluation.Config, "database_url_from_env", lambda: str(database.engine.url))
+    monkeypatch.setattr(evaluation.Config, "database_url_from_env", lambda: database.engine.url.render_as_string(hide_password=False))
     monkeypatch.setattr(sys, "argv", ["evidence-evaluation", "freeze-campaign",
         "--evaluation-revision", str(revision), "--local-profile", str(local_id),
         "--cloud-profile", str(cloud_id)])
@@ -524,7 +524,7 @@ def test_complete_execution_keeps_every_cell_and_distinct_inputs(database, monke
         "__init__": lambda self, snapshot, key: None, "observe": cloud_result}))
     monkeypatch.setattr(evaluation, "PostgresStore", lambda url: database)
     monkeypatch.setattr(evaluation, "ArtifactStore", lambda config: artifacts)
-    monkeypatch.setattr(Config, "database_url_from_env", lambda: str(database.engine.url))
+    monkeypatch.setattr(Config, "database_url_from_env", lambda: database.engine.url.render_as_string(hide_password=False))
     monkeypatch.setattr(sys, "argv", ["evidence-evaluation", "execute-campaign",
                                       "--campaign", str(campaign), "--archive", str(archive)])
     evaluation.main()
@@ -558,6 +558,11 @@ def test_complete_execution_keeps_every_cell_and_distinct_inputs(database, monke
                     connection.execute(text(query), {"run": run_id}).scalars()}
             observed = connection.execute(text("""SELECT input_id, class_name FROM observations
                 WHERE run_id = :run"""), {"run": run_id}).all()
+            assert cell["invocation_count"] == len(cell["invocation_ids"])
+            assert cell["observation_count"] == len(observed)
+            assert cell["projection_count"] == connection.execute(text("""SELECT count(*)
+                FROM result_projections WHERE run_id = :run"""), {"run": run_id}).scalar_one()
+            assert cell["projection_count"] == (1 if cell["state"] == "succeeded" else 0)
             assert {(o["input_id"], o["class_name"]) for o in cell["observation_ids"]} == {
                 (str(o.input_id), o.class_name) for o in observed}
             assert all(o["run_id"] == cell["run_id"] for o in cell["observation_ids"])
@@ -618,6 +623,133 @@ def test_terminal_campaign_outcome_and_evidence_cannot_change(database, monkeypa
         with database.engine.begin() as connection:
             connection.execute(text("UPDATE publication_intents SET run_id = :run WHERE id = :id"),
                                {"run": run_id, "id": intent})
+
+
+def test_comparison_claim_and_success_require_complete_evidence(database, monkeypatch, tmp_path):
+    from app.application.executor import _verified_campaign_archive
+
+    campaign, archive, artifacts = execution_setup(database, monkeypatch, tmp_path)
+    run_id = database.next_comparison_cell(campaign)["run_id"]
+    with pytest.raises(CampaignGateError, match="campaign_inputs_incomplete"):
+        database.claim_comparison_cell(run_id, 0)
+    frame = database.read_comparison_campaign(campaign)["manifest"]["fixtures"][0]["frames"][0]
+    with archive.open("rb") as source:
+        image = _verified_campaign_archive(source, database.comparison_source(campaign))[frame["ordinal"]]
+    database.publish_comparison_input(run_id, frame, image, artifacts)
+    with pytest.raises(CampaignGateError, match="campaign_inputs_incomplete"):
+        database.claim_comparison_cell(run_id, 0)
+    work = database.claim_comparison_cell(run_id, 1)
+    with pytest.raises(Exception, match="comparison_evidence_incomplete"):
+        with database.engine.begin() as connection:
+            connection.execute(text("""UPDATE analysis_runs SET state = 'succeeded', lease_owner = NULL,
+                lease_expires_at = NULL WHERE id = :run"""), {"run": run_id})
+    classes = database.read_comparison_campaign(campaign)["manifest"]["fixtures"][0]["requested_classes"]
+    frames = [{"input_id": str(work["frames"][0]["input_id"]), "class_name": class_name,
+               "state": "not_detected_in_frame", "source_artifact_id": str(work["frames"][0]["artifact_id"]),
+               "invocation_id": None} for class_name in classes]
+    with database.engine.begin() as connection:
+        connection.execute(text("UPDATE analysis_stages SET state = 'succeeded' WHERE run_id = :run"),
+                           {"run": run_id})
+        for observation in frames:
+            connection.execute(text("""INSERT INTO observations
+                (run_id, input_id, class_name, state, input_sha256, source_artifact_id)
+                VALUES (:run, :input, :class_name, :state, :hash, :artifact)"""),
+                {"run": run_id, "input": work["frames"][0]["input_id"],
+                 "class_name": observation["class_name"], "state": observation["state"],
+                 "hash": frame["image"]["sha256"], "artifact": work["frames"][0]["artifact_id"]})
+        connection.execute(text("""INSERT INTO result_projections (run_id, outcome, snapshot)
+            VALUES (:run, 'observations_only', CAST(:snapshot AS jsonb))"""),
+            {"run": run_id, "snapshot": json.dumps({"outcome": "observations_only", "frames": frames})})
+    with pytest.raises(Exception, match="comparison_evidence_incomplete"):
+        with database.engine.begin() as connection:
+            connection.execute(text("""UPDATE analysis_runs SET state = 'succeeded', lease_owner = NULL,
+                lease_expires_at = NULL WHERE id = :run"""), {"run": run_id})
+    assert database.read_comparison_campaign(campaign)["cells"][0]["state"] == "running"
+    database.fail_comparison_cell(run_id, "test_cleanup", work["owner"])
+
+
+def test_comparison_failure_method_rejects_ordinary_run(database):
+    run_id = uuid.uuid4()
+    with database.engine.begin() as connection:
+        connection.execute(text("INSERT INTO analysis_runs (id, state, purpose) VALUES (:id, 'queued', 'ordinary')"),
+                           {"id": run_id})
+    with pytest.raises(CampaignGateError, match="campaign_cell_missing"):
+        database.fail_comparison_cell(run_id, "wrong_run")
+    with database.engine.connect() as connection:
+        assert connection.execute(text("SELECT state FROM analysis_runs WHERE id = :run"),
+                                  {"run": run_id}).scalar_one() == "queued"
+
+
+def test_comparison_claim_rejects_partial_multiframe_fixture(database, monkeypatch, tmp_path):
+    from app.application.executor import _verified_campaign_archive
+
+    campaign, archive, artifacts = execution_setup(database, monkeypatch, tmp_path)
+    readback = database.read_comparison_campaign(campaign)
+    fixture = next(f for f in readback["manifest"]["fixtures"] if len(f["frames"]) > 1)
+    target = next(cell for cell in readback["cells"] if cell["fixture_ordinal"] == fixture["ordinal"])
+    for cell in readback["cells"][:readback["cells"].index(target)]:
+        database.fail_comparison_cell(uuid.UUID(cell["run_id"]), "test_preceding_cell_failed")
+    with archive.open("rb") as source:
+        images = _verified_campaign_archive(source, database.comparison_source(campaign))
+    frame = fixture["frames"][0]
+    database.publish_comparison_input(uuid.UUID(target["run_id"]), frame, images[frame["ordinal"]], artifacts)
+    with pytest.raises(CampaignGateError, match="campaign_inputs_incomplete"):
+        database.claim_comparison_cell(uuid.UUID(target["run_id"]), 1)
+    database.fail_comparison_cell(uuid.UUID(target["run_id"]), "test_cleanup")
+
+
+def test_completed_invocation_is_immutable_while_campaign_still_running(database, monkeypatch, tmp_path):
+    from app.application.executor import _verified_campaign_archive
+
+    campaign, archive, artifacts = execution_setup(database, monkeypatch, tmp_path)
+    cell = database.next_comparison_cell(campaign)
+    frame = database.read_comparison_campaign(campaign)["manifest"]["fixtures"][0]["frames"][0]
+    with archive.open("rb") as source:
+        image = _verified_campaign_archive(source, database.comparison_source(campaign))[frame["ordinal"]]
+    database.publish_comparison_input(cell["run_id"], frame, image, artifacts)
+    work = database.claim_comparison_cell(cell["run_id"], 1)
+    invocation = database.reserve_ordinary(work["id"], work["owner"],
+        work["authorization_revision"], frame["image"]["sha256"], True,
+        work["frames"][0]["input_id"], True)
+    database.settle_comparison_invocation(work["id"], work["owner"], invocation)
+    with database.engine.begin() as connection:
+        connection.execute(text("UPDATE observer_invocations SET state = 'completed' WHERE id = :id"),
+                           {"id": invocation})
+    for statement in ("UPDATE observer_invocations SET returned_model_identity = 'changed' WHERE id = :id",
+                      "DELETE FROM observer_invocations WHERE id = :id"):
+        with pytest.raises(Exception, match="comparison_invocation_immutable"):
+            with database.engine.begin() as connection:
+                connection.execute(text(statement), {"id": invocation})
+    with database.engine.begin() as connection:
+        connection.execute(text("UPDATE analysis_stages SET state = 'succeeded' WHERE run_id = :run"),
+                           {"run": work["id"]})
+        for class_name in ("excavator", "crane"):
+            connection.execute(text("""INSERT INTO observations
+                (run_id, input_id, class_name, state, input_sha256, invocation_id, source_artifact_id)
+                VALUES (:run, :input, :class_name, 'not_detected_in_frame', :hash, :invocation, :artifact)"""),
+                {"run": work["id"], "input": work["frames"][0]["input_id"],
+                 "class_name": class_name, "hash": frame["image"]["sha256"],
+                 "invocation": invocation, "artifact": work["frames"][0]["artifact_id"]})
+        connection.execute(text("""INSERT INTO result_projections (run_id, outcome, snapshot)
+            VALUES (:run, 'observations_only', '{}'::jsonb)"""), {"run": work["id"]})
+    with pytest.raises(Exception, match="comparison_evidence_incomplete"):
+        with database.engine.begin() as connection:
+            connection.execute(text("""UPDATE analysis_runs SET state = 'succeeded', lease_owner = NULL,
+                lease_expires_at = NULL WHERE id = :run"""), {"run": work["id"]})
+    with database.engine.begin() as connection:
+        connection.execute(text("""UPDATE observations SET class_name = 'dump_truck'
+            WHERE run_id = :run AND class_name = 'crane'"""), {"run": work["id"]})
+        frames = [{"input_id": str(work["frames"][0]["input_id"]), "class_name": class_name,
+                   "state": "not_detected_in_frame", "source_artifact_id": str(work["frames"][0]["artifact_id"]),
+                   "invocation_id": str(invocation)} for class_name in ("excavator", "dump_truck")]
+        connection.execute(text("""UPDATE result_projections SET snapshot = CAST(:snapshot AS jsonb)
+            WHERE run_id = :run"""),
+            {"run": work["id"], "snapshot": json.dumps({"outcome": "observations_only", "frames": frames})})
+    with pytest.raises(Exception, match="comparison_evidence_incomplete"):
+        with database.engine.begin() as connection:
+            connection.execute(text("""UPDATE analysis_runs SET state = 'succeeded', lease_owner = NULL,
+                lease_expires_at = NULL WHERE id = :run"""), {"run": work["id"]})
+    database.fail_comparison_cell(work["id"], "test_cleanup", work["owner"])
 
 
 def test_reserved_call_recovers_as_failed_without_reusing_cell(database, monkeypatch, tmp_path):
@@ -845,7 +977,7 @@ def test_campaign_cli_startup_and_accounting_errors_are_json(database, monkeypat
     revision, local_id, cloud_id, local, cloud = seed(database)
     patch_admission(monkeypatch, database, local_id, cloud_id, local, cloud)
     campaign = database.freeze_comparison_campaign(revision, local_id, cloud_id)
-    monkeypatch.setenv("DATABASE_URL", str(database.engine.url))
+    monkeypatch.setenv("DATABASE_URL", database.engine.url.render_as_string(hide_password=False))
     monkeypatch.setattr(sys, "argv", ["evidence-evaluation", "campaign-accounting",
                                       "--campaign", str(campaign)])
     evaluation.main()
@@ -1062,7 +1194,7 @@ def test_execute_cli_missing_archive_is_safe_json(database, monkeypatch, tmp_pat
     artifacts = MemoryArtifacts()
     monkeypatch.setattr(evaluation, "PostgresStore", lambda url: database)
     monkeypatch.setattr(evaluation, "ArtifactStore", lambda config: artifacts)
-    monkeypatch.setattr(evaluation.Config, "database_url_from_env", lambda: str(database.engine.url))
+    monkeypatch.setattr(evaluation.Config, "database_url_from_env", lambda: database.engine.url.render_as_string(hide_password=False))
     monkeypatch.setattr(evaluation.Config, "from_env", classmethod(lambda cls: type("ConfigStub", (), {
         "observer_snapshot_dir": None})()))
     monkeypatch.setattr(sys, "argv", ["evidence-evaluation", "execute-campaign", "--campaign", str(campaign),

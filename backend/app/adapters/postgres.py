@@ -347,7 +347,12 @@ class PostgresStore:
                 {"run": run_id}).one()
             count = connection.execute(text("SELECT count(*) FROM run_inputs WHERE run_id = :run"),
                                        {"run": run_id}).scalar_one()
-            if row.state != 'planned' or count != frame_count:
+            expected_count = connection.execute(text("""SELECT jsonb_array_length(fixture.value->'frames')
+                FROM comparison_cells c JOIN comparison_campaigns p ON p.id = c.campaign_id,
+                LATERAL jsonb_array_elements(p.manifest->'fixtures') fixture
+                WHERE c.run_id = :run AND (fixture.value->>'ordinal')::int = c.fixture_ordinal"""),
+                {"run": run_id}).scalar_one()
+            if row.state != 'planned' or count != expected_count or frame_count != expected_count:
                 raise CampaignGateError("campaign_inputs_incomplete")
             connection.execute(text("""UPDATE analysis_runs SET state = 'running', lease_owner = :owner,
                 lease_expires_at = clock_timestamp() + (:seconds * interval '1 second') WHERE id = :run"""),
@@ -398,10 +403,14 @@ class PostgresStore:
     def fail_comparison_cell(self, run_id: uuid.UUID, code: str,
                              owner: str | None = None) -> None:
         with self.engine.begin() as connection:
-            row = connection.execute(text("""SELECT state, lease_owner,
+            row = connection.execute(text("""SELECT r.state, r.lease_owner,
                 lease_expires_at > clock_timestamp() AS live,
                 provider_safe_after > clock_timestamp() AS provider_active
-                FROM analysis_runs WHERE id = :run FOR UPDATE"""), {"run": run_id}).one()
+                FROM analysis_runs r JOIN comparison_cells c ON c.run_id = r.id
+                WHERE r.id = :run AND r.purpose = 'comparison_campaign' FOR UPDATE OF r"""),
+                {"run": run_id}).one_or_none()
+            if row is None:
+                raise CampaignGateError("campaign_cell_missing")
             if row.state not in ('planned', 'running'):
                 return
             if row.state == 'running' and (row.lease_owner != owner or not row.live):
