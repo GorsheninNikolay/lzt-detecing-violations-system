@@ -10,6 +10,7 @@ from app.adapters.postgres import AdmissionStoreError, EvaluationStoreError, Pos
 from app.adapters.artifacts import ArtifactStore, ArtifactGateError
 from app.config import Config, ConfigurationError
 from app.domain.comparison_campaign import CampaignGateError
+from app.domain.evaluation_report import POLICY_REVISION
 from app.application.executor import execute_comparison_campaign
 
 
@@ -32,6 +33,11 @@ def main() -> None:
     execute = subcommands.add_parser("execute-campaign")
     execute.add_argument("--campaign", type=uuid.UUID, required=True)
     execute.add_argument("--archive", type=Path, required=True)
+    generate = subcommands.add_parser("generate-report")
+    generate.add_argument("--campaign", type=uuid.UUID, required=True)
+    generate.add_argument("--policy-revision", required=True)
+    report_readback = subcommands.add_parser("read-report")
+    report_readback.add_argument("--report", type=uuid.UUID, required=True)
     args = parser.parse_args()
     store = None
     try:
@@ -59,6 +65,15 @@ def main() -> None:
                 exit_code = 0
             elif args.command == "campaign-accounting":
                 result = store.read_comparison_campaign(args.campaign)["accounting"]
+                exit_code = 0
+            elif args.command == "generate-report":
+                if args.policy_revision != POLICY_REVISION:
+                    raise CampaignGateError("readiness_policy_revision_unknown")
+                result = store.generate_evaluation_report(args.campaign, args.policy_revision,
+                    ArtifactStore(Config.from_env()))
+                exit_code = 0
+            elif args.command == "read-report":
+                result = store.read_evaluation_report(args.report, ArtifactStore(Config.from_env()))
                 exit_code = 0
             else:
                 result = store.read_comparison_campaign(args.campaign)

@@ -65,6 +65,36 @@ class ArtifactStore:
         except Exception:
             raise ArtifactGateError("artifact_publication_failed") from None
 
+    def publish_report(self, report_id: uuid.UUID, payload: bytes, digest: str) -> str:
+        if hashlib.sha256(payload).hexdigest() != digest:
+            raise ArtifactGateError("artifact_integrity_failed")
+        _, measured, size = self.upload_temporary(report_id, payload, "application/json")
+        if measured != digest:
+            raise ArtifactGateError("artifact_integrity_failed")
+        key = self.publish_final(report_id, payload, "application/json", digest, size)
+        self.read_verified(key, digest, size)
+        self._delete_report_temporary(f"tmp/{report_id}")
+        return key
+
+    def _delete_report_temporary(self, key: str) -> None:
+        try:
+            self.client.delete_object(Bucket=self.bucket, Key=key)
+            for item in self._health_versions(key):
+                self.client.delete_object(Bucket=self.bucket, Key=key, VersionId=item["VersionId"])
+            if self._health_versions(key):
+                raise ArtifactGateError("artifact_cleanup_failed")
+            try:
+                self.client.head_object(Bucket=self.bucket, Key=key)
+            except Exception as exc:
+                if getattr(exc, "response", {}).get("ResponseMetadata", {}).get("HTTPStatusCode") == 404:
+                    return
+                raise
+            raise ArtifactGateError("artifact_cleanup_failed")
+        except ArtifactGateError:
+            raise
+        except Exception:
+            raise ArtifactGateError("artifact_cleanup_failed") from None
+
     def read_verified(self, key: str, digest: str, size: int) -> bytes:
         if key != f"sha256/{digest}":
             raise ArtifactGateError("artifact_integrity_failed")

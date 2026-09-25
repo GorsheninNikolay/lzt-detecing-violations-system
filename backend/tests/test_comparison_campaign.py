@@ -12,6 +12,7 @@ from sqlalchemy import text
 from app.adapters.postgres import AdmissionStoreError
 from app.domain.comparison_campaign import CampaignGateError, build_manifest
 from app.domain.evaluation_set import canonical_hash
+from app.domain.evaluation_report import POLICY_REVISION, build_report
 from app.profiles import cloud_api, grounding_dino
 from test_startup import database, integration
 from test_admission import isolated_admission_database
@@ -45,6 +46,230 @@ def profiles(manifest=EVALUATION):
                     "per_image_timeout_seconds": 60, "batch_timeout_seconds": 600},
         "allowed_input_sha256": sorted(set(hashes)), "audit_run_ids": []}
     return local, cloud
+
+
+def report_snapshot():
+    manifest = build_manifest(EVALUATION, *profiles())
+    manifest["evaluation_manifest_hash"] = canonical_hash(EVALUATION)
+    cells = []
+    for repeat in range(3):
+        for fixture in manifest["fixtures"]:
+            for candidate in manifest["candidates"]:
+                run_id = str(uuid.uuid4())
+                inputs, observations, invocations = [], [], []
+                for frame in fixture["frames"]:
+                    input_id = str(uuid.uuid4())
+                    artifact_id = str(uuid.uuid4())
+                    invocation_id = str(uuid.uuid4())
+                    inputs.append({"input_id": input_id, "ordinal": frame["ordinal"],
+                                   "artifact_id": artifact_id, "sha256": frame["image"]["sha256"]})
+                    invocations.append({"id": invocation_id, "input_id": input_id,
+                                        "state": "completed", "native_artifact_id": str(uuid.uuid4())})
+                    for class_name, label in EVALUATION["frames"][frame["ordinal"]]["manual_labels"].items():
+                        state = ("insufficient_data" if fixture["expected_outcome"] == "insufficient_data"
+                                 else "not_analyzed" if fixture["expected_outcome"] == "not_analyzed"
+                                 else "detected" if label == "yes" else "not_detected_in_frame")
+                        observations.append({"input_id": input_id, "class_name": class_name,
+                                             "state": state, "invocation_id": invocation_id,
+                                             "source_artifact_id": artifact_id})
+                cells.append({"repeat_ordinal": repeat, "fixture_ordinal": fixture["ordinal"],
+                              "candidate_ordinal": candidate["ordinal"], "run_id": run_id,
+                              "state": "succeeded", "error_code": None,
+                              "latency_ms": 100, "outcome": fixture["expected_outcome"],
+                              "projection": {"outcome": fixture["expected_outcome"]},
+                              "inputs": inputs, "observations": observations,
+                              "invocations": invocations, "artifact_ids": []})
+    return {"id": str(uuid.uuid4()), "manifest_hash": canonical_hash(manifest),
+            "evaluation_revision_id": str(uuid.uuid4()), "manifest": manifest, "cells": cells,
+            "evaluation_frames": [{"id": frame["id"], "ordinal": frame["ordinal"],
+                                   "manual_labels": frame["manual_labels"]}
+                                  for frame in EVALUATION["frames"]]}
+
+
+def test_criterion_report_matrix_and_literal_populations(monkeypatch):
+    snapshot = report_snapshot()
+    report = build_report(snapshot, POLICY_REVISION)
+    assert report["status"] == "pass"
+    assert len(report["criteria"]) == 4
+    assert {row["key"] for row in report["criteria"]} == {
+        "campaign_coverage", "mandatory_detections", "mandatory_outcomes", "zero_false_warnings"}
+    assert all(row["status"] == "pass" for row in report["criteria"])
+    assert report["measures"]["planned_cells"]["denominator"] == 36
+    assert report["criteria"][1]["denominator"] == 72
+    assert report["criteria"][2]["denominator"] == 36
+    assert report["criteria"][3]["denominator"] == 30
+    assert report["measures"]["false_detections"]["denominator"] == 24
+    assert report["measures"]["latency_ms"]["measured_count"] == 36
+    assert report["measures"]["cost"]["availability"] == "unavailable"
+    assert report["measures"]["check_request_comprehension"]["availability"] == "unavailable"
+    assert all(ref["run_id"] and ref["inputs"] and ref["invocations"] and ref["projection"]
+               for ref in report["criteria"][0]["evidence"])
+
+    pending = report_snapshot()
+    pending["cells"][0].update(state="planned", outcome=None, projection=None,
+                                inputs=[], observations=[], invocations=[])
+    result = build_report(pending, POLICY_REVISION)
+    assert result["status"] == "incomplete"
+    assert result["criteria"][0]["status"] == "not_evaluated"
+    assert result["criteria"][0]["denominator"] == 36
+    assert result["measures"]["repeat_disagreement"]["denominator"] == 11
+
+    absent = report_snapshot()
+    absent["cells"].pop()
+    result = build_report(absent, POLICY_REVISION)
+    assert result["status"] == "incomplete"
+    assert result["criteria"][0]["status"] == "fail"
+    assert result["criteria"][0]["numerator"] == 1
+    assert result["measures"]["planned_cells"]["numerator"] == 35
+    assert any(ref["run_id"] is None for ref in result["criteria"][0]["evidence"])
+    assert result["measures"]["repeat_disagreement"]["denominator"] == 11
+
+    no_latency = report_snapshot()
+    for cell in no_latency["cells"]:
+        cell["latency_ms"] = None
+    assert build_report(no_latency, POLICY_REVISION)["measures"]["latency_ms"] == {
+        "availability": "unavailable", "measured_count": 0, "values": [], "denominator": 36}
+
+    failed = report_snapshot()
+    failed["cells"][0].update(state="failed", error_code="observer_timeout", outcome=None,
+                               projection=None, observations=[])
+    result = build_report(failed, POLICY_REVISION)
+    assert result["status"] == "fail"
+    assert result["criteria"][0]["status"] == "fail"
+    assert result["measures"]["technical_errors"]["numerator"] == 1
+    assert result["measures"]["detection_misses"]["numerator"] > 0
+
+    non_applicable = report_snapshot()
+    non_applicable["cells"][10].update(state="failed", error_code="observer_timeout",
+                                        outcome=None, projection=None, observations=[])
+    result = build_report(non_applicable, POLICY_REVISION)
+    assert result["measures"]["detection_misses"]["numerator"] == 0
+    assert result["measures"]["outcome_misses"]["numerator"] == 1
+
+    false_detection = report_snapshot()
+    false_cell = false_detection["cells"][2]
+    negative = next(item for item in false_cell["observations"] if item["class_name"] == "dump_truck")
+    negative["state"] = "detected"
+    false_cell.update(state="failed", error_code="observer_timeout", outcome=None, projection=None)
+    result = build_report(false_detection, POLICY_REVISION)
+    evidence = result["measures"]["false_detections"]["evidence"]
+    assert result["measures"]["false_detections"]["numerator"] == 1
+    assert evidence[0]["run_id"] == false_cell["run_id"]
+    assert evidence[0]["input_id"] == false_cell["inputs"][0]["input_id"]
+    assert evidence[0]["observation"]["state"] == "detected"
+
+    warning = report_snapshot()
+    warning["cells"][4]["outcome"] = "check_requested"
+    result = build_report(warning, POLICY_REVISION)
+    assert result["status"] == "fail"
+    assert result["criteria"][3]["status"] == "fail"
+    assert result["measures"]["false_check_requests"]["numerator"] == 1
+
+    for fixture_index in (8, 10):
+        warning = report_snapshot()
+        warning["cells"][fixture_index]["outcome"] = "check_requested"
+        result = build_report(warning, POLICY_REVISION)
+        assert result["criteria"][3]["status"] == "fail"
+        assert result["criteria"][3]["numerator"] == 1
+        assert result["criteria"][3]["denominator"] == 30
+        assert result["criteria"][3]["misses"][0]["run_id"] == warning["cells"][fixture_index]["run_id"]
+
+    disagree = report_snapshot()
+    disagree["cells"][0]["observations"][0]["state"] = "not_detected_in_frame"
+    result = build_report(disagree, POLICY_REVISION)
+    assert result["measures"]["repeat_disagreement"]["numerator"] == 1
+    assert result["measures"]["repeat_disagreement"]["denominator"] == 12
+
+    from app.domain import evaluation_report
+    monkeypatch.setattr(evaluation_report, "CRITERIA", ("campaign_coverage",))
+    with pytest.raises(ValueError, match="readiness_criteria_invalid"):
+        build_report(report_snapshot(), POLICY_REVISION)
+
+
+def test_report_publication_cleans_temporary_object(monkeypatch):
+    import hashlib
+
+    from app.adapters.artifacts import ArtifactStore
+
+    report_id = uuid.uuid4()
+    payload = b'{"status":"incomplete"}'
+    digest = hashlib.sha256(payload).hexdigest()
+    store = ArtifactStore.__new__(ArtifactStore)
+    calls = []
+    monkeypatch.setattr(store, "upload_temporary", lambda *args: (f"tmp/{report_id}", digest, len(payload)))
+    monkeypatch.setattr(store, "publish_final", lambda *args: f"sha256/{digest}")
+    monkeypatch.setattr(store, "read_verified", lambda *args: payload)
+    monkeypatch.setattr(store, "_delete_report_temporary", lambda *args: calls.append(args))
+    assert store.publish_report(report_id, payload, digest) == f"sha256/{digest}"
+    assert calls == [(f"tmp/{report_id}",)]
+
+    class Missing(Exception):
+        response = {"ResponseMetadata": {"HTTPStatusCode": 404}}
+
+    class VersionedClient:
+        versions = {"null", "old-version"}
+
+        def delete_object(self, *, Bucket, Key, VersionId=None):
+            if VersionId is None:
+                self.versions.add("delete-marker")
+            else:
+                self.versions.remove(VersionId)
+
+        def head_object(self, *, Bucket, Key):
+            if self.versions:
+                raise AssertionError("temporary versions remain")
+            raise Missing()
+
+    versioned = ArtifactStore.__new__(ArtifactStore)
+    versioned.bucket = "test"
+    versioned.client = VersionedClient()
+    monkeypatch.setattr(versioned, "_health_versions", lambda key: [
+        {"VersionId": value} for value in sorted(versioned.client.versions)])
+    versioned._delete_report_temporary(f"tmp/{report_id}")
+    assert not versioned.client.versions
+
+
+def test_report_persistence_is_immutable_and_idempotent(isolated_campaign_database, monkeypatch):
+    import hashlib
+
+    database = isolated_campaign_database
+
+    class MemoryArtifacts:
+        objects = {}
+
+        def publish_report(self, report_id, payload, digest):
+            assert hashlib.sha256(payload).hexdigest() == digest
+            key = f"sha256/{digest}"
+            self.objects[key] = payload
+            return key
+
+        def read_verified(self, key, digest, size):
+            payload = self.objects[key]
+            assert len(payload) == size and hashlib.sha256(payload).hexdigest() == digest
+            return payload
+
+    revision, local_id, cloud_id, local, cloud = seed(database)
+    patch_admission(monkeypatch, database, local_id, cloud_id, local, cloud)
+    campaign_id = database.freeze_comparison_campaign(revision, local_id, cloud_id)
+    artifacts = MemoryArtifacts()
+    first = database.generate_evaluation_report(campaign_id, POLICY_REVISION, artifacts)
+    assert first["status"] == "incomplete"
+    assert first == database.generate_evaluation_report(campaign_id, POLICY_REVISION, artifacts)
+    assert len(first["criteria"]) == 4
+    with database.engine.begin() as connection:
+        assert connection.execute(text("""SELECT count(*) FROM evaluation_report_criteria
+            WHERE report_id = :id"""), {"id": uuid.UUID(first["id"])}).scalar_one() == 4
+        run_id = uuid.UUID(database.read_comparison_campaign(campaign_id)["cells"][0]["run_id"])
+        connection.execute(text("""UPDATE analysis_runs SET state = 'failed',
+            error_code = 'observer_timeout' WHERE id = :id"""), {"id": run_id})
+    second = database.generate_evaluation_report(campaign_id, POLICY_REVISION, artifacts)
+    assert second["id"] != first["id"]
+    assert second["evidence_digest"] != first["evidence_digest"]
+    assert database.read_evaluation_report(uuid.UUID(first["id"]), artifacts) == first
+    with pytest.raises(Exception, match="evaluation_reports_immutable"):
+        with database.engine.begin() as connection:
+            connection.execute(text("UPDATE evaluation_reports SET policy_revision = 'other' WHERE id = :id"),
+                               {"id": uuid.UUID(first["id"])})
 
 
 def seed(database, manifest=EVALUATION, decision_hash=None):
@@ -427,6 +652,13 @@ class MemoryArtifacts:
         assert hashlib.sha256(payload).hexdigest() == digest and len(payload) == size
         return payload
 
+    def publish_report(self, report_id, payload, digest):
+        import hashlib
+        assert hashlib.sha256(payload).hexdigest() == digest
+        key = f"sha256/{digest}"
+        self.objects[key] = payload
+        return key
+
     def inspect_reconciliation(self, key, digest=None, size=None, creator=None):
         return "missing", None
 
@@ -566,6 +798,16 @@ def test_complete_execution_keeps_every_cell_and_distinct_inputs(database, monke
             assert {(o["input_id"], o["class_name"]) for o in cell["observation_ids"]} == {
                 (str(o.input_id), o.class_name) for o in observed}
             assert all(o["run_id"] == cell["run_id"] for o in cell["observation_ids"])
+    succeeded = next(cell for cell in result["cells"] if cell["state"] == "succeeded")
+    with database.engine.connect() as connection:
+        outcome = connection.execute(text("SELECT outcome FROM result_projections WHERE run_id = :run"),
+                                     {"run": uuid.UUID(succeeded["run_id"])}).scalar_one()
+    report = database.generate_evaluation_report(campaign, POLICY_REVISION, artifacts)
+    outcome_row = next(row for row in report["criteria"] if row["key"] == "mandatory_outcomes")
+    evidence = next(ref for ref in outcome_row["evidence"] if ref["run_id"] == succeeded["run_id"])
+    assert evidence["outcome"] == outcome
+    assert evidence["projection"]["outcome"] == outcome
+    assert evidence["inputs"] and evidence["observations"]
 
 
 def test_archive_late_member_mismatch_uploads_nothing(database, monkeypatch, tmp_path):

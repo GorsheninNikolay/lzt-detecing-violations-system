@@ -14,6 +14,7 @@ from time import monotonic
 from app.domain.observations import CLASSES, STAGES, normalized_states
 from app.domain.evaluation_set import inspect_evaluation_set, reserve_held_out_inventory, canonical_hash
 from app.domain.comparison_campaign import CampaignGateError, build_manifest
+from app.domain.evaluation_report import POLICY_REVISION, build_report
 from app.profiles import cloud_api, grounding_dino
 from app.profiles.grounding_dino import canonical_bytes, digest
 from app.adapters.artifacts import ArtifactGateError, ArtifactStore
@@ -170,12 +171,14 @@ class PostgresStore:
 
     def read_comparison_campaign(self, campaign_id: uuid.UUID) -> dict:
         with self.engine.connect().execution_options(isolation_level="REPEATABLE READ") as connection:
-            row = connection.execute(text("""SELECT revision_number, evaluation_revision_id, manifest_hash, manifest
-                FROM comparison_campaigns WHERE id = :id"""), {"id": campaign_id}).one_or_none()
+            row = connection.execute(text("""SELECT c.revision_number, c.evaluation_revision_id,
+                c.manifest_hash, c.manifest, e.manifest AS evaluation_manifest
+                FROM comparison_campaigns c JOIN evaluation_set_revisions e
+                ON e.id = c.evaluation_revision_id WHERE c.id = :id"""), {"id": campaign_id}).one_or_none()
             if not row:
                 raise CampaignGateError("campaign_missing")
             cells = connection.execute(text("""SELECT c.repeat_ordinal, c.fixture_ordinal, c.candidate_ordinal,
-                c.run_id, r.state, r.error_code,
+                c.run_id, r.state, r.error_code, r.latency_ms,
                 (SELECT count(*) FROM run_inputs i WHERE i.run_id = r.id) AS input_count,
                 (SELECT count(*) FROM observer_invocations v WHERE v.run_id = r.id) AS invocation_count,
                 (SELECT count(*) FROM observations o WHERE o.run_id = r.id) AS observation_count,
@@ -191,7 +194,21 @@ class PostgresStore:
                     FROM observations o JOIN run_inputs i ON i.input_id = o.input_id
                     WHERE o.run_id = r.id) AS observation_ids,
                 (SELECT coalesce(jsonb_agg(a.id ORDER BY a.id), '[]'::jsonb)
-                    FROM artifact_metadata a WHERE a.run_id = r.id) AS artifact_ids
+                    FROM artifact_metadata a WHERE a.run_id = r.id) AS artifact_ids,
+                (SELECT coalesce(jsonb_agg(jsonb_build_object('input_id', i.input_id,
+                    'ordinal', i.ordinal, 'artifact_id', i.artifact_id, 'sha256', i.sha256)
+                    ORDER BY i.ordinal), '[]'::jsonb) FROM run_inputs i WHERE i.run_id = r.id) AS inputs,
+                (SELECT coalesce(jsonb_agg(jsonb_build_object('input_id', o.input_id,
+                    'class_name', o.class_name, 'state', o.state, 'invocation_id', o.invocation_id,
+                    'source_artifact_id', o.source_artifact_id) ORDER BY i.ordinal, o.class_name), '[]'::jsonb)
+                    FROM observations o JOIN run_inputs i ON i.input_id = o.input_id
+                    WHERE o.run_id = r.id) AS observations,
+                (SELECT coalesce(jsonb_agg(jsonb_build_object('id', v.id, 'input_id', v.input_id,
+                    'state', v.state, 'native_artifact_id', v.native_artifact_id)
+                    ORDER BY i.ordinal), '[]'::jsonb) FROM observer_invocations v
+                    JOIN run_inputs i ON i.input_id = v.input_id WHERE v.run_id = r.id) AS invocations,
+                (SELECT p.outcome FROM result_projections p WHERE p.run_id = r.id) AS outcome,
+                (SELECT p.snapshot FROM result_projections p WHERE p.run_id = r.id) AS projection
                 FROM comparison_cells c JOIN analysis_runs r ON r.id = c.run_id
                 WHERE c.campaign_id = :id ORDER BY c.repeat_ordinal, c.fixture_ordinal, c.candidate_ordinal"""),
                 {"id": campaign_id}).all()
@@ -203,17 +220,77 @@ class PostgresStore:
             return {"id": str(campaign_id), "revision_number": row.revision_number,
                     "evaluation_revision_id": str(row.evaluation_revision_id),
                     "manifest_hash": row.manifest_hash, "manifest": row.manifest,
+                    "evaluation_frames": [{"id": frame["id"], "ordinal": frame["ordinal"],
+                                           "manual_labels": frame["manual_labels"]}
+                                          for frame in row.evaluation_manifest["frames"]],
                     "accounting": {"planned": planned, "succeeded": succeeded, "failed": failed,
                                    "timed_out": timed_out, "missing": planned - succeeded - failed - timed_out},
                     "cells": [{"repeat_ordinal": item.repeat_ordinal, "fixture_ordinal": item.fixture_ordinal,
                                "candidate_ordinal": item.candidate_ordinal, "run_id": str(item.run_id),
                                "state": item.state, "error_code": item.error_code,
+                               "latency_ms": item.latency_ms, "outcome": item.outcome,
+                               "projection": item.projection,
+                               "inputs": item.inputs, "observations": item.observations,
+                               "invocations": item.invocations,
                                "input_count": item.input_count, "invocation_count": item.invocation_count,
                                "observation_count": item.observation_count,
                                "projection_count": item.projection_count,
                                "input_ids": item.input_ids, "invocation_ids": item.invocation_ids,
                                "observation_ids": item.observation_ids,
                                "artifact_ids": item.artifact_ids} for item in cells]}
+
+    def generate_evaluation_report(self, campaign_id: uuid.UUID, policy_revision: str,
+                                   artifacts: ArtifactStore) -> dict:
+        if policy_revision != POLICY_REVISION:
+            raise CampaignGateError("readiness_policy_revision_unknown")
+        snapshot = self.read_comparison_campaign(campaign_id)
+        report = build_report(snapshot, policy_revision)
+        payload = json.dumps(report, sort_keys=True, separators=(",", ":"), allow_nan=False).encode()
+        digest = hashlib.sha256(payload).hexdigest()
+        with self.engine.connect() as connection:
+            existing = connection.execute(text("""SELECT id FROM evaluation_reports
+                WHERE campaign_id = :campaign AND policy_revision = :policy AND evidence_digest = :digest"""),
+                {"campaign": campaign_id, "policy": policy_revision, "digest": report["evidence_digest"]}).scalar_one_or_none()
+        if existing:
+            return self.read_evaluation_report(existing, artifacts)
+        report_id = uuid.uuid4()
+        key = artifacts.publish_report(report_id, payload, digest)
+        with self.engine.begin() as connection:
+            inserted = connection.execute(text("""INSERT INTO evaluation_reports
+                (id, campaign_id, evaluation_revision_id, policy_revision, evidence_digest,
+                 content_sha256, content_size, artifact_key, snapshot)
+                VALUES (:id, :campaign, :revision, :policy, :evidence, :sha, :size, :key, CAST(:snapshot AS jsonb))
+                ON CONFLICT (campaign_id, policy_revision, evidence_digest) DO NOTHING
+                RETURNING id"""),
+                {"id": report_id, "campaign": campaign_id,
+                 "revision": uuid.UUID(snapshot["evaluation_revision_id"]), "policy": policy_revision,
+                 "evidence": report["evidence_digest"], "sha": digest, "size": len(payload),
+                 "key": key, "snapshot": payload.decode()}).scalar_one_or_none()
+            row = inserted or connection.execute(text("""SELECT id FROM evaluation_reports
+                WHERE campaign_id = :campaign AND policy_revision = :policy AND evidence_digest = :digest"""),
+                {"campaign": campaign_id, "policy": policy_revision, "digest": report["evidence_digest"]}).scalar_one()
+            if inserted:
+                for criterion in report["criteria"]:
+                    connection.execute(text("""INSERT INTO evaluation_report_criteria
+                        (report_id, criterion_key, status, detail)
+                        VALUES (:id, :key, :status, CAST(:detail AS jsonb))"""),
+                        {"id": report_id, "key": criterion["key"], "status": criterion["status"],
+                         "detail": json.dumps(criterion)})
+        return self.read_evaluation_report(row, artifacts)
+
+    def read_evaluation_report(self, report_id: uuid.UUID, artifacts: ArtifactStore) -> dict:
+        with self.engine.connect() as connection:
+            row = connection.execute(text("""SELECT snapshot, artifact_key, content_sha256, content_size
+                FROM evaluation_reports WHERE id = :id"""), {"id": report_id}).one_or_none()
+            if row is None:
+                raise CampaignGateError("evaluation_report_missing")
+            criteria = connection.execute(text("""SELECT detail FROM evaluation_report_criteria
+                WHERE report_id = :id ORDER BY criterion_key"""), {"id": report_id}).scalars().all()
+        payload = artifacts.read_verified(row.artifact_key, row.content_sha256, row.content_size)
+        if (json.loads(payload) != row.snapshot or
+                criteria != sorted(row.snapshot["criteria"], key=lambda item: item["key"])):
+            raise CampaignGateError("evaluation_report_integrity_failed")
+        return {"id": str(report_id), **row.snapshot}
 
     def comparison_execution_lock(self):
         connection = self.engine.connect()
