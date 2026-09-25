@@ -48,6 +48,118 @@ def test_live_while_readiness_pending():
     asyncio.run(check())
 
 
+def test_readiness_http_is_read_only_and_no_store():
+    class Store:
+        report = None
+        calls = 0
+
+        def read_latest_evaluation_report(self, artifacts):
+            self.calls += 1
+            if self.report == "error":
+                raise ArtifactGateError("artifact_integrity_failed")
+            if self.report == "mismatch":
+                from app.domain.comparison_campaign import CampaignGateError
+                raise CampaignGateError("evaluation_report_integrity_failed")
+            return self.report
+
+    async def check():
+        app = create_app()
+        store = Store()
+        app.state.store = store
+        app.state.artifacts = object()
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            absent = await client.get("/readiness")
+            assert absent.status_code == 404
+            assert absent.json() == {"code": "evaluation_report_missing"}
+            assert absent.headers["cache-control"] == "no-store"
+            store.report = {"created_at": "2026-09-25T10:00:00+00:00", "report": {"status": "incomplete"}}
+            present = await client.get("/readiness")
+            assert present.status_code == 200
+            assert present.json() == store.report
+            assert present.headers["cache-control"] == "no-store"
+            store.report = "error"
+            unavailable = await client.get("/readiness")
+            assert unavailable.status_code == 503
+            assert unavailable.json() == {"code": "evaluation_report_unavailable"}
+            assert unavailable.headers["cache-control"] == "no-store"
+            store.report = "mismatch"
+            mismatch = await client.get("/readiness")
+            assert mismatch.status_code == 503
+            assert mismatch.json() == {"code": "evaluation_report_unavailable"}
+            assert mismatch.headers["cache-control"] == "no-store"
+            assert store.calls == 4
+
+    asyncio.run(check())
+
+
+def test_comparison_run_http_read_keeps_retry_scoped_to_ordinary():
+    run_id, artifact_id = uuid.uuid4(), uuid.uuid4()
+
+    class Store:
+        def read_ordinary(self, identifier):
+            return None
+
+        def read_run(self, identifier, purpose):
+            assert identifier == run_id and purpose == "comparison_campaign"
+            return {"run_id": str(run_id), "purpose": purpose, "state": "failed", "stages": [],
+                    "profile_snapshot": {"adapter": {"code": "yandex_ai_studio"}},
+                    "inputs": [{"input_id": str(uuid.uuid4()), "ordinal": 0,
+                                "sha256": "a" * 64, "artifact_id": str(artifact_id)}],
+                    "observations": [], "native_evidence_by_frame": []}
+
+    async def check():
+        app = create_app()
+        app.state.store = Store()
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            detail = await client.get(f"/runs/{run_id}")
+            assert detail.status_code == 200
+            assert detail.json()["purpose"] == "comparison_campaign"
+            assert detail.json()["profile_snapshot"] == {"adapter": {"code": "yandex_ai_studio"}}
+            assert detail.json()["inputs"][0]["artifact_id"] == str(artifact_id)
+            assert detail.json()["observations"] == []
+            assert detail.json().get("retry_eligible") is None
+            assert detail.headers["cache-control"] == "no-store"
+            retry = await client.post(f"/runs/{run_id}/retry")
+            assert retry.status_code == 404
+            assert retry.json() == {"code": "run_not_found"}
+
+    asyncio.run(check())
+
+
+def test_comparison_artifact_http_uses_verified_read():
+    run_id, artifact_id = uuid.uuid4(), uuid.uuid4()
+
+    class Store:
+        def resolve_run_artifact(self, run, artifact):
+            return {"key": "sha256/test", "sha256": "a" * 64, "size": 3,
+                    "media_type": "image/jpeg"} if (run, artifact) == (run_id, artifact_id) else None
+
+    class Artifacts:
+        fail = False
+
+        def read_verified(self, key, digest, size):
+            assert (key, digest, size) == ("sha256/test", "a" * 64, 3)
+            if self.fail:
+                raise ArtifactGateError("artifact_integrity_failed")
+            return b"jpg"
+
+    async def check():
+        app = create_app()
+        app.state.store = Store()
+        app.state.artifacts = Artifacts()
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            path = f"/runs/{run_id}/artifacts/{artifact_id}"
+            image = await client.get(path)
+            assert image.status_code == 200 and image.content == b"jpg"
+            assert image.headers["cache-control"] == "no-store"
+            app.state.artifacts.fail = True
+            broken = await client.get(path)
+            assert broken.status_code == 409
+            assert broken.json() == {"code": "artifact_integrity_failed"}
+
+    asyncio.run(check())
+
+
 def test_claim_loop_stop_drains_started_execution(monkeypatch):
     class Store:
         claimed = False

@@ -252,8 +252,41 @@ def test_report_persistence_is_immutable_and_idempotent(isolated_campaign_databa
     patch_admission(monkeypatch, database, local_id, cloud_id, local, cloud)
     campaign_id = database.freeze_comparison_campaign(revision, local_id, cloud_id)
     artifacts = MemoryArtifacts()
+    assert database.read_latest_evaluation_report(artifacts) is None
     first = database.generate_evaluation_report(campaign_id, POLICY_REVISION, artifacts)
     assert first["status"] == "incomplete"
+    latest = database.read_latest_evaluation_report(artifacts)
+    assert latest["report"] == first
+    assert latest["created_at"]
+    assert latest["evaluation_set"]["id"] == str(revision)
+    assert len(latest["evaluation_set"]["manifest_hash"]) == 64
+    assert len(latest["evaluation_set"]["frames"]) == 11
+    assert latest["evaluation_set"]["frames"] == [
+        {"id": frame["id"], "ordinal": frame["ordinal"], "scenario": frame["scenario"],
+         "image_sha256": frame["image"]["sha256"], "manual_labels": frame["manual_labels"],
+         "sufficiency_notes": frame["sufficiency_notes"]}
+        for frame in EVALUATION["frames"]]
+    assert latest["fixtures"] == [
+        {"ordinal": fixture["ordinal"], "scenario": fixture["scenario"],
+         "expected_outcome": fixture["expected_outcome"]}
+        for fixture in database.read_comparison_campaign(campaign_id)["manifest"]["fixtures"]]
+    assert "archive_member" not in json.dumps(latest["evaluation_set"])
+    assert "source_rights" not in json.dumps(latest["evaluation_set"])
+    assert "snapshot" not in latest and "manifest" not in latest
+    comparison_run = uuid.UUID(database.read_comparison_campaign(campaign_id)["cells"][0]["run_id"])
+    assert database.read_ordinary(comparison_run) is None
+    comparison_detail = database.read_run(comparison_run, "comparison_campaign")
+    assert comparison_detail["purpose"] == "comparison_campaign"
+    assert comparison_detail["profile_snapshot"] == {"adapter": {"code": "grounding_dino"}}
+    cloud_run = uuid.UUID(database.read_comparison_campaign(campaign_id)["cells"][1]["run_id"])
+    assert database.read_run(cloud_run, "comparison_campaign")["profile_snapshot"] == {
+        "adapter": {"code": "yandex_ai_studio"}}
+    assert all(item["run_id"] != str(comparison_run) for item in database.list_ordinary()["runs"])
+    with monkeypatch.context() as patch:
+        patch.setattr(database, "read_evaluation_report", lambda *_: {
+            **first, "campaign_manifest_hash": "f" * 64})
+        with pytest.raises(CampaignGateError, match="evaluation_report_integrity_failed"):
+            database.read_latest_evaluation_report(artifacts)
     assert first == database.generate_evaluation_report(campaign_id, POLICY_REVISION, artifacts)
     assert len(first["criteria"]) == 4
     with database.engine.begin() as connection:
@@ -265,6 +298,7 @@ def test_report_persistence_is_immutable_and_idempotent(isolated_campaign_databa
     second = database.generate_evaluation_report(campaign_id, POLICY_REVISION, artifacts)
     assert second["id"] != first["id"]
     assert second["evidence_digest"] != first["evidence_digest"]
+    assert database.read_latest_evaluation_report(artifacts)["report"] == second
     assert database.read_evaluation_report(uuid.UUID(first["id"]), artifacts) == first
     with pytest.raises(Exception, match="evaluation_reports_immutable"):
         with database.engine.begin() as connection:
@@ -799,6 +833,8 @@ def test_complete_execution_keeps_every_cell_and_distinct_inputs(database, monke
                 (str(o.input_id), o.class_name) for o in observed}
             assert all(o["run_id"] == cell["run_id"] for o in cell["observation_ids"])
     succeeded = next(cell for cell in result["cells"] if cell["state"] == "succeeded")
+    source = succeeded["inputs"][0]
+    assert database.resolve_run_artifact(uuid.UUID(succeeded["run_id"]), uuid.UUID(source["artifact_id"]))
     with database.engine.connect() as connection:
         outcome = connection.execute(text("SELECT outcome FROM result_projections WHERE run_id = :run"),
                                      {"run": uuid.UUID(succeeded["run_id"])}).scalar_one()

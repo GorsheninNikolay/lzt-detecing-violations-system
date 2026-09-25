@@ -14,6 +14,7 @@ from app.adapters.postgres import AdmissionStoreError, DatabaseGateError, Postgr
 from app.application.executor import ClaimLoop
 from app.application.submission import SubmissionError, submit, submit_series
 from app.domain.rule import ANALYSIS_CHOICES
+from app.domain.comparison_campaign import CampaignGateError
 from app.config import Config
 from app.profiles.grounding_dino import verify_snapshot
 from app.profiles.cloud_api import CloudObserver
@@ -172,14 +173,32 @@ def create_app() -> FastAPI:
         except Exception:
             return JSONResponse({"code": "stage_summary_unavailable"}, status_code=503)
 
+    @app.get("/readiness")
+    async def read_readiness() -> JSONResponse:
+        headers = {"Cache-Control": "no-store"}
+        try:
+            report = await asyncio.to_thread(app.state.store.read_latest_evaluation_report, app.state.artifacts)
+            return JSONResponse(report if report else {"code": "evaluation_report_missing"},
+                                status_code=200 if report else 404, headers=headers)
+        except (ArtifactGateError, CampaignGateError):
+            return JSONResponse({"code": "evaluation_report_unavailable"}, status_code=503, headers=headers)
+        except Exception:
+            return JSONResponse({"code": "readiness_unavailable"}, status_code=503, headers=headers)
+
     @app.get("/runs/{run_id}")
     async def read_run(run_id: str) -> JSONResponse:
+        headers = {"Cache-Control": "no-store"}
         try:
             identifier = uuid.UUID(run_id)
         except ValueError:
-            return JSONResponse({"code": "run_not_found"}, status_code=404)
-        run = await asyncio.to_thread(app.state.store.read_ordinary, identifier)
-        if run:
+            return JSONResponse({"code": "run_not_found"}, status_code=404, headers=headers)
+        try:
+            run = await asyncio.to_thread(app.state.store.read_ordinary, identifier)
+            if run is None:
+                run = await asyncio.to_thread(app.state.store.read_run, identifier, "comparison_campaign")
+        except Exception:
+            return JSONResponse({"code": "run_unavailable"}, status_code=503, headers=headers)
+        if run and run.get("purpose", "ordinary") == "ordinary":
             binding = app.state.claim_loop.runtime_binding
             run["retry_eligible"] = False
             if run["state"] == "failed" and not run["retry_successor_id"] and binding and app.state.readiness.ready.is_set():
@@ -194,7 +213,8 @@ def create_app() -> FastAPI:
                     run["retry_authorization_revision"] = binding[1]
                 except Exception:
                     pass
-        return JSONResponse(run if run else {"code": "run_not_found"}, status_code=200 if run else 404)
+        return JSONResponse(run if run else {"code": "run_not_found"}, status_code=200 if run else 404,
+                            headers=headers)
 
     @app.get("/runs")
     async def list_runs(request: Request) -> JSONResponse:
@@ -239,20 +259,25 @@ def create_app() -> FastAPI:
 
     @app.get("/runs/{run_id}/artifacts/{artifact_id}")
     async def read_run_artifact(run_id: str, artifact_id: str) -> Response:
+        headers = {"Cache-Control": "no-store"}
         try:
             run, artifact = uuid.UUID(run_id), uuid.UUID(artifact_id)
         except ValueError:
-            return JSONResponse({"code": "artifact_not_found"}, status_code=404)
-        metadata = await asyncio.to_thread(app.state.store.resolve_run_artifact, run, artifact)
+            return JSONResponse({"code": "artifact_not_found"}, status_code=404, headers=headers)
+        try:
+            metadata = await asyncio.to_thread(app.state.store.resolve_run_artifact, run, artifact)
+        except Exception:
+            return JSONResponse({"code": "artifact_unavailable"}, status_code=503, headers=headers)
         if metadata is None:
-            return JSONResponse({"code": "artifact_not_found"}, status_code=404)
+            return JSONResponse({"code": "artifact_not_found"}, status_code=404, headers=headers)
         try:
             body = await asyncio.to_thread(app.state.artifacts.read_verified,
                                            metadata["key"], metadata["sha256"], metadata["size"])
         except ArtifactGateError as exc:
             code = str(exc)
-            return JSONResponse({"code": code}, status_code=409 if code == "artifact_integrity_failed" else 503)
-        return Response(body, media_type=metadata["media_type"], headers={"Cache-Control": "no-store"})
+            return JSONResponse({"code": code}, status_code=409 if code == "artifact_integrity_failed" else 503,
+                                headers=headers)
+        return Response(body, media_type=metadata["media_type"], headers=headers)
 
     return app
 

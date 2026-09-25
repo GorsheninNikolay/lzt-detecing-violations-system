@@ -11,6 +11,202 @@ const snapshot = (state: string, states = Array(6).fill('pending'), reasons: Rec
   state, stages: stageNames.map((name, index) => ({ name, state: states[index], ...(reasons[index] ? { reason: reasons[index] } : {}) })),
 })
 
+describe('Prototype readiness', () => {
+  const runId = '11111111-1111-1111-1111-111111111111'
+  const artifactId = '22222222-2222-2222-2222-222222222222'
+  const createdAt = '2026-09-25T10:00:00+00:00'
+  const report = {
+    created_at: createdAt,
+    rule: { name: 'Проверка вывоза грунта', revision: 'rule-v1', policy_revision: 'rule-policy-v1' },
+    fixtures: [{ ordinal: 0, scenario: 'single_both', expected_outcome: 'observations_only' },
+      { ordinal: 1, scenario: 'positive_series', expected_outcome: 'no_check' }],
+    evaluation_set: { id: 'evaluation-revision', revision_number: 2, manifest_hash: 'e'.repeat(64),
+      frames: Array.from({ length: 11 }, (_, ordinal) => ({ id: `frame-${ordinal}`, ordinal, scenario: 'single_both',
+        image_sha256: String(ordinal).repeat(64), manual_labels: { excavator: 'yes', dump_truck: 'no' },
+        sufficiency_notes: `Note ${ordinal}` })) },
+    report: { id: 'report-id', campaign_id: 'campaign-id', campaign_manifest_hash: 'c'.repeat(64),
+      evaluation_revision_id: 'evaluation-revision', evaluation_manifest_hash: 'e'.repeat(64),
+      policy_revision: 'criterion-readiness-v1', evidence_digest: 'd'.repeat(64), status: 'incomplete',
+      criteria: [
+        { key: 'campaign_coverage', status: 'pass', reason: 'all_applicable_passed', numerator: 0, denominator: 36,
+          evidence: [{ run_id: runId, fixture_ordinal: 0, repeat_ordinal: 0, candidate_ordinal: 0,
+            state: 'succeeded', inputs: [{ input_id: 'input', artifact_id: artifactId }] }], misses: [] },
+        { key: 'mandatory_outcomes', status: 'fail', reason: 'observed_failure', numerator: 2, denominator: 36,
+          evidence: [{ run_id: null, fixture_ordinal: 1, repeat_ordinal: 0, candidate_ordinal: 0, state: 'missing' },
+            { run_id: runId, fixture_ordinal: 1, repeat_ordinal: 1, candidate_ordinal: 0, state: 'succeeded', outcome: 'check_requested' }],
+          misses: [{ run_id: null, fixture_ordinal: 1, repeat_ordinal: 0, candidate_ordinal: 0, state: 'missing' },
+            { run_id: runId, fixture_ordinal: 1, repeat_ordinal: 1, candidate_ordinal: 0, state: 'succeeded', outcome: 'check_requested' }] },
+        { key: 'mandatory_detections', status: 'not_evaluated', reason: 'pending_evidence', numerator: 0, denominator: 72,
+          evidence: [{ run_id: runId, fixture_ordinal: 0, frame_ordinal: 0, class_name: 'excavator',
+            state: 'planned', observation: null }], misses: [] },
+        { key: 'zero_false_warnings', status: 'fail', reason: 'observed_failure', numerator: 1, denominator: 30,
+          evidence: [{ run_id: runId, fixture_ordinal: 1, repeat_ordinal: 2, candidate_ordinal: 0,
+            state: 'succeeded', outcome: 'check_requested' }],
+          misses: [{ run_id: runId, fixture_ordinal: 1, repeat_ordinal: 2, candidate_ordinal: 0,
+            state: 'succeeded', outcome: 'check_requested' }] },
+      ], measures: { planned_cells: { numerator: 35, denominator: 36 }, technical_errors: { numerator: 1, denominator: 36 },
+        outcome_misses: { numerator: 1, denominator: 36, evidence: [{ run_id: runId, fixture_ordinal: 1,
+          outcome: 'check_requested', state: 'succeeded' }] },
+        repeat_disagreement: { numerator: 1, denominator: 12, evidence: [{ fixture_ordinal: 1, candidate_ordinal: 0,
+          run_ids: [runId] }] },
+        latency_ms: { availability: 'observed', measured_count: 1, denominator: 36, values: [{ run_id: runId, milliseconds: 42 }] },
+        cost: { availability: 'unavailable', reason: 'cost_not_recorded' },
+        check_request_comprehension: { availability: 'unavailable', reason: 'comprehension_not_recorded' } } },
+  }
+
+  beforeEach(() => history.replaceState({}, '', '/readiness'))
+
+  it('shows absent and failed reads with nearby retry', async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce({ status: 404 })
+      .mockRejectedValueOnce(new Error('offline'))
+      .mockResolvedValueOnce({ ok: true, json: async () => report })
+    vi.stubGlobal('fetch', fetchMock)
+    render(<App />)
+    expect(screen.getByRole('status', { name: '' }).textContent).toContain('Загружаем сохранённый отчёт')
+    expect(await screen.findByText('Нет данных: сохранённого отчёта пока нет.')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Повторить загрузку' }))
+    expect(await screen.findByRole('alert')).toHaveProperty('textContent', expect.stringContaining('Не удалось обновить'))
+    fireEvent.click(screen.getByRole('button', { name: 'Повторить загрузку' }))
+    expect(await screen.findByRole('heading', { name: 'Сохранённый отчёт' })).toBeTruthy()
+    expect(fetchMock).toHaveBeenCalledTimes(3)
+  })
+
+  it('shows failed criterion first, all frozen frames, linked evidence, and retains stale report', async () => {
+    vi.stubGlobal('URL', { ...URL, createObjectURL: vi.fn(() => 'blob:test'), revokeObjectURL: vi.fn() })
+    HTMLDialogElement.prototype.showModal = function () {
+      this.setAttribute('open', '')
+      this.querySelector('button')?.focus()
+    }
+    HTMLDialogElement.prototype.close = function () { this.removeAttribute('open'); this.dispatchEvent(new Event('close')) }
+    const observation = { input_id: 'input', ordinal: 0, class_name: 'excavator', state: 'detected',
+      source_artifact_id: artifactId }
+    const campaignRun = { ...snapshot('succeeded'), purpose: 'comparison_campaign',
+      inputs: [{ input_id: 'input', ordinal: 0, sha256: 'source-hash', artifact_id: artifactId }],
+      observations: [observation], result_projection: { outcome: 'observations_only', frames: [observation] } }
+    const fetchMock = vi.fn().mockResolvedValueOnce({ ok: true, json: async () => report })
+      .mockRejectedValueOnce(new Error('offline'))
+      .mockResolvedValueOnce({ ok: true, json: async () => campaignRun })
+      .mockResolvedValue({ ok: true, blob: async () => new Blob(['jpeg']) })
+    vi.stubGlobal('fetch', fetchMock)
+    render(<App />)
+    await screen.findByRole('heading', { name: 'Сохранённый отчёт' })
+    const criteria = screen.getByRole('heading', { name: 'Критерии' }).nextElementSibling!
+    expect(within(criteria as HTMLElement).getAllByRole('article').map(item => item.querySelector('h3')?.textContent))
+      .toEqual(['Обязательные итоги', 'Отсутствие ложных запросов проверки', 'Обязательные обнаружения', 'Покрытие кампании'])
+    expect(screen.getByText('Отчёт неполный: часть доказательств ещё отсутствует.')).toBeTruthy()
+    expect(screen.getByText('35 / 36')).toBeTruthy()
+    expect(screen.getByText('Недоступно: стоимость не сохранена')).toBeTruthy()
+    expect(screen.getByText('Недоступно: понимание запроса проверки не измерялось')).toBeTruthy()
+    expect(screen.getByRole('heading', { name: 'Замороженный набор: 11 кадров' })).toBeTruthy()
+    expect(screen.getByText('Note 10')).toBeTruthy()
+    expect(screen.getByText(String(10).repeat(64))).toBeTruthy()
+    const frameTable = screen.getByRole('heading', { name: 'Замороженный набор: 11 кадров' }).closest('section')!
+    const frameRows = within(frameTable).getAllByRole('row').slice(1)
+    expect(frameRows).toHaveLength(11)
+    report.evaluation_set.frames.forEach((frame, index) => {
+      const rendered = frameRows[index].textContent ?? ''
+      expect(rendered).toContain(frame.id)
+      expect(rendered).toContain(frame.image_sha256)
+      expect(rendered).toContain('Экскаватор: Да (yes)')
+      expect(rendered).toContain('Самосвал: Нет (no)')
+      expect(rendered).toContain(frame.sufficiency_notes)
+    })
+    expect(screen.getAllByText('Запуск недоступен')).toHaveLength(3)
+    expect(screen.getByText(/Состояние отчёта:/).textContent).toContain('Отчёт неполный')
+    expect(screen.getAllByText(/Ожидалось: Проверка не запрошена.*получено: Запрошена проверка человеком/).length)
+      .toBeGreaterThan(0)
+    const warning = screen.getByRole('heading', { name: 'Отсутствие ложных запросов проверки' }).closest('article')!
+    expect(warning.textContent).toContain('Не пройдено')
+    expect(within(warning).getAllByText(/Ожидалось: Проверка не запрошена.*получено: Запрошена проверка человеком/).length).toBeGreaterThan(0)
+    expect(within(warning).getAllByRole('link', { name: `Открыть запуск ${runId}` }).length).toBeGreaterThan(0)
+    expect(screen.getAllByText(/Ручная метка: Да.*наблюдение: отсутствует/).length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Ожидающие и отсутствующие доказательства').length).toBeGreaterThan(0)
+    expect(screen.getByText('Ручные метки: положительные 11, отрицательные 11, неизвестные 0; всего 22.')).toBeTruthy()
+    expect(screen.getAllByRole('table').every(table => Boolean(table.querySelector('caption')))).toBe(true)
+    const disagreement = screen.getByRole('rowheader', { name: 'Расхождения повторов' }).closest('tr')!
+    fireEvent.click(within(disagreement).getByText('Доказательства: 1'))
+    expect(within(disagreement).getByRole('link', { name: `Открыть запуск ${runId}` })).toBeTruthy()
+    const runLinks = screen.getAllByRole('link', { name: `Открыть запуск ${runId}` })
+    expect(runLinks[0].getAttribute('href')).toBe(`/runs/${runId}`)
+    expect(screen.getByText((_, element) => element?.tagName === 'LI' && element.textContent?.includes('Исходный артефакт') === true).textContent).toContain(artifactId)
+    expect(screen.queryByRole('link', { name: `Исходный артефакт ${artifactId}` })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Обновить отчёт' }))
+    const stale = await screen.findByRole('alert')
+    expect(stale.textContent).toContain('устаревшей')
+    expect(stale.querySelector('time')?.getAttribute('datetime')).toBe(createdAt)
+    expect(screen.getByText('Note 10')).toBeTruthy()
+    fireEvent.click(runLinks[0])
+    expect(await screen.findByRole('heading', { name: 'Анализ завершён' })).toBeTruthy()
+    expect(screen.getByText('Доказательство сравнительной кампании')).toBeTruthy()
+    expect(fetchMock.mock.calls.some(call => call[0] === `/api/runs/${runId}`)).toBe(true)
+    expect(await screen.findByRole('img', { name: /Исходное изображение: Кадр 1/ })).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Открыть кадр 1' }))
+    expect(screen.getByRole('dialog', { name: 'Просмотр исходных кадров' }).textContent)
+      .toContain(`Исходный артефакт ID: ${artifactId}`)
+    expect(fetchMock.mock.calls.some(call => call[0] === `/api/runs/${runId}/artifacts/${artifactId}`)).toBe(true)
+  })
+
+  it.each([['pass', 'Пройдено'], ['fail', 'Не пройдено']])('shows persisted overall %s in Russian', async (status, label) => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true,
+      json: async () => ({ ...report, report: { ...report.report, status } }) }))
+    render(<App />)
+    expect((await screen.findByText(/Состояние отчёта:/)).textContent).toContain(label)
+  })
+
+  it('keeps an unknown unavailable-measure reason visible', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => ({ ...report,
+      report: { ...report.report, measures: { ...report.report.measures,
+        cost: { availability: 'unavailable', reason: 'unmapped_code' } } } }) }))
+    render(<App />)
+    expect(await screen.findByText('Недоступно: unmapped_code')).toBeTruthy()
+  })
+
+  it('retains the persisted report and timestamp after a later 404', async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce({ ok: true, json: async () => report })
+      .mockResolvedValueOnce({ status: 404 })
+    vi.stubGlobal('fetch', fetchMock)
+    render(<App />)
+    await screen.findByRole('heading', { name: 'Сохранённый отчёт' })
+    fireEvent.click(screen.getByRole('button', { name: 'Обновить отчёт' }))
+    const stale = await screen.findByRole('alert')
+    expect(stale.textContent).toContain('устаревшей')
+    expect(stale.querySelector('time')?.getAttribute('datetime')).toBe(createdAt)
+    expect(screen.getByText('Note 10')).toBeTruthy()
+  })
+
+  it('stops an unresponsive readiness fetch after ten seconds and offers retry', async () => {
+    const fetchMock = vi.fn().mockImplementationOnce(() => new Promise<Response>(() => {}))
+      .mockResolvedValueOnce({ status: 404 })
+    vi.stubGlobal('fetch', fetchMock)
+    vi.useFakeTimers()
+    await act(async () => { render(<App />) })
+    await act(async () => { await vi.advanceTimersByTimeAsync(10000) })
+    expect(screen.getByRole('alert').textContent).toContain('Не удалось обновить')
+    expect(screen.getByRole('button', { name: 'Повторить загрузку' })).toBeTruthy()
+    expect(fetchMock.mock.calls[0][1].signal.aborted).toBe(true)
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Повторить загрузку' })) })
+    expect(screen.getByText('Нет данных: сохранённого отчёта пока нет.')).toBeTruthy()
+  })
+
+  it('opens retained source images on a failed campaign run without observations', async () => {
+    vi.stubGlobal('URL', { ...URL, createObjectURL: vi.fn(() => 'blob:test'), revokeObjectURL: vi.fn() })
+    const failedRun = { ...snapshot('failed'), purpose: 'comparison_campaign',
+      inputs: [{ input_id: 'input', ordinal: 0, sha256: 'source-hash', artifact_id: artifactId }],
+      observations: [], result_projection: null }
+    const fetchMock = vi.fn().mockResolvedValueOnce({ ok: true, json: async () => report })
+      .mockResolvedValueOnce({ ok: true, json: async () => failedRun })
+      .mockResolvedValue({ ok: true, blob: async () => new Blob(['jpeg']) })
+    vi.stubGlobal('fetch', fetchMock)
+    render(<App />)
+    await screen.findByRole('heading', { name: 'Сохранённый отчёт' })
+    fireEvent.click(screen.getAllByRole('link', { name: `Открыть запуск ${runId}` })[0])
+    expect(await screen.findByRole('heading', { name: 'Исходные кадры — анализ не завершён' })).toBeTruthy()
+    expect(await screen.findByRole('img', { name: /Исходное изображение: Кадр 1/ })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Повторить анализ' })).toBeNull()
+    expect(fetchMock.mock.calls.some(call => call[0] === `/api/runs/${runId}/artifacts/${artifactId}`)).toBe(true)
+  })
+})
+
 describe('Analysis history', () => {
   const first = '11111111-1111-1111-1111-111111111111'
   const second = '22222222-2222-2222-2222-222222222222'

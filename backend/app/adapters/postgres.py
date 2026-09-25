@@ -292,6 +292,47 @@ class PostgresStore:
             raise CampaignGateError("evaluation_report_integrity_failed")
         return {"id": str(report_id), **row.snapshot}
 
+    def read_latest_evaluation_report(self, artifacts: ArtifactStore) -> dict | None:
+        with self.engine.connect() as connection:
+            row = connection.execute(text("""SELECT r.id, r.created_at, r.campaign_id,
+                r.evaluation_revision_id, e.revision_number, e.manifest_hash, e.manifest,
+                c.manifest_hash AS campaign_manifest_hash, c.evaluation_revision_id AS campaign_revision_id,
+                c.manifest AS campaign_manifest
+                FROM evaluation_reports r
+                JOIN evaluation_set_revisions e ON e.id = r.evaluation_revision_id
+                JOIN comparison_campaigns c ON c.id = r.campaign_id
+                ORDER BY r.created_at DESC, r.id DESC LIMIT 1""")).one_or_none()
+        if row is None:
+            return None
+        report = self.read_evaluation_report(row.id, artifacts)
+        if (report["campaign_id"] != str(row.campaign_id)
+                or report["evaluation_revision_id"] != str(row.evaluation_revision_id)
+                or report["campaign_manifest_hash"] != row.campaign_manifest_hash
+                or row.campaign_revision_id != row.evaluation_revision_id
+                or report["evaluation_manifest_hash"] != row.manifest_hash
+                or canonical_hash(row.manifest) != row.manifest_hash
+                or canonical_hash(row.campaign_manifest) != row.campaign_manifest_hash):
+            raise CampaignGateError("evaluation_report_integrity_failed")
+        frames = sorted(row.manifest["frames"], key=lambda frame: frame["ordinal"])
+        if [frame["ordinal"] for frame in frames] != list(range(11)):
+            raise CampaignGateError("evaluation_report_integrity_failed")
+        return {"created_at": row.created_at.isoformat(), "report": report,
+                "evaluation_set": {"id": str(row.evaluation_revision_id),
+                                   "revision_number": row.revision_number,
+                                   "manifest_hash": row.manifest_hash,
+                                   "frames": [{"id": frame["id"], "ordinal": frame["ordinal"],
+                                               "scenario": frame["scenario"],
+                                               "image_sha256": frame["image"]["sha256"],
+                                               "manual_labels": frame["manual_labels"],
+                                               "sufficiency_notes": frame["sufficiency_notes"]}
+                                              for frame in frames]},
+                "fixtures": [{"ordinal": fixture["ordinal"], "scenario": fixture["scenario"],
+                              "expected_outcome": fixture["expected_outcome"]}
+                             for fixture in row.campaign_manifest["fixtures"]],
+                "rule": {"name": row.campaign_manifest["rule"]["name"],
+                         "revision": row.campaign_manifest["rule"]["revision"],
+                         "policy_revision": row.campaign_manifest["rule_policy"]["revision"]}}
+
     def comparison_execution_lock(self):
         connection = self.engine.connect()
         if not connection.execute(text("SELECT pg_try_advisory_lock(:key)"),
@@ -1382,13 +1423,18 @@ class PostgresStore:
                 connection.execute(text("UPDATE analysis_stages SET state = 'skipped', reason = 'dependency_failed' WHERE run_id = :run AND ordinal > 0"), {"run": run_id})
 
     def read_ordinary(self, run_id: uuid.UUID) -> dict | None:
+        return self.read_run(run_id, "ordinary")
+
+    def read_run(self, run_id: uuid.UUID, purpose: str) -> dict | None:
+        if purpose not in {"ordinary", "comparison_campaign"}:
+            raise ValueError("run_purpose_invalid")
         with self.engine.connect().execution_options(isolation_level="REPEATABLE READ") as connection:
             row = connection.execute(text("""SELECT r.id, r.state, r.error_code, r.request_context, r.requested_classes,
                 r.created_at, r.profile_id, r.authorization_revision, r.binding_kind, r.profile_snapshot,
                 r.taxonomy_snapshot, r.analysis_intent, r.stage_key, r.policy_snapshot, r.rule_snapshot,
                 r.retry_predecessor_id, successor.id AS retry_successor_id
                 FROM analysis_runs r LEFT JOIN analysis_runs successor ON successor.retry_predecessor_id = r.id
-                WHERE r.id = :id AND r.purpose = 'ordinary'"""), {"id": run_id}).one_or_none()
+                WHERE r.id = :id AND r.purpose = :purpose"""), {"id": run_id, "purpose": purpose}).one_or_none()
             if not row:
                 return None
             stages = connection.execute(text("SELECT name, state, reason FROM analysis_stages WHERE run_id = :id ORDER BY ordinal"), {"id": run_id}).mappings().all()
@@ -1404,12 +1450,14 @@ class PostgresStore:
                 FROM observer_invocations i JOIN artifact_metadata a ON a.id = i.native_artifact_id
                 JOIN run_inputs r ON r.input_id = i.input_id
                 WHERE i.run_id = :id ORDER BY r.ordinal"""), {"id": run_id}).mappings().all()
-            return {"run_id": str(row.id), "state": row.state, "error_code": row.error_code,
+            return {"run_id": str(row.id), "purpose": purpose, "state": row.state, "error_code": row.error_code,
                     "created_at": row.created_at.isoformat() if row.created_at else None,
                     "context": row.request_context, "requested_classes": row.requested_classes,
                     "profile_id": str(row.profile_id) if row.profile_id else None,
                     "authorization_revision": row.authorization_revision,
-                    "binding_kind": row.binding_kind, "profile_snapshot": row.profile_snapshot,
+                    "binding_kind": row.binding_kind,
+                    "profile_snapshot": (row.profile_snapshot if purpose == "ordinary" else
+                                         {"adapter": {"code": (row.profile_snapshot or {}).get("adapter", {}).get("code")}}),
                     "taxonomy_snapshot": row.taxonomy_snapshot,
                     "intent": row.analysis_intent or "observation_only",
                     "stage": row.stage_key or (row.request_context or {}).get("stage_id"),
@@ -1581,7 +1629,7 @@ class PostgresStore:
     def resolve_run_artifact(self, run_id: uuid.UUID, artifact_id: uuid.UUID) -> dict | None:
         with self.engine.connect() as connection:
             row = connection.execute(text("""SELECT a.key, a.sha256, a.size, a.media_type FROM artifact_metadata a
-                JOIN analysis_runs r ON r.id = a.run_id AND r.purpose = 'ordinary'
+                JOIN analysis_runs r ON r.id = a.run_id AND r.purpose IN ('ordinary', 'comparison_campaign')
                 WHERE a.run_id = :run AND a.id = :artifact AND
                   (EXISTS (SELECT 1 FROM run_inputs i WHERE i.run_id = :run AND i.artifact_id = a.id)
                    OR EXISTS (SELECT 1 FROM observer_invocations v WHERE v.run_id = :run AND v.native_artifact_id = a.id))"""),
