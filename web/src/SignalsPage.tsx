@@ -49,11 +49,11 @@ const PLAN_STATES: Record<PlanEntry['state'], string> = { planned: 'Заплан
 const REASONS: Record<string, string> = {
   'Expected equipment was not detected in the assessable series.': 'Ожидаемая техника не обнаружена на пригодных кадрах серии.',
   'All concurrent active operations explicitly exclude this equipment.': 'Все одновременно активные работы явно исключают эту технику.',
-  'At least three assessable frames of the active zone are required.': 'Для сопоставления нужны минимум три пригодных кадра активной зоны.',
+  'At least three assessable frames of the active zone are required.': 'Для сопоставления нужны минимум три пригодных кадра активного участка.',
 }
 const RECOMMENDATIONS: Record<string, string> = {
   'Check completion with the site team.': 'Проверьте завершение работы с командой площадки.',
-  'Review the active zone plan.': 'Проверьте план активных работ зоны.',
+  'Review the active zone plan.': 'Проверьте план активных работ участка.',
 }
 
 function formatTime(value: string) {
@@ -131,7 +131,7 @@ function SignalDetail({ signal, context, contextLoading, draft, busy, saveError,
   return <article className="signals-detail" id={`signal-detail-${signal.id}`} aria-labelledby={`signal-title-${signal.id}`} aria-busy={contextLoading}>
     <p className="eyebrow">Выбранный сигнал</p>
     <div className="signals-detail-title"><h2 id={`signal-title-${signal.id}`}>{KINDS[signal.kind] ?? signal.kind}</h2><span className={`signals-state signals-state-${signal.state}`}>{STATES[signal.state]}</span></div>
-    <p className="signals-detail-place">{[signal.project_name, signal.zone_name].filter(Boolean).join(' · ') || `Зона ${signal.zone_id}`}</p>
+    <p className="signals-detail-place">{[signal.project_name, signal.zone_name].filter(Boolean).join(' · ') || `Участок ${signal.zone_id}`}</p>
     <p className="signals-detail-date"><time dateTime={signal.created_at}>{formatTime(signal.created_at)}</time></p>
     <SignalBasis signal={signal} />
     <section className="signals-detail-section" aria-labelledby={`signal-plan-${signal.id}`}>
@@ -153,11 +153,11 @@ function SignalDetail({ signal, context, contextLoading, draft, busy, saveError,
       <button type="button" className="primary" disabled={busy || (draft.state === signal.state && draft.comment === currentComment)} onClick={onSave}>{busy ? 'Сохраняем…' : 'Сохранить'}</button>
       {saveError && <p className="error" role="alert">{saveError}</p>}
     </section>
-    <details className="signals-ids"><summary>Идентификаторы</summary><p>Сигнал: <code>{signal.id}</code></p><p>Зона: <code>{signal.zone_id}</code></p><p>Ревизия: <code>{signal.revision_id}</code></p></details>
+    <details className="signals-ids"><summary>Идентификаторы</summary><p>Сигнал: <code>{signal.id}</code></p><p>Участок: <code>{signal.zone_id}</code></p><p>Ревизия: <code>{signal.revision_id}</code></p></details>
   </article>
 }
 
-export default function SignalsPage({ heading, onOpenRun }: { heading: RefObject<HTMLHeadingElement | null>; onOpenRun: (id: string) => void }) {
+export default function SignalsPage({ heading, onOpenRun, projectId }: { projectId?: string; heading: RefObject<HTMLHeadingElement | null>; onOpenRun: (id: string) => void }) {
   const [filter, setFilter] = useState('')
   const [signals, setSignals] = useState<Signal[] | null>(null)
   const [newCount, setNewCount] = useState(0)
@@ -177,7 +177,7 @@ export default function SignalsPage({ heading, onOpenRun }: { heading: RefObject
   useEffect(() => {
     const controller = new AbortController()
     setListLoading(true)
-    void readJson<{ new_count: number; signals: Signal[] }>(`/api/signals${filter ? `?state=${filter}` : ''}`, controller.signal)
+    void readJson<{ new_count: number; signals: Signal[] }>(`/api/signals${projectId ? `?project_id=${projectId}${filter ? `&state=${filter}` : ''}` : filter ? `?state=${filter}` : ''}`, controller.signal)
       .then(data => {
         if (controller.signal.aborted) return
         setSignals(data.signals)
@@ -187,7 +187,7 @@ export default function SignalsPage({ heading, onOpenRun }: { heading: RefObject
       }).catch(() => { if (!controller.signal.aborted) setListError('Не удалось загрузить сигналы.') })
       .finally(() => { if (!controller.signal.aborted) setListLoading(false) })
     return () => controller.abort()
-  }, [filter, refresh])
+  }, [filter, refresh, projectId])
 
   useEffect(() => {
     if (!selected) { setContext({}); setContextLoading(false); return }
@@ -243,7 +243,7 @@ export default function SignalsPage({ heading, onOpenRun }: { heading: RefObject
     {listError && <p className="error" role="alert">{listError}</p>}
     {listLoading && !signals && <p role="status">Загружаем сигналы…</p>}
     {signals && <div className="signals-workspace">
-      <div className="signals-list-column"><ol className="signals-list">{signals.slice(0, visibleCount).map(signal => <li key={signal.id} className="signals-list-item"><button className="signals-row" type="button" aria-expanded={selectedId === signal.id} aria-controls={selectedId === signal.id ? `signal-detail-${signal.id}` : undefined} onClick={() => setSelectedId(signal.id)}><SignalPreview signal={signal} /><span className="signals-row-copy"><strong>{KINDS[signal.kind] ?? signal.kind}</strong><span>{signal.zone_name ?? `Зона ${signal.zone_id}`}{signal.work_title ? ` · ${signal.work_title}` : ''}</span><time dateTime={signal.created_at}>{formatTime(signal.created_at)}</time></span><span className={`signals-state signals-state-${signal.state}`}>{STATES[signal.state]}</span></button>{compact && selectedId === signal.id && detail}</li>)}</ol>
+      <div className="signals-list-column"><ol className="signals-list">{signals.slice(0, visibleCount).map(signal => <li key={signal.id} className="signals-list-item"><button className="signals-row" type="button" aria-expanded={selectedId === signal.id} aria-controls={selectedId === signal.id ? `signal-detail-${signal.id}` : undefined} onClick={() => setSelectedId(signal.id)}><SignalPreview signal={signal} /><span className="signals-row-copy"><strong>{KINDS[signal.kind] ?? signal.kind}</strong><span>{signal.zone_name ?? `Участок ${signal.zone_id}`}{signal.work_title ? ` · ${signal.work_title}` : ''}</span><time dateTime={signal.created_at}>{formatTime(signal.created_at)}</time></span><span className={`signals-state signals-state-${signal.state}`}>{STATES[signal.state]}</span></button>{compact && selectedId === signal.id && detail}</li>)}</ol>
         {signals.length > visibleCount && <button type="button" className="secondary signals-more" onClick={() => setVisibleCount(count => count + 20)}>Показать ещё</button>}
         {!signals.length && <p className="panel">Сигналов по выбранному фильтру нет.</p>}
       </div>

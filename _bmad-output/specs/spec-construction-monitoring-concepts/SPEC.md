@@ -11,7 +11,7 @@ sources:
 
 # Construction Monitoring Rapid MVP
 
-The original Rapid MVP contract below remains the historical two-class baseline. `EXPANSION.md` defines the subsequent zone-plan and signal scope; its additions do not retroactively change old profiles, runs, or evaluation campaigns.
+The original Rapid MVP contract below remains the historical two-class baseline. `EXPANSION.md` defines the current shared project workspace, photo-first, optional plan, and signal scope; its additions do not retroactively change old profiles, runs, or evaluation campaigns.
 
 ## Why
 

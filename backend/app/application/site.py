@@ -169,13 +169,16 @@ def create_project(request: Request, body: dict):
             raise SiteError("invalid_project")
         try:
             ZoneInfo(tz)
-        except ZoneInfoNotFoundError:
+        except (ZoneInfoNotFoundError, ValueError):
             raise SiteError("invalid_timezone") from None
         project_id = uuid4()
+        zone_id = uuid4()
         with engine.begin() as connection:
             connection.execute(text("INSERT INTO site_projects (id,name,timezone) VALUES (:id,:name,:timezone)"),
                                {"id": project_id, "name": name.strip(), "timezone": tz})
-        return {"id": str(project_id), "name": name.strip(), "timezone": tz}
+            connection.execute(text("INSERT INTO site_zones (id,project_id,name) VALUES (:id,:project,'Основной участок')"),
+                               {"id": zone_id, "project": project_id})
+        return {"id": str(project_id), "name": name.strip(), "timezone": tz, "default_zone_id": str(zone_id)}
     except SiteError as error:
         return _response(error)
 

@@ -7,12 +7,24 @@ sources:
   - ../../../specs/spec-construction-monitoring-concepts/SPEC.md
   - ../../../specs/spec-construction-monitoring-concepts/prototype-scenarios.md
   - ../../architecture/architecture-lzt-detecing-violations-system-2026-09-21/ARCHITECTURE-SPINE.md
-updated: 2026-09-25
+updated: 2026-09-26
 ---
 
 # Construction Monitoring Rapid MVP - Experience Spine
 
-## Subsequent zone-plan experience (2026-09-25)
+## Current project-first experience (2026-09-26)
+
+This section supersedes the historical entry/navigation journey below while preserving evidence and recovery contracts. The route is create project → upload photos → inspect result → optionally add a plan and compare. The shared root project list explains that every visitor sees the same projects. Creating a project uses the browser timezone and atomically adds `Основной участок`. No registration or privacy boundary is implied.
+
+A project URL governs the persistent name/switcher, overview, analyses, upload, plan, signals, and results. The overview shows scoped latest runs, open signals, and real planned works, never fixed stage placeholders. The root archive contains ordinary runs without a project; evaluation/comparison evidence is separate. Legacy run links resolve server ownership before displaying a result.
+
+Upload selects the project's default area, permits additional areas in Plan, captures per-frame times, fills scenario automatically, and defaults to observations. A saved plan enables an explicit compare option. The old excavation rule is an explained additional option. Results distinguish equipment, model hypothesis, recommendation/basis, saved planned stage, and human confirmation; missing profile capabilities are explained in the affected block. Adding a plan later cannot rewrite a saved result.
+
+Internal navigation and browser Back require confirmation before abandoning dirty upload or plan drafts; unload uses the native browser warning. Declining preserves the original URL and draft. A revision conflict retains the plan draft. Slow workspace reads cannot refill a newer workspace. Pending request recovery restores the exact body/key and original project; project choice is URL-based and independent between tabs.
+
+Project navigation labels are `Обзор`, `Анализы`, `План работ`, and `Сигналы`; the persistent action is `Загрузить фото`. Secondary reports are `Проверка качества` and `Сравнение моделей ИИ`, linked only through `О системе`. User-facing area terminology is `участок`. Technical identities and JSON appear in disclosures. Headless desktop/mobile and keyboard checks are UI evidence, separate from runtime/model quality and deployment.
+
+## Historical zone-plan experience (2026-09-25)
 
 The original Rapid MVP journey below remains historical. The expansion adds a project and declared-zone selector, searchable source catalog, full-revision plan editor, and capture time for each JPEG/PNG frame. The run workspace overlays public normalized boxes on both thumbnails and the zoomed viewer, offers a show/hide control and a textual object list, and separates model stage hypotheses from one human confirmation. An empty hypothesis is shown as insufficient evidence. Unsupported classes and the cloud profile's absence of boxes are explicit.
 

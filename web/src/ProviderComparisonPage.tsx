@@ -66,7 +66,7 @@ export default function ProviderComparisonPage({ heading, onOpen }: { heading: R
 
   const data = snapshot?.data
   return <section className="provider-comparison" aria-labelledby="provider-comparison-heading" aria-busy={loading}>
-    <div className="page-intro"><p className="eyebrow">Исследование прототипа</p><h1 ref={heading} tabIndex={-1} id="provider-comparison-heading">Сравнение провайдеров</h1><p>Замороженная кампания: измерения и ограничения каждого кандидата отдельно.</p></div>
+    <div className="page-intro"><p className="eyebrow">Исследование прототипа</p><h1 ref={heading} tabIndex={-1} id="provider-comparison-heading">Сравнение моделей ИИ</h1><p>Замороженная кампания: измерения и ограничения каждого кандидата отдельно.</p></div>
     {loading && <p role="status">Загружаем сравнение…</p>}
     {error && <div className="attention" role="alert"><p>{error} {snapshot && 'Показан последний загруженный снимок; данные могут быть устаревшими.'}</p>{snapshot && <p>Время успешной загрузки: <time dateTime={snapshot.readAt}>{snapshot.readAt}</time>.</p>}<button type="button" className="secondary" disabled={loading} onClick={() => setAttempt(value => value + 1)}>Повторить загрузку</button></div>}
     {loaded && !data && !error && <div className="panel" role="status"><p>Нет данных: сравнительная кампания пока не сохранена.</p><button type="button" className="secondary" onClick={() => setAttempt(value => value + 1)}>Повторить загрузку</button></div>}

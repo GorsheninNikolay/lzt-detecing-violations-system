@@ -61,3 +61,39 @@ def test_new_scenarios_require_matching_active_operation_and_assessable_series(s
     assert compare_equipment([{**entry, "stage_key": "excavation"}], times, missing, frames, {machine}) == []
     detected = [{**missing[0], "state": "detected"}, *missing[1:]]
     assert compare_equipment([entry], times, detected, frames, {machine}) == []
+
+
+def test_workspace_trio_is_independent_of_optional_plan_and_hash_bound():
+    buffer = io.BytesIO()
+    Image.new('RGB', (2, 2)).save(buffer, format='PNG')
+    body = {'intent': 'observation_only', 'scenario': 'site', 'observation_area': 'main',
+            'period': '2026-09-26T12:00:00+03:00', 'image_base64': base64.b64encode(buffer.getvalue()).decode(),
+            'project_id': str(uuid.uuid4()), 'zone_id': str(uuid.uuid4()),
+            'capture_times': ['2026-09-26T12:00:00+03:00']}
+    _, context, _, identity = validate_images(body, False)
+    assert context['project_id'] == body['project_id'] and 'plan_revision_id' not in context
+    assert validate_images({**body, 'project_id': str(uuid.uuid4())}, False)[3] != identity
+    assert validate_images({**body, 'plan_revision_id': str(uuid.uuid4())}, False)[3] != identity
+    for missing in ('project_id', 'zone_id', 'capture_times'):
+        with pytest.raises(SubmissionError, match='invalid_plan_binding'):
+            validate_images({key: value for key, value in body.items() if key != missing}, False)
+    with pytest.raises(SubmissionError, match='invalid_plan_binding'):
+        validate_images({**body, 'capture_times': ['2026-09-26T12:00:00']}, False)
+
+
+def test_foreign_workspace_is_rejected_before_publication():
+    from app.application.submission import submit
+    from app.adapters.postgres import AdmissionStoreError
+    from unittest.mock import Mock
+    buffer = io.BytesIO()
+    Image.new('RGB', (2, 2)).save(buffer, format='PNG')
+    body = {'intent': 'observation_only', 'scenario': 'site', 'observation_area': 'main',
+            'period': '2026-09-26T12:00:00+03:00', 'image_base64': base64.b64encode(buffer.getvalue()).decode(),
+            'project_id': str(uuid.uuid4()), 'zone_id': str(uuid.uuid4()),
+            'capture_times': ['2026-09-26T12:00:00+03:00']}
+    store, artifacts = Mock(), Mock()
+    store.validate_plan_binding.side_effect = AdmissionStoreError('invalid_plan_binding')
+    with pytest.raises(SubmissionError, match='invalid_plan_binding'):
+        submit(store, artifacts, 'workspace-invalid', body, uuid.uuid4(), 1, {})
+    store.begin_submission.assert_not_called()
+    assert artifacts.mock_calls == []

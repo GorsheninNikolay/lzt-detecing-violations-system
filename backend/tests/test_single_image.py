@@ -310,9 +310,15 @@ def test_mixed_image_formats_preserve_originals_and_retry(isolated_admission_dat
             (profile_id, revision, state, reason, audit_hash, interactive_retry_allowed)
             SELECT :id, 1, 'enabled', 'test', audit_hash, false FROM observer_profiles WHERE id = :id"""),
             {"id": profile})
+    project, zone = uuid.uuid4(), uuid.uuid4()
+    with store.engine.begin() as connection:
+        connection.execute(text("INSERT INTO site_projects (id,name,timezone) VALUES (:id,'Retry workspace','UTC')"), {'id': project})
+        connection.execute(text("INSERT INTO site_zones (id,project_id,name) VALUES (:id,:project,'Main')"), {'id': zone, 'project': project})
     originals = [jpeg((1, 2, 3)), png((4, 5, 6))]
     body = {key: value for key, value in request_body(originals[0]).items() if key != "image_base64"}
     body["images_base64"] = [base64.b64encode(image).decode() for image in originals]
+    body.update(project_id=str(project), zone_id=str(zone),
+                capture_times=['2026-09-26T12:00:00+03:00', '2026-09-26T12:01:00+03:00'])
     try:
         _, run_id = submission.submit_series(store, artifacts, uuid.uuid4().hex, body, profile, 1, {})
         with store.engine.connect() as connection:
@@ -329,6 +335,12 @@ def test_mixed_image_formats_preserve_originals_and_retry(isolated_admission_dat
                 JOIN artifact_metadata a ON a.id = i.artifact_id
                 WHERE i.run_id = :run ORDER BY i.ordinal"""), {"run": retried}).scalars().all()
         assert retry_types == ["image/jpeg", "image/png"]
+        original, successor = store.read_ordinary(run_id), store.read_ordinary(retried)
+        assert successor['project_id'] == original['project_id'] == str(project)
+        assert successor['zone_id'] == original['zone_id'] == str(zone)
+        assert successor['context'] == original['context']
+        assert successor['context']['capture_times'] == body['capture_times']
+        assert successor['plan_binding'] is None
     finally:
         store.close()
 

@@ -1117,15 +1117,21 @@ class PostgresStore:
                 WHERE idempotency_key = :key AND state = 'publishing'"""), {"key": key, "code": code})
 
     def validate_plan_binding(self, context: dict) -> None:
-        if "plan_revision_id" not in context:
-            return
         with self.engine.connect() as connection:
-            valid = connection.execute(text("""SELECT 1 FROM zone_plan_revisions r
-                JOIN site_zones z ON z.id=r.zone_id
-                WHERE r.id=:revision AND z.id=:zone AND z.project_id=:project"""),
+            self._validate_workspace_binding(connection, context)
+
+    @staticmethod
+    def _validate_workspace_binding(connection, context: dict) -> None:
+        if "project_id" not in context:
+            return
+        valid = connection.execute(text("""SELECT 1 FROM site_zones
+            WHERE id=:zone AND project_id=:project"""),
+            {"zone": uuid.UUID(context["zone_id"]), "project": uuid.UUID(context["project_id"])}).first()
+        if valid and "plan_revision_id" in context:
+            valid = connection.execute(text("""SELECT 1 FROM zone_plan_revisions
+                WHERE id=:revision AND zone_id=:zone"""),
                 {"revision": uuid.UUID(context["plan_revision_id"]),
-                 "zone": uuid.UUID(context["zone_id"]),
-                 "project": uuid.UUID(context["project_id"])}).first()
+                 "zone": uuid.UUID(context["zone_id"])}).first()
         if not valid:
             raise AdmissionStoreError("invalid_plan_binding")
 
@@ -1147,6 +1153,7 @@ class PostgresStore:
                 WHERE idempotency_key = :key FOR UPDATE"""), {"key": key}).one()
             if request.state != "publishing":
                 raise AdmissionStoreError("submission_state_changed")
+            self._validate_workspace_binding(connection, context)
             if intent not in ("observation_only", "rule_evaluation") or (intent == "rule_evaluation" and stage != "excavation"):
                 raise AdmissionStoreError("rule_not_applicable")
             authorization = connection.execute(text("""SELECT p.status, p.snapshot, a.state, a.revision FROM observer_profiles p
@@ -1193,14 +1200,6 @@ class PostgresStore:
                                          {"portable_classes": list(CLASSES), "revision": "presence-only-v1"}),
                  "classes": json.dumps(requested_classes)})
             if "plan_revision_id" in context:
-                valid = connection.execute(text("""SELECT 1 FROM zone_plan_revisions r
-                    JOIN site_zones z ON z.id=r.zone_id
-                    WHERE r.id=:revision AND z.id=:zone AND z.project_id=:project"""),
-                    {"revision": uuid.UUID(context["plan_revision_id"]),
-                     "zone": uuid.UUID(context["zone_id"]),
-                     "project": uuid.UUID(context["project_id"])}).first()
-                if not valid:
-                    raise AdmissionStoreError("invalid_plan_binding")
                 connection.execute(text("""INSERT INTO run_plan_bindings
                     (run_id,zone_id,revision_id,frame_times)
                     VALUES (:run,:zone,:revision,CAST(:times AS jsonb))"""),
@@ -1586,11 +1585,17 @@ class PostgresStore:
                 {"id": run_id}).mappings().all()
             plan_binding = connection.execute(text("""SELECT zone_id,revision_id,frame_times
                 FROM run_plan_bindings WHERE run_id=:id"""), {"id": run_id}).mappings().one_or_none()
+            planned_works = connection.execute(text("""SELECT w.title,e.stage_key,e.starts_at,e.ends_at,e.state
+                FROM run_plan_bindings b JOIN zone_plan_entries e ON e.revision_id=b.revision_id
+                JOIN catalog_works w ON w.id=e.catalog_work_id
+                WHERE b.run_id=:id ORDER BY e.starts_at,e.id"""), {"id": run_id}).mappings().all()
             confirmation = connection.execute(text("""SELECT stage,comment,created_at FROM stage_confirmations
                 WHERE run_id=:id"""), {"id": run_id}).mappings().one_or_none()
             return {"run_id": str(row.id), "purpose": purpose, "state": row.state, "error_code": row.error_code,
                     "created_at": row.created_at.isoformat() if row.created_at else None,
                     "context": row.request_context, "requested_classes": row.requested_classes,
+                    "project_id": (row.request_context or {}).get("project_id"),
+                    "zone_id": (row.request_context or {}).get("zone_id"),
                     "profile_id": str(row.profile_id) if row.profile_id else None,
                     "authorization_revision": row.authorization_revision,
                     "binding_kind": row.binding_kind,
@@ -1619,6 +1624,8 @@ class PostgresStore:
                     "plan_binding": ({"zone_id": str(plan_binding["zone_id"]),
                                       "revision_id": str(plan_binding["revision_id"]),
                                       "capture_times": plan_binding["frame_times"]} if plan_binding else None),
+                    "planned_works": [{**dict(item), "starts_at": item["starts_at"].isoformat(),
+                                       "ends_at": item["ends_at"].isoformat()} for item in planned_works],
                     "stage_confirmation": ({**dict(confirmation),
                                             "created_at": confirmation["created_at"].isoformat()}
                                            if confirmation else None),
@@ -1632,26 +1639,40 @@ class PostgresStore:
                     "outcome": projection["outcome"] if projection and row.state == "succeeded" else None,
                     "result_projection": projection if projection and row.state == "succeeded" else None}
 
-    def list_ordinary(self, offset: int = 0) -> dict:
-        with self.engine.connect() as connection:
-            rows = connection.execute(text("""SELECT r.id, r.state, r.created_at,
+    def list_ordinary(self, offset: int = 0, project_id: str | None = None, unassigned: bool = False) -> dict:
+        where = "r.purpose = 'ordinary'"
+        parameters = {"offset": offset}
+        if project_id:
+            where += " AND r.request_context->>'project_id' = :project"
+            parameters["project"] = project_id
+        elif unassigned:
+            where += " AND r.request_context->>'project_id' IS NULL"
+        with self.engine.connect().execution_options(isolation_level="REPEATABLE READ") as connection:
+            if project_id and not connection.execute(text("SELECT 1 FROM site_projects WHERE id=:id"),
+                                                     {"id": uuid.UUID(project_id)}).first():
+                raise AdmissionStoreError("project_not_found")
+            total = connection.execute(text(f"SELECT count(*) FROM analysis_runs r WHERE {where}"), parameters).scalar_one()
+            rows = connection.execute(text(f"""SELECT r.id, r.state, r.created_at,
+                r.request_context->>'project_id' AS project_id,
+                r.request_context->>'zone_id' AS zone_id,
                 COALESCE(r.stage_key, r.request_context->>'stage_id') AS stage,
                 r.analysis_intent, r.retry_predecessor_id, s.id AS retry_successor_id,
                 CASE WHEN r.state = 'succeeded' THEN p.outcome END AS outcome
                 FROM analysis_runs r
                 LEFT JOIN analysis_runs s ON s.retry_predecessor_id = r.id
                 LEFT JOIN result_projections p ON p.run_id = r.id
-                WHERE r.purpose = 'ordinary' ORDER BY r.created_at DESC NULLS LAST, r.id DESC
-                LIMIT 51 OFFSET :offset"""), {"offset": offset}).mappings().all()
+                WHERE {where} ORDER BY r.created_at DESC NULLS LAST, r.id DESC
+                LIMIT 51 OFFSET :offset"""), parameters).mappings().all()
         return {"runs": [{"id": str(row.id), "run_id": str(row.id), "state": row.state,
                  "created_at": row.created_at.isoformat() if row.created_at else None,
                  "stage": row.stage, "intent": row.analysis_intent or "observation_only",
+                 "project_id": row.project_id, "zone_id": row.zone_id,
                  "outcome": row.outcome,
                  "retry_predecessor_id": str(row.retry_predecessor_id) if row.retry_predecessor_id else None,
                  "retry_successor_id": str(row.retry_successor_id) if row.retry_successor_id else None,
                  "retry_of_run_id": str(row.retry_predecessor_id) if row.retry_predecessor_id else None,
                  "successor_run_id": str(row.retry_successor_id) if row.retry_successor_id else None}
-                for row in rows[:50]], "next_offset": offset + 50 if len(rows) > 50 else None}
+                for row in rows[:50]], "total": total, "next_offset": offset + 50 if len(rows) > 50 else None}
 
     def stage_summary(self) -> dict:
         with self.engine.connect().execution_options(isolation_level="REPEATABLE READ") as connection:

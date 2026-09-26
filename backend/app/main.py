@@ -235,7 +235,25 @@ def create_app() -> FastAPI:
         raw_offset = request.query_params.get("offset", "0")
         if not raw_offset.isdecimal() or len(raw_offset) > 9:
             return JSONResponse({"code": "invalid_history_offset"}, status_code=400)
-        return JSONResponse(await asyncio.to_thread(app.state.store.list_ordinary, int(raw_offset)))
+        project_id = request.query_params.get("project_id")
+        raw_unassigned = request.query_params.get("unassigned", "false")
+        if raw_unassigned not in ("true", "false") or (project_id and raw_unassigned == "true"):
+            return JSONResponse({"code": "invalid_history_filter"}, status_code=400)
+        if project_id is not None:
+            try:
+                project_id = str(uuid.UUID(project_id))
+            except ValueError:
+                return JSONResponse({"code": "invalid_history_filter"}, status_code=400)
+        try:
+            if project_id is None and raw_unassigned == "false":
+                result = await asyncio.to_thread(app.state.store.list_ordinary, int(raw_offset))
+            else:
+                result = await asyncio.to_thread(app.state.store.list_ordinary, int(raw_offset), project_id, raw_unassigned == "true")
+            return JSONResponse(result)
+        except AdmissionStoreError as error:
+            if str(error) == "project_not_found":
+                return JSONResponse({"code": "project_not_found"}, status_code=404)
+            raise
 
     @app.post("/runs/{run_id}/retry")
     async def retry_run(run_id: str) -> JSONResponse:

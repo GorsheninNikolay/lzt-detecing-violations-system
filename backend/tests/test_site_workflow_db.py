@@ -70,9 +70,22 @@ def test_catalog_plan_and_due_signal_round_trip():
                                    {"id": project_id})
                 connection.execute(text("UPDATE site_zones SET name='Renamed zone' WHERE id=:id"),
                                    {"id": zone_id})
+            bound_run = uuid4()
+            with store.engine.begin() as connection:
+                connection.execute(text("""INSERT INTO analysis_runs (id,state,purpose,analysis_intent)
+                    VALUES (:id,'queued','ordinary','observation_only')"""), {"id": bound_run})
+                connection.execute(text("""INSERT INTO run_plan_bindings (run_id,zone_id,revision_id,frame_times)
+                    VALUES (:run,:zone,:revision,'["2020-01-01T00:00:00+03:00"]'::jsonb)"""),
+                    {"run": bound_run, "zone": zone_id, "revision": plan["revision_id"]})
+            original_works = store.read_ordinary(bound_run)["planned_works"]
             newer = client.put(f"/zones/{zone_id}/plan", json={"expected_revision": 1,
                                                                  "entries": [{**entry, "end_at": "2035-01-02T00:00:00+03:00"}]})
             assert newer.status_code == 200, newer.text
+            assert store.read_ordinary(bound_run)["planned_works"] == original_works
+            assert len(original_works) == 2
+            assert original_works[0]["stage_key"] == "excavation"
+            assert {item["title"] for item in original_works} == {works[0]["title"], works[1]["title"]}
+            assert all(item["ends_at"].startswith("2020-01-01T21:00:00") for item in original_works)
             assert client.get(f"/zones/{zone_id}/plan").json()["revision_id"] == newer.json()["revision_id"]
             assert client.get(f"/zones/{zone_id}/plan?revision=1").json()["revision_id"] == plan["revision_id"]
             historical = client.get(f"/signals?zone_id={zone_id}").json()["signals"]
@@ -135,5 +148,52 @@ def test_catalog_plan_and_due_signal_round_trip():
             with pytest.raises(DatabaseError), store.engine.begin() as connection:
                 connection.execute(text("UPDATE site_signals SET basis='{}'::jsonb WHERE id=:id"),
                                    {"id": signal_id})
+    finally:
+        store.close()
+
+
+@pytest.mark.skipif(not os.getenv("TEST_DATABASE_URL"), reason="isolated PostgreSQL required")
+def test_workspace_without_plan_and_filtered_history_before_pagination():
+    from app.adapters.postgres import AdmissionStoreError
+    store = PostgresStore(os.environ["TEST_DATABASE_URL"])
+    app = FastAPI()
+    app.include_router(site_router)
+    app.state.store = store
+    app.state.readiness = type("Ready", (), {"ready": type("Event", (), {"is_set": lambda self: True})()})()
+    try:
+        with TestClient(app) as first, TestClient(app) as second:
+            a = first.post('/projects', json={'name': 'Workspace A', 'timezone': 'Europe/Moscow'}).json()
+            b = second.post('/projects', json={'name': 'Workspace B', 'timezone': 'UTC'}).json()
+            zones = first.get(f"/projects/{a['id']}/zones").json()['zones']
+            assert zones == [{'id': a['default_zone_id'], 'name': 'Основной участок'}]
+            context = {'project_id': a['id'], 'zone_id': a['default_zone_id'],
+                       'capture_times': ['2026-09-26T12:00:00+03:00']}
+            store.validate_plan_binding(context)
+            with pytest.raises(AdmissionStoreError, match='invalid_plan_binding'):
+                store.validate_plan_binding({**context, 'zone_id': b['default_zone_id']})
+            ids = [uuid4() for _ in range(53)]
+            foreign, orphan, evaluation = uuid4(), uuid4(), uuid4()
+            with store.engine.begin() as connection:
+                for identifier, purpose, binding in [*( (identifier, 'ordinary', context) for identifier in ids),
+                                                     (foreign, 'ordinary', {'project_id': b['id']}),
+                                                     (orphan, 'ordinary', {}),
+                                                     (evaluation, 'profile_admission', context)]:
+                    connection.execute(text("""INSERT INTO analysis_runs
+                        (id,state,purpose,analysis_intent,request_context)
+                        VALUES (:id,'queued',:purpose,'observation_only',CAST(:context AS jsonb))"""),
+                        {'id': identifier, 'purpose': purpose, 'context': json.dumps(binding)})
+            page = store.list_ordinary(project_id=a['id'])
+            tail = store.list_ordinary(offset=page['next_offset'], project_id=a['id'])
+            assert page['total'] == tail['total'] == 53
+            assert len(page['runs']) == 50 and len(tail['runs']) == 3 and tail['next_offset'] is None
+            assert {row['id'] for row in page['runs'] + tail['runs']} == set(map(str, ids))
+            assert all(row['project_id'] == a['id'] for row in page['runs'])
+            assert store.list_ordinary(project_id=b['id'])['runs'][0]['id'] == str(foreign)
+            assert all(row['project_id'] is None for row in store.list_ordinary(unassigned=True)['runs'])
+            assert store.read_ordinary(ids[0])['project_id'] == a['id']
+            assert store.read_ordinary(ids[0])['zone_id'] == a['default_zone_id']
+            assert store.read_ordinary(ids[0])['plan_binding'] is None
+            with pytest.raises(AdmissionStoreError, match='project_not_found'):
+                store.list_ordinary(project_id=str(uuid4()))
     finally:
         store.close()

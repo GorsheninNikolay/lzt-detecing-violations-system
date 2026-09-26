@@ -7,7 +7,7 @@ sources:
   - ../../../specs/spec-construction-monitoring-concepts/SPEC.md
   - ../../../specs/spec-construction-monitoring-concepts/prototype-scenarios.md
   - ../../architecture/architecture-lzt-detecing-violations-system-2026-09-21/ARCHITECTURE-SPINE.md
-updated: 2026-09-25
+updated: 2026-09-26
 colors:
   canvas: '#211331'
   surface: '#2B1A3D'
@@ -204,6 +204,14 @@ components:
 ---
 
 # Construction Monitoring Rapid MVP - Design Spine
+
+## Current workspace composition (2026-09-26)
+
+The shared project list and project overview replace the historical stage-map entry below. Preserve Onest, the full-night plum/violet palette, semantic colors, focus rings, and existing evidence imagery. Use real project names and planned works, not placeholder stages or global summaries.
+
+The header retains a labeled, keyboard-accessible project switcher and `Загрузить фото`; project navigation is `Обзор`, `Анализы`, `План работ`, `Сигналы`. On phones the switcher wraps without truncating controls and the four labeled destinations remain in bottom navigation. Root navigation leads to shared projects and the unassigned archive. Reports are discoverable through `О системе` only.
+
+Upload foregrounds photographs, selected area, and capture times. Optional plan comparison and the legacy demonstration rule do not compete with the default observation path. Result layout separates equipment, model hypothesis, attention/basis, planned stage, and human confirmation. Profile/identity/revision/JSON details remain readable inside disclosures. Unknown project, no plan, empty history, loading, failed reads with retry, dirty draft confirmation, and revision conflict all use existing notice semantics.
 
 ## Brand & Style
 

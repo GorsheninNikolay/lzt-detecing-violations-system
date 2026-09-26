@@ -6,6 +6,7 @@ import demoCases from './demoCases.json'
 
 const jpeg = new Uint8Array([0xff, 0xd8, 0xff, 0xd9])
 const png = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10])
+const runLink = (id: string) => screen.getAllByRole('link', { name: 'Открыть анализ' }).find(link => link.getAttribute('href')?.endsWith(`/runs/${id}`))!
 const image = (name: string, marker = 0) => new File([jpeg, new Uint8Array([marker])], name, { type: 'image/jpeg' })
 const stageNames = ['input_registration', 'frame_usability', 'equipment_observation', 'series_aggregation', 'rule_evaluation', 'result_projection']
 const snapshot = (state: string, states = Array(6).fill('pending'), reasons: Record<number, string> = {}) => ({
@@ -395,7 +396,7 @@ describe('Analysis history', () => {
     expect(await screen.findByText('Не удалось загрузить историю анализов.')).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: 'Повторить загрузку' }))
     expect(await screen.findByText('Анализов пока нет.')).toBeTruthy()
-    expect(screen.getAllByRole('link', { name: 'Новый анализ' })).toHaveLength(2)
+    expect(screen.getAllByRole('link', { name: 'Новый анализ' })).toHaveLength(1)
   })
 
   it('times out a stalled history read and recovers on retry', async () => {
@@ -414,16 +415,16 @@ describe('Analysis history', () => {
 
   it('loads fresh server order when returning to history', async () => {
     let reads = 0
-    vi.stubGlobal('fetch', vi.fn(async (url: string) => url === '/api/runs'
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => url === '/api/runs?unassigned=true'
       ? { ok: true, json: async () => ({ runs: ++reads === 1 ? [row(first, 'queued'), row(second, 'queued')] : [row(second, 'queued'), row(first, 'queued')] }) }
       : { ok: true, json: async () => snapshot('succeeded') }))
     render(<App />)
-    await screen.findByRole('link', { name: `Анализ ${first}` })
-    fireEvent.click(screen.getByRole('link', { name: `Анализ ${first}` }))
+    await waitFor(() => { expect(runLink(first)).toBeTruthy(); return runLink(first) })
+    fireEvent.click(runLink(first))
     await screen.findByRole('heading', { name: 'Анализ завершён' })
     fireEvent.click(screen.getByRole('link', { name: 'Анализы' }))
-    await waitFor(() => expect(screen.getAllByRole('link', { name: /^Анализ / }).map(link => link.textContent))
-      .toEqual([`Анализ ${second}`, `Анализ ${first}`]))
+    await waitFor(() => expect(screen.getAllByRole('link', { name: 'Открыть анализ' }).map(link => link.getAttribute('href')?.split('/').pop()))
+      .toEqual([second, first]))
   })
 
   it.each(['/history', '/analyses'])('retains order and focus on polling at %s, guards unfinished outcomes, and reopens a workspace', async path => {
@@ -435,16 +436,16 @@ describe('Analysis history', () => {
     const third = '33333333-3333-3333-3333-333333333333'
     const changed = [row(third, 'queued'), initial[1], { ...initial[0], state: 'running', outcome: 'no_check' }]
     const fetchMock = vi.fn(async (url: string) => {
-      if (url !== '/api/runs') return { ok: true, json: async () => snapshot('succeeded') }
-      const count = fetchMock.mock.calls.filter(call => call[0] === '/api/runs').length
+      if (url !== '/api/runs?unassigned=true') return { ok: true, json: async () => snapshot('succeeded') }
+      const count = fetchMock.mock.calls.filter(call => call[0] === '/api/runs?unassigned=true').length
       if (count > 2) throw new Error('offline')
       return { ok: true, json: async () => ({ runs: count === 1 ? initial : changed }) }
     })
     vi.stubGlobal('fetch', fetchMock)
     vi.useFakeTimers()
     await act(async () => { render(<App />) })
-    const links = () => screen.getAllByRole('link', { name: /^Анализ / })
-    expect(links().map(link => link.textContent)).toEqual([`Анализ ${first}`, `Анализ ${second}`])
+    const links = () => screen.getAllByRole('link', { name: 'Открыть анализ' })
+    expect(links().map(link => link.getAttribute('href')?.split('/').pop())).toEqual([first, second])
     const succeededRow = links()[1].closest('li')!
     expect(within(succeededRow).getByText('Другой этап')).toBeTruthy()
     expect(within(succeededRow).getByText('Проверить правило этапа')).toBeTruthy()
@@ -458,7 +459,7 @@ describe('Analysis history', () => {
     const selected = links()[0]
     selected.focus()
     await act(async () => { await vi.advanceTimersByTimeAsync(3000) })
-    expect(links().map(link => link.textContent)).toEqual([`Анализ ${first}`, `Анализ ${second}`, `Анализ ${third}`])
+    expect(links().map(link => link.getAttribute('href')?.split('/').pop())).toEqual([first, second, third])
     expect(document.activeElement).toBe(selected)
     expect(within(links()[0].closest('li')!).getByText('Выполняется')).toBeTruthy()
     expect(within(links()[0].closest('li')!).queryByText('Проверка не запрошена')).toBeNull()
@@ -479,12 +480,12 @@ describe('Analysis history', () => {
       { ...row(first, 'succeeded', 'no_check'), id: first, stage: 'other', intent: 'rule_evaluation', retry_successor_id: older },
       ...Array.from({ length: 49 }, (_, index) => ({ ...row(`44444444-4444-4444-4444-${String(index).padStart(12, '0')}`, 'queued') })),
     ]
-    const fetchMock = vi.fn(async (url: string) => ({ ok: true, json: async () => url === '/api/runs?offset=50'
+    const fetchMock = vi.fn(async (url: string) => ({ ok: true, json: async () => url === '/api/runs?offset=50&unassigned=true'
       ? { runs: [{ ...row(older, 'failed'), id: older, created_at: null, retry_predecessor_id: first }], next_offset: null }
       : { runs: firstPage, next_offset: 50 } }))
     vi.stubGlobal('fetch', fetchMock)
     render(<App />)
-    const firstLink = await screen.findByRole('link', { name: `Анализ ${first}` })
+    const firstLink = await waitFor(() => { expect(runLink(first)).toBeTruthy(); return runLink(first) })
     const firstRow = firstLink.closest('li')!
     expect(within(firstRow).getByText('Другой этап')).toBeTruthy()
     expect(within(firstRow).getByText('Проверить правило этапа')).toBeTruthy()
@@ -492,11 +493,11 @@ describe('Analysis history', () => {
     expect(within(firstRow).getByText(older)).toBeTruthy()
     expect(screen.getAllByRole('listitem')).toHaveLength(50)
     fireEvent.click(screen.getByRole('button', { name: 'Показать ещё' }))
-    const olderRow = (await screen.findByRole('link', { name: `Анализ ${older}` })).closest('li')!
+    const olderRow = (await waitFor(() => { expect(runLink(older)).toBeTruthy(); return runLink(older) })).closest('li')!
     expect(within(olderRow).getByText('Время создания неизвестно')).toBeTruthy()
     expect(within(olderRow).getByText(first)).toBeTruthy()
     expect(screen.getAllByRole('listitem')).toHaveLength(51)
-    expect(fetchMock.mock.calls.some(call => call[0] === '/api/runs?offset=50')).toBe(true)
+    expect(fetchMock.mock.calls.some(call => call[0] === '/api/runs?offset=50&unassigned=true')).toBe(true)
   })
 
   it.each(['/history', '/analyses'])('keeps polling the first page after loading older runs at %s', async path => {
@@ -505,22 +506,22 @@ describe('Analysis history', () => {
     const firstPage = [row(first, 'queued'),
       ...Array.from({ length: 49 }, (_, index) => row(`44444444-4444-4444-4444-${String(index).padStart(12, '0')}`, 'succeeded'))]
     let firstPageReads = 0
-    const fetchMock = vi.fn(async (url: string) => ({ ok: true, json: async () => url === '/api/runs?offset=50'
+    const fetchMock = vi.fn(async (url: string) => ({ ok: true, json: async () => url === '/api/runs?offset=50&unassigned=true'
       ? { runs: [{ ...row(older, 'failed'), created_at: null }], next_offset: null }
       : { runs: ++firstPageReads === 1 ? firstPage : [{ ...firstPage[0], state: 'running', retry_successor_id: older }, ...firstPage.slice(1)], next_offset: 50 } }))
     vi.stubGlobal('fetch', fetchMock)
     vi.useFakeTimers()
     await act(async () => { render(<App />) })
-    const firstLink = screen.getByRole('link', { name: `Анализ ${first}` })
+    const firstLink = runLink(first)
     firstLink.focus()
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Показать ещё' })); await Promise.resolve() })
-    expect(screen.getByRole('link', { name: `Анализ ${older}` })).toBeTruthy()
+    expect(runLink(older)).toBeTruthy()
     expect(screen.getAllByRole('listitem')).toHaveLength(51)
     await act(async () => { await vi.advanceTimersByTimeAsync(3000) })
-    expect(fetchMock.mock.calls.filter(call => call[0] === '/api/runs')).toHaveLength(2)
+    expect(fetchMock.mock.calls.filter(call => call[0] === '/api/runs?unassigned=true')).toHaveLength(2)
     expect(within(firstLink.closest('li')!).getByText('Выполняется')).toBeTruthy()
     expect(within(firstLink.closest('li')!).getByText(older)).toBeTruthy()
-    expect(screen.getByRole('link', { name: `Анализ ${older}` })).toBeTruthy()
+    expect(runLink(older)).toBeTruthy()
     expect(screen.getAllByRole('listitem')).toHaveLength(51)
     expect(document.activeElement).toBe(firstLink)
   })
@@ -566,7 +567,7 @@ describe('Observation result', () => {
         return { ok: true, json: async () => ({ run_id: nextId }) }
       if (url === `/api/runs/${nextId}`)
         return { ok: true, json: async () => ({ ...snapshot('queued'), retry_of_run_id: runId, retry_eligible: false }) }
-      if (url === '/api/runs')
+      if (url === '/api/runs?unassigned=true')
         return { ok: true, json: async () => ({ runs: [{ id: runId, state: 'failed', created_at: '2026-09-24T10:00:00Z', retry_of_run_id: null, successor_run_id: nextId }] }) }
       return { ok: true, json: async () => ({ ...snapshot('failed'), retry_eligible: true, successor_run_id: null,
         profile_id: 'old-profile', retry_profile_id: 'current-profile', retry_authorization_revision: 2 }) }
@@ -579,8 +580,8 @@ describe('Observation result', () => {
     expect(location.pathname).toBe(`/runs/${nextId}`)
     expect(screen.queryByRole('button', { name: 'Повторить анализ' })).toBeNull()
     await user.click(screen.getByRole('link', { name: 'Анализы' }))
-    expect(await screen.findByRole('heading', { name: 'История анализов' })).toBeTruthy()
-    expect(screen.getByRole('link', { name: `Анализ ${runId}` })).toBeTruthy()
+    expect(await screen.findByRole('heading', { name: 'Архив без проекта' })).toBeTruthy()
+    expect(runLink(runId)).toBeTruthy()
   })
 
   it.each(['queued', 'running', 'succeeded'])('does not offer retry for %s', async state => {
@@ -599,7 +600,7 @@ describe('Observation result', () => {
     vi.stubGlobal('fetch', vi.fn((url: string) => {
       calls++
       if (calls === 1) return first
-      if (url === '/api/runs?offset=50') return Promise.resolve({ ok: true, json: async () => ({
+      if (url === '/api/runs?offset=50&unassigned=true') return Promise.resolve({ ok: true, json: async () => ({
         runs: [{ id: runId, state: 'failed', created_at: null, retry_of_run_id: null, successor_run_id: null }], next_offset: null,
       }) })
       return Promise.resolve({ ok: true, json: async () => ({
@@ -622,14 +623,14 @@ describe('Observation result', () => {
     const delayed = new Promise(resolve => { release = resolve })
     vi.stubGlobal('fetch', vi.fn((url: string) => {
       if (url === `/api/runs/${runId}/retry`) return delayed
-      if (url === '/api/runs') return Promise.resolve({ ok: true, json: async () => ({ runs: [], next_offset: null }) })
+      if (url === '/api/runs?unassigned=true') return Promise.resolve({ ok: true, json: async () => ({ runs: [], next_offset: null }) })
       return Promise.resolve({ ok: true, json: async () => ({ ...snapshot('failed'), retry_eligible: true }) })
     }))
     render(<App />)
     await user.click(await screen.findByRole('button', { name: 'Повторить анализ' }))
     await user.click(screen.getByRole('link', { name: 'Анализы' }))
     await act(async () => { release({ ok: true, json: async () => ({ run_id: '22345678-1234-1234-1234-123456789abc' }) }) })
-    expect(location.pathname).toBe('/history')
+    expect(location.pathname).toBe('/archive')
     expect(await screen.findByText('Анализов пока нет.')).toBeTruthy()
   })
 
@@ -769,7 +770,7 @@ describe('Observation result', () => {
       dispatchEvent(new PopStateEvent('popstate'))
     })
     await screen.findByRole('heading', { name: 'Проверяем анализ…' })
-    const navigation = screen.getByRole('link', { name: 'Этапы' })
+    const navigation = screen.getByRole('link', { name: 'Проекты' })
     navigation.focus()
     await act(async () => { resolveSecond({ ok: true, json: async () => completed }) })
     expect(document.activeElement).toBe(navigation)
@@ -817,7 +818,7 @@ describe('Observation result', () => {
   })
 
   it.each([
-    ['insufficient_data', 'Недостаточно данных', 'Для проверки правила нужны минимум 3 пригодных кадра одной зоны.', observations],
+    ['insufficient_data', 'Недостаточно данных', 'Для проверки правила нужны минимум 3 пригодных кадра одного участка.', observations],
     ['not_analyzed', 'Не анализировалось', 'Запрошенный класс техники не анализировался; проверка правила недоступна.',
       [...observations, ...inputs.map(input => ({ input_id: input.input_id, ordinal: input.ordinal,
         class_name: 'crane', state: 'not_analyzed', reason: 'unsupported_class', source_artifact_id: input.artifact_id }))]],
@@ -953,7 +954,7 @@ describe('Observation result', () => {
     const panel = screen.getByRole('region', { name: 'Проверка человеком' })
     expect(panel.textContent).toContain('Основание: Есть повод проверить возможную задержку вывоза грунта')
     expect(panel.textContent).toContain('Подтверждающие кадры: Кадр 1, Кадр 2, Кадр 3.')
-    expect(panel.textContent).toContain('Период: 2026-09-23T12:00:00+03:00. Заявленная зона: series_gate')
+    expect(panel.textContent).toContain('Период: 2026-09-23T12:00:00+03:00. Заявленный участок: series_gate')
     expect(panel.textContent).toContain('Рекомендуемая проверка человеком: Проверить вручную.')
     expect(within(panel).getByText('Это рекомендация для проверки, а не подтверждение нарушения.')).toBeTruthy()
     expect(screen.getByText(/ревизия rule-immutable-evidence-v1/)).toBeTruthy()
@@ -977,7 +978,7 @@ describe('Observation result', () => {
         : { ok: true, blob: async () => new Blob(['jpeg']) }))
       const view = render(<App />)
       const panel = await screen.findByRole('region', { name: 'Проверка человеком' })
-      expect(panel.textContent).toContain(`Заявленная зона: ${expected}`)
+      expect(panel.textContent).toContain(`Заявленный участок: ${expected}`)
       view.unmount()
     }
   })
@@ -1132,7 +1133,7 @@ describe('Zone plan and signals', () => {
   const workId = '33333333-3333-3333-3333-333333333333'
 
   it('saves an editable work as the next zone plan revision', async () => {
-    history.replaceState({}, '', '/plan')
+    history.replaceState({}, '', `/projects/${projectId}/plan`)
     const user = userEvent.setup()
     const fetchMock = vi.fn(async (url: string, options?: RequestInit) => ({ ok: true, json: async () =>
       url === '/api/projects' ? { projects: [{ id: projectId, name: 'Объект А', timezone: 'Europe/Moscow' }] } :
@@ -1143,8 +1144,7 @@ describe('Zone plan and signals', () => {
     vi.stubGlobal('fetch', fetchMock)
     render(<App />)
     await screen.findByText('Подготовка')
-    await user.selectOptions(screen.getByLabelText('Проект'), projectId)
-    await user.selectOptions(await screen.findByLabelText('Зона'), zoneId)
+    await user.selectOptions(await screen.findByLabelText('Участок'), zoneId)
     await user.click(await screen.findByRole('button', { name: 'Добавить работу' }))
     await user.selectOptions(screen.getByLabelText('Состояние'), 'active')
     await user.selectOptions(screen.getByLabelText('Сценарий анализа'), 'excavation')
@@ -1193,12 +1193,12 @@ describe('Zone plan and signals', () => {
     await fillContext(user)
     await user.click(screen.getByRole('button', { name: 'Привязать к плану' }))
     await user.selectOptions(await screen.findByLabelText('Проект плана'), projectId)
-    await user.selectOptions(await screen.findByLabelText('Зона плана'), zoneId)
+    await user.selectOptions(await screen.findByLabelText('Участок плана'), zoneId)
     expect(await screen.findByText('Ревизия плана: 2.')).toBeTruthy()
     await user.upload(screen.getByLabelText('Выбрать изображение'), image('frame.jpg'))
     const time = screen.getByLabelText('Время съёмки') as HTMLInputElement
     fireEvent.change(time, { target: { value: '2026-09-25T12:30' } })
-    expect(screen.getByLabelText('Зона наблюдения')).toHaveProperty('readOnly', true)
+    expect(screen.getByLabelText('Участок наблюдения')).toHaveProperty('readOnly', true)
     await user.click(screen.getByRole('button', { name: 'Запустить анализ' }))
     await waitFor(() => expect(fetchMock.mock.calls.some(([url, options]) => url === '/api/runs/single-image' && options?.method === 'POST')).toBe(true))
     const request = fetchMock.mock.calls.find(([url, options]) => url === '/api/runs/single-image' && options?.method === 'POST')
@@ -1217,7 +1217,7 @@ describe('Zone plan and signals', () => {
     await user.upload(screen.getByLabelText('Выбрать изображение'), image('frame.jpg'))
     await user.click(screen.getByRole('button', { name: 'Привязать к плану' }))
     await user.click(screen.getByRole('button', { name: 'Запустить анализ' }))
-    expect(await screen.findByText(/Выберите проект и зону с сохранённой ревизией плана/)).toBeTruthy()
+    expect(await screen.findByText(/Выберите проект и участок с сохранённой ревизией плана/)).toBeTruthy()
     expect(fetchMock.mock.calls.some(([, options]) => options?.method === 'POST')).toBe(false)
     await user.click(screen.getByRole('button', { name: 'Без привязки к плану' }))
     expect(screen.queryByLabelText('Проект плана')).toBeNull()
@@ -1233,6 +1233,7 @@ describe('Zone plan and signals', () => {
     const user = userEvent.setup()
     render(<App />)
     await fillContext(user)
+    await user.click(screen.getByRole('radio', { name: 'Проверить правило этапа' }))
     await user.upload(screen.getByLabelText('Выбрать изображение'), new File([png], 'frame.png', { type: 'image/png' }))
     await user.click(screen.getByRole('button', { name: 'Запустить анализ' }))
     expect((await screen.findAllByText(/Текущее правило принимает JPEG/)).length).toBeGreaterThan(0)
@@ -1274,10 +1275,10 @@ describe('About project', () => {
     const user = userEvent.setup()
     render(<App />)
     const secondary = screen.getByRole('navigation', { name: 'Дополнительная навигация' })
-    expect(within(screen.getByRole('navigation', { name: 'Основная навигация' })).queryByRole('link', { name: 'О проекте' })).toBeNull()
-    await user.click(within(secondary).getByRole('link', { name: 'О проекте' }))
+    expect(within(screen.getByRole('navigation', { name: 'Основная навигация' })).queryByRole('link', { name: 'О системе' })).toBeNull()
+    await user.click(within(secondary).getByRole('link', { name: 'О системе' }))
     expect(document.activeElement).toBe(screen.getByRole('heading', { name: 'Контроль строительства' }))
-    expect(screen.getByRole('link', { name: 'О проекте' }).getAttribute('aria-current')).toBe('page')
+    expect(screen.getByRole('link', { name: 'О системе' }).getAttribute('aria-current')).toBe('page')
     await user.click(screen.getByRole('link', { name: 'Вернуться назад' }))
     await waitFor(() => expect(location.pathname).toBe('/'))
     history.forward()
@@ -1290,128 +1291,9 @@ describe('About project', () => {
   })
 })
 
-describe('Stages Overview', () => {
-  const completed = '12345678-1234-1234-1234-123456789abc'
-  const newer = '22345678-1234-1234-1234-123456789abc'
-  const stages = [
-    { stage_id: 'excavation', name: 'Земляные работы котлована', supported: true,
-      latest_result: { run_id: completed, created_at: '2026-09-23T10:00:00Z', projection: { outcome: 'check_requested' } },
-      latest_lifecycle: { run_id: newer, created_at: '2026-09-24T10:00:00Z', state: 'failed' } },
-    { stage_id: 'foundation', name: 'Устройство фундамента', supported: false, latest_result: null, latest_lifecycle: null },
-  ]
-
-  beforeEach(() => { history.replaceState({}, '', '/') })
-
-  it('shows an explicit not-found route without fetching a run', () => {
-    const fetchMock = vi.fn()
-    vi.stubGlobal('fetch', fetchMock)
-    history.replaceState({}, '', '/missing')
-    render(<App />)
-    expect(screen.getByRole('heading', { name: 'Страница не найдена' })).toBeTruthy()
-    expect(document.title).toBe('Страница не найдена — Контроль строительства')
-    expect(fetchMock).not.toHaveBeenCalled()
-  })
-
-  it('keeps projected outcome separate from a newer failed run and opens the evidence workspace', async () => {
-    const user = userEvent.setup()
-    vi.stubGlobal('fetch', vi.fn(async (url: string) => url === '/api/stages/summary'
-      ? { ok: true, json: async () => ({ stages }) }
-      : { ok: true, json: async () => snapshot('succeeded') }))
-    render(<App />)
-    expect(await screen.findByRole('heading', { name: 'Этапы строительства' })).toBeTruthy()
-    expect((await screen.findAllByText('Более новый запуск:', { exact: false })).length).toBe(2)
-    const excavation = screen.getByRole('button', { name: /Земляные работы котлована/ })
-    expect(excavation.getAttribute('aria-pressed')).toBe('true')
-    expect(excavation.textContent).toContain('Более новый запуск: Ошибка выполнения')
-    expect(within(screen.getByRole('region', { name: 'Земляные работы котлована' })).getByText('Рекомендована проверка человеком')).toBeTruthy()
-    expect(screen.getAllByText('2026-09-23T10:00:00Z')).toHaveLength(1)
-    expect(screen.getAllByText('2026-09-24T10:00:00Z')).toHaveLength(1)
-    await user.click(screen.getByRole('link', { name: 'Открыть доказательства' }))
-    expect(location.pathname).toBe(`/runs/${completed}`)
-    expect(document.activeElement).toBe(screen.getByRole('heading', { name: 'Анализ завершён' }))
-  })
-
-  it('explains empty and unsupported stages, preserves selected tile focus, and routes to bound analysis', async () => {
-    const user = userEvent.setup()
-    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => ({ stages: [
-      { ...stages[0], latest_result: null }, stages[1],
-    ] }) })))
-    render(<App />)
-    expect(await screen.findByText('Для этого этапа ещё нет завершённого анализа с результатом.')).toBeTruthy()
-    expect(screen.getAllByText('Последняя попытка:', { exact: false })).toHaveLength(2)
-    const foundation = screen.getByRole('button', { name: /Устройство фундамента/ })
-    await user.click(foundation)
-    expect(foundation.getAttribute('aria-pressed')).toBe('true')
-    expect(document.activeElement).toBe(foundation)
-    expect(screen.getByText(/Для этого этапа правило не настроено/)).toBeTruthy()
-    expect(screen.getAllByRole('link', { name: 'Новый анализ' })).toHaveLength(1)
-    await user.click(screen.getByRole('link', { name: 'Новый анализ' }))
-    expect(location.pathname).toBe('/new')
-    expect(document.activeElement).toBe(screen.getByRole('heading', { name: 'Новый анализ' }))
-    expect(screen.getByText(/Выбранный этап не настроен в прототипе/)).toBeTruthy()
-    expect(screen.getByText(/Привязка сохранится в анализе/)).toBeTruthy()
-  })
-
-  it('shows fetch failure and retains the last summary through recovery', async () => {
-    const user = userEvent.setup()
-    let stageCalls = 0
-    vi.stubGlobal('fetch', vi.fn(async (url: string) => url === '/api/stages/summary'
-      ? ++stageCalls === 2 ? { ok: false } : { ok: true, json: async () => ({ stages }) }
-      : { ok: true, json: async () => ({ runs: [], next_offset: null }) }))
-    render(<App />)
-    await screen.findByRole('button', { name: /Земляные работы котлована/ })
-    await user.click(screen.getByRole('link', { name: 'Анализы' }))
-    await user.click(screen.getByRole('link', { name: 'Этапы' }))
-    expect((await screen.findByRole('alert')).textContent).toContain('Не удалось обновить этапы')
-    expect(screen.getByRole('button', { name: /Земляные работы котлована/ })).toBeTruthy()
-    await user.click(screen.getByRole('button', { name: 'Повторить загрузку' }))
-    await waitFor(() => expect(screen.queryByRole('alert')).toBeNull())
-  })
-
-  it('shows a truthful first-load error, then refreshes without losing selected state', async () => {
-    const user = userEvent.setup()
-    let calls = 0
-    vi.stubGlobal('fetch', vi.fn(async () => ++calls === 1 ? { ok: false } : { ok: true, json: async () => ({ stages }) }))
-    render(<App />)
-    expect((await screen.findByRole('alert')).textContent).toContain('Не удалось загрузить этапы.')
-    expect(screen.queryByRole('button', { name: /Земляные работы котлована/ })).toBeNull()
-    await user.click(screen.getByRole('button', { name: 'Повторить загрузку' }))
-    await screen.findByRole('button', { name: /Устройство фундамента/ })
-    await user.click(screen.getByRole('button', { name: /Устройство фундамента/ }))
-    await user.click(screen.getByRole('button', { name: 'Обновить этапы' }))
-    await waitFor(() => expect(calls).toBe(3))
-    expect(screen.getByRole('button', { name: /Устройство фундамента/ }).getAttribute('aria-pressed')).toBe('true')
-  })
-
-  it('times out a hung summary request and offers retry', async () => {
-    vi.useFakeTimers()
-    const signal = vi.fn()
-    vi.stubGlobal('fetch', vi.fn((_url: string, options: RequestInit) => {
-      options.signal?.addEventListener('abort', signal)
-      return new Promise(() => {})
-    }))
-    await act(async () => { render(<App />) })
-    await act(async () => { await vi.advanceTimersByTimeAsync(10000) })
-    expect(signal).toHaveBeenCalledOnce()
-    expect(screen.getByRole('alert').textContent).toContain('Не удалось загрузить этапы.')
-  })
-
-  it('refreshes while the overview stays open without moving focus', async () => {
-    vi.useFakeTimers()
-    const fetchMock = vi.fn(async () => ({ ok: true, json: async () => ({ stages }) }))
-    vi.stubGlobal('fetch', fetchMock)
-    await act(async () => { render(<App />) })
-    const tile = screen.getByRole('button', { name: /Земляные работы котлована/ })
-    tile.focus()
-    await act(async () => { await vi.advanceTimersByTimeAsync(30000) })
-    expect(fetchMock).toHaveBeenCalledTimes(2)
-    expect(document.activeElement).toBe(tile)
-  })
-})
-
 async function fillContext(user: ReturnType<typeof userEvent.setup>) {
   await user.type(screen.getByLabelText('Сценарий'), 'Земляные работы')
-  await user.type(screen.getByLabelText('Зона наблюдения'), 'Северная зона')
+  await user.type(screen.getByLabelText('Участок наблюдения'), 'Северный участок')
 }
 
 function quotaBackedRequests() {
@@ -1480,7 +1362,7 @@ describe('New Analysis', () => {
     const dropzone = screen.getByRole('group', { name: 'Загрузка кадров' })
     fireEvent.drop(dropzone, { dataTransfer: { files: [image('first.jpg'), image('second.jpg')] } })
     expect(await screen.findByText('second.jpg')).toBeTruthy()
-    expect(screen.getAllByRole('img', { name: /Предпросмотр: кадр/ })).toHaveLength(2)
+    expect(await screen.findAllByRole('img', { name: /Предпросмотр: кадр/ })).toHaveLength(2)
     expect(create).toHaveBeenCalledTimes(2)
     await user.click(screen.getByRole('button', { name: 'Удалить: first.jpg, кадр 1' }))
     expect(revoke).toHaveBeenCalledWith('blob:first')
@@ -1510,7 +1392,7 @@ describe('New Analysis', () => {
       expect(await screen.findByText('Screenshot_' + demo.frames[2].sourceMember.match(/\d+/)![0] + '.jpg')).toBeTruthy()
       expect(screen.queryByText('mine.jpg')).toBeNull()
       expect((screen.getByLabelText('Сценарий') as HTMLInputElement).value).toBe(demo.scenario)
-      expect((screen.getByLabelText('Зона наблюдения') as HTMLInputElement).value).toBe(demo.observationArea)
+      expect((screen.getByLabelText('Участок наблюдения') as HTMLInputElement).value).toBe(demo.observationArea)
       expect((screen.getByLabelText('Дата и время наблюдения') as HTMLInputElement).value).toBe(demo.period)
       expect((screen.getByRole('radio', { name: 'Проверить правило этапа' }) as HTMLInputElement).checked).toBe(true)
       expect(screen.queryByText(demo.ruleRevision)).toBeNull()
@@ -1620,14 +1502,14 @@ describe('New Analysis', () => {
     expect(sessionStorage.getItem('observation-pending')).toBe(JSON.stringify(saved))
   })
 
-  it('loads live choices and defaults to an enabled rule submission', async () => {
+  it('loads live choices and defaults to observation-only submission', async () => {
     vi.stubGlobal('__ANALYSIS_CHOICES__', undefined)
     const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => configuredChoices })
     vi.stubGlobal('fetch', fetchMock)
     render(<App />)
     await waitFor(() => expect((screen.getByRole('button', { name: 'Запустить анализ' }) as HTMLButtonElement).disabled).toBe(false))
     expect(fetchMock.mock.calls[0][0]).toBe('/api/analysis-choices')
-    expect((screen.getByRole('radio', { name: 'Проверить правило этапа' }) as HTMLInputElement).checked).toBe(true)
+    expect((screen.getByRole('radio', { name: 'Только распознать технику' }) as HTMLInputElement).checked).toBe(true)
     expect((screen.getByRole('button', { name: 'Запустить анализ' }) as HTMLButtonElement).disabled).toBe(false)
   })
 
@@ -1639,11 +1521,11 @@ describe('New Analysis', () => {
     vi.stubGlobal('fetch', fetchMock)
     render(<App />)
     await screen.findByRole('button', { name: 'Повторить загрузку настроек' })
-    await user.type(screen.getByLabelText('Зона наблюдения'), 'Северная зона')
+    await user.type(screen.getByLabelText('Участок наблюдения'), 'Северный участок')
     await user.click(screen.getByRole('button', { name: 'Повторить загрузку настроек' }))
     await waitFor(() => expect((screen.getByRole('button', { name: 'Запустить анализ' }) as HTMLButtonElement).disabled).toBe(false))
     expect(fetchMock).toHaveBeenCalledTimes(2)
-    expect((screen.getByLabelText('Зона наблюдения') as HTMLInputElement).value).toBe('Северная зона')
+    expect((screen.getByLabelText('Участок наблюдения') as HTMLInputElement).value).toBe('Северный участок')
     expect((screen.getByRole('button', { name: 'Запустить анализ' }) as HTMLButtonElement).disabled).toBe(false)
   })
 
@@ -1658,7 +1540,7 @@ describe('New Analysis', () => {
     expect((screen.getByRole('radio', { name: 'Проверить правило этапа' }) as HTMLInputElement).disabled).toBe(false)
   })
 
-  it('defaults to the server-provided excavation rule and explains an unconfigured stage', async () => {
+  it('defaults to observation-only with an optional excavation rule and explains an unconfigured stage', async () => {
     const user = userEvent.setup()
     vi.stubGlobal('__ANALYSIS_CHOICES__', [{ id: 'excavation', label: 'Земляные работы', rule: {
       name: 'Проверка вывоза грунта на этапе земляных работ',
@@ -1667,12 +1549,12 @@ describe('New Analysis', () => {
       provenance: 'demonstration rule', recommendation: 'Проверить организацию вывоза грунта на участке вручную.',
     } }, { id: 'other', label: 'Другой этап', rule: null }])
     render(<App />)
-    expect((screen.getByRole('radio', { name: 'Проверить правило этапа' }) as HTMLInputElement).checked).toBe(true)
+    expect((screen.getByRole('radio', { name: 'Только распознать технику' }) as HTMLInputElement).checked).toBe(true)
     expect(screen.queryByText('Проверка вывоза грунта на этапе земляных работ')).toBeNull()
     expect(screen.queryByText('rule-34a0c9535d378f7482cac065e0d474e7b33a4fb545beee1922b962a837b9d97d')).toBeNull()
     expect(screen.queryByText('Экскаватор работает постоянно, самосвалы появляются периодически.')).toBeNull()
     expect(screen.queryByText('demonstration rule')).toBeNull()
-    expect(screen.getByText(/Зона: не указана/)).toBeTruthy()
+    expect(screen.getByText(/Участок: не указана/)).toBeTruthy()
     await user.selectOptions(screen.getByLabelText('Этап'), 'other')
     expect((screen.getByRole('radio', { name: 'Только распознать технику' }) as HTMLInputElement).checked).toBe(true)
     expect((screen.getByRole('radio', { name: 'Проверить правило этапа' }) as HTMLInputElement).disabled).toBe(true)
@@ -1689,6 +1571,7 @@ describe('New Analysis', () => {
     render(<App />)
     await fillContext(user)
     await user.upload(screen.getByLabelText('Выбрать изображение'), image('one.jpg'))
+    await user.click(screen.getByRole('radio', { name: 'Проверить правило этапа' }))
     expect(screen.getByText(/нужны минимум три пригодных кадра/)).toBeTruthy()
     await user.click(screen.getByRole('button', { name: 'Запустить анализ' }))
     await waitFor(() => expect(post).toHaveBeenCalled())
@@ -2116,7 +1999,7 @@ describe('New Analysis', () => {
       'Регистрация входных данных', 'Проверка пригодности кадров', 'Распознавание техники',
       'Объединение наблюдений серии', 'Проверка правила', 'Формирование результата',
     ])
-    const navigationButton = screen.getByRole('link', { name: 'Новый анализ' })
+    const navigationButton = screen.getByRole('link', { name: 'Создать проект' })
     navigationButton.focus()
     await act(async () => { await vi.advanceTimersByTimeAsync(3000) })
     expect(within(list).getAllByRole('listitem')[0].textContent).toContain('Завершено')
@@ -2160,10 +2043,10 @@ describe('New Analysis', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Проверяем статус…' }))
     expect(fetchMock).toHaveBeenCalledTimes(3)
     expect(fetchMock.mock.calls[2][0]).toBe(`/api/runs/${runId}`)
-    fireEvent.click(screen.getByRole('link', { name: 'Новый анализ' }))
+    fireEvent.click(screen.getByRole('link', { name: 'Создать проект' }))
     await act(async () => { resolveLate({ ok: true, json: async () => snapshot('failed') }); await Promise.resolve() })
     expect(fetchMock.mock.calls[2][1].signal.aborted).toBe(true)
-    expect(screen.getByRole('heading', { name: 'Новый анализ' })).toBeTruthy()
+    expect(screen.getByRole('heading', { name: 'Проекты' })).toBeTruthy()
     expect(screen.queryByText('Проверка пригодности кадров')).toBeNull()
     vi.useRealTimers()
   })

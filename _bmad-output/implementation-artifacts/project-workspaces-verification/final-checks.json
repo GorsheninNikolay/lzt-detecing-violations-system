@@ -1,0 +1,22 @@
+{
+  "backend": {
+    "passed": 21,
+    "deselected": 1,
+    "reason": "Standalone CPU admission test omitted; four real existing-profile inference runs verified separately"
+  },
+  "frontend": {
+    "passed": 124,
+    "files": 3
+  },
+  "production_build": "passed",
+  "headless": {
+    "passed": 28,
+    "viewports": [
+      "1440x1000",
+      "390x844"
+    ]
+  },
+  "real_cpu_runs": 4,
+  "review": "All confirmed findings fixed; none deferred",
+  "deployment": "not performed"
+}

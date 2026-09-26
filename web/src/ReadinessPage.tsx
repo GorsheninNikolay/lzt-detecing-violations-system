@@ -151,7 +151,7 @@ export default function ReadinessPage({ heading, onOpen }: { heading: RefObject<
     negative: labels.filter(label => label === 'no').length,
     unknown: labels.filter(label => label !== 'yes' && label !== 'no').length }
   return <section className="readiness" aria-labelledby="readiness-heading" aria-busy={loading}>
-    <div className="page-intro"><p className="eyebrow">Проверка прототипа</p><h1 ref={heading} tabIndex={-1} id="readiness-heading">Готовность</h1><p>Сохранённый отчёт по критериям и исходным доказательствам.</p></div>
+    <div className="page-intro"><p className="eyebrow">Проверка прототипа</p><h1 ref={heading} tabIndex={-1} id="readiness-heading">Проверка качества</h1><p>Сохранённый отчёт по критериям и исходным доказательствам.</p></div>
     {loading && <p role="status">Загружаем сохранённый отчёт…</p>}
     {error && <div className="attention" role="alert"><p>{error} {snapshot && 'Показана последняя загруженная версия; она может быть устаревшей.'}</p>{snapshot && <p>Время сохранения: <time dateTime={snapshot.created_at}>{snapshot.created_at}</time>.</p>}<button type="button" className="secondary" disabled={loading} onClick={() => setAttempt(value => value + 1)}>Повторить загрузку</button></div>}
     {loaded && !snapshot && !error && <div className="panel" role="status"><p>Нет данных: сохранённого отчёта пока нет.</p><button type="button" className="secondary" onClick={() => setAttempt(value => value + 1)}>Повторить загрузку</button></div>}

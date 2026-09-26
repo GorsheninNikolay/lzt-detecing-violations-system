@@ -1,0 +1,117 @@
+{
+  "scope": "Headless Chromium against isolated real API; desktop/mobile keyboard and workspace flow, not model quality or deployment evidence",
+  "checks": [
+    {
+      "name": "desktop keyboard reaches focusable element",
+      "passed": true
+    },
+    {
+      "name": "desktop keyboard focuses project link",
+      "passed": true
+    },
+    {
+      "name": "desktop keyboard switches project",
+      "passed": true
+    },
+    {
+      "name": "desktop navigation focuses project heading",
+      "passed": true
+    },
+    {
+      "name": "desktop overview has no horizontal overflow",
+      "passed": true
+    },
+    {
+      "name": "desktop selects default area",
+      "passed": true
+    },
+    {
+      "name": "desktop plan comparison opt-in",
+      "passed": true
+    },
+    {
+      "name": "desktop tabs retain independent project URLs",
+      "passed": true
+    },
+    {
+      "name": "desktop declined browser Back preserves upload",
+      "passed": true
+    },
+    {
+      "name": "desktop declined dirty switch keeps original URL",
+      "passed": true
+    },
+    {
+      "name": "desktop accepted switch selects other project",
+      "passed": true
+    },
+    {
+      "name": "desktop server ownership corrects wrong URL",
+      "passed": true
+    },
+    {
+      "name": "desktop result has no horizontal overflow",
+      "passed": true
+    },
+    {
+      "name": "desktop no uncaught browser errors",
+      "passed": true
+    },
+    {
+      "name": "mobile keyboard reaches focusable element",
+      "passed": true
+    },
+    {
+      "name": "mobile keyboard focuses project link",
+      "passed": true
+    },
+    {
+      "name": "mobile keyboard switches project",
+      "passed": true
+    },
+    {
+      "name": "mobile navigation focuses project heading",
+      "passed": true
+    },
+    {
+      "name": "mobile overview has no horizontal overflow",
+      "passed": true
+    },
+    {
+      "name": "mobile selects default area",
+      "passed": true
+    },
+    {
+      "name": "mobile plan comparison opt-in",
+      "passed": true
+    },
+    {
+      "name": "mobile tabs retain independent project URLs",
+      "passed": true
+    },
+    {
+      "name": "mobile declined browser Back preserves upload",
+      "passed": true
+    },
+    {
+      "name": "mobile declined dirty switch keeps original URL",
+      "passed": true
+    },
+    {
+      "name": "mobile accepted switch selects other project",
+      "passed": true
+    },
+    {
+      "name": "mobile server ownership corrects wrong URL",
+      "passed": true
+    },
+    {
+      "name": "mobile result has no horizontal overflow",
+      "passed": true
+    },
+    {
+      "name": "mobile no uncaught browser errors",
+      "passed": true
+    }
+  ]
+}

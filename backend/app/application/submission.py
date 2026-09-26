@@ -70,13 +70,15 @@ def validate_images(body: dict, series: bool) -> tuple[list[bytes], dict, list[s
     raw_images = body.get("images_base64") if series else [body.get("image_base64")]
     if not isinstance(raw_images, list) or (series and not 2 <= len(raw_images) <= 8):
         raise SubmissionError("invalid_image_file")
-    plan_keys = ("project_id", "zone_id", "plan_revision_id", "capture_times")
-    if any(key in body for key in plan_keys):
+    plan_keys = ("project_id", "zone_id", "capture_times")
+    if any(key in body for key in (*plan_keys, "plan_revision_id")):
         try:
             if not all(key in body for key in plan_keys):
                 raise ValueError
-            for key in plan_keys[:3]:
+            for key in plan_keys[:2]:
                 context[key] = str(uuid.UUID(body[key]))
+            if "plan_revision_id" in body:
+                context["plan_revision_id"] = str(uuid.UUID(body["plan_revision_id"]))
             times = body["capture_times"]
             if not isinstance(times, list) or len(times) != len(raw_images):
                 raise ValueError
@@ -121,7 +123,7 @@ def submit(store: PostgresStore, artifacts: ArtifactStore, key: str, body: dict,
     image, context, requested, request_hash = validate_request(body)
     if body["intent"] == "rule_evaluation" and snapshot.get("observation_contract") == "equipment-boxes-v2":
         raise SubmissionError("rule_not_applicable")
-    if "plan_revision_id" in context:
+    if "project_id" in context:
         try:
             store.validate_plan_binding(context)
         except AdmissionStoreError:
@@ -169,7 +171,7 @@ def submit_series(store: PostgresStore, artifacts: ArtifactStore, key: str, body
     images, context, requested, request_hash = validate_images(body, True)
     if body["intent"] == "rule_evaluation" and snapshot.get("observation_contract") == "equipment-boxes-v2":
         raise SubmissionError("rule_not_applicable")
-    if "plan_revision_id" in context:
+    if "project_id" in context:
         try:
             store.validate_plan_binding(context)
         except AdmissionStoreError:
