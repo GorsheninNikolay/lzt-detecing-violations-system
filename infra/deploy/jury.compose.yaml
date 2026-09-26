@@ -1,0 +1,18 @@
+services:
+  web:
+    ports: !override
+      - "${JURY_HTTPS_PORT:-8443}:8443"
+    volumes:
+      - ./jury.nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    secrets:
+      - jury_certificate
+      - jury_private_key
+      - jury_passwords
+
+secrets:
+  jury_certificate:
+    file: ${JURY_TLS_CERT:?Set the absolute path to the trusted certificate chain}
+  jury_private_key:
+    file: ${JURY_TLS_KEY:?Set the absolute path to the private certificate key}
+  jury_passwords:
+    file: ${JURY_PASSWORD_FILE:?Set the absolute path to the private htpasswd file}

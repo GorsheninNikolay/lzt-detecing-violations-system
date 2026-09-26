@@ -1,0 +1,93 @@
+name: Verify
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      TEST_DATABASE_URL: postgresql+psycopg://evidence:evidence-local@127.0.0.1:55432/evidence_test
+      S3_ENDPOINT: http://127.0.0.1:59000
+      S3_ACCESS_KEY: evidence-local
+      S3_SECRET_KEY: evidence-local-secret
+      TEST_S3_BUCKET: evidence-test
+      TEST_MODEL_SNAPSHOT_DIR: /tmp/grounding-dino
+      EVALUATION_ARCHIVE_PATH: /tmp/construction-equipment.zip
+      TEST_HELD_OUT_IMAGE_PATH: /tmp/held-out-first.jpg
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - uses: astral-sh/setup-uv@v6
+      - run: npm ci && npm test -- --run && npm run build
+        working-directory: web
+      - name: Fetch owner-supplied source artifacts
+        env:
+          EVALUATION_ARCHIVE_URL: ${{ secrets.EVALUATION_ARCHIVE_URL }}
+          CATALOG_WORKBOOK_URL: ${{ secrets.CATALOG_WORKBOOK_URL }}
+        run: |
+          test -n "$EVALUATION_ARCHIVE_URL"
+          test -n "$CATALOG_WORKBOOK_URL"
+          curl --fail --silent --show-error --location "$EVALUATION_ARCHIVE_URL" --output "$EVALUATION_ARCHIVE_PATH"
+          mkdir -p artifacts/dataset
+          curl --fail --silent --show-error --location "$CATALOG_WORKBOOK_URL" --output artifacts/dataset/Свод.xlsx
+      - run: uv sync --frozen --extra test
+        working-directory: backend
+      - name: Start isolated PostgreSQL and S3
+        run: |
+          docker compose -f infra/compose.yaml up -d --wait
+          docker compose -f infra/compose.yaml exec -T postgres createdb -U evidence evidence_test
+      - name: Migrate and verify real service dependencies
+        working-directory: backend
+        run: |
+          DATABASE_URL="$TEST_DATABASE_URL" uv run alembic upgrade head
+          S3_BUCKET="$TEST_S3_BUCKET" uv run python ../infra/create_bucket.py
+      - name: Prepare pinned offline observer
+        working-directory: backend
+        run: |
+          uv run evidence-admission prepare --snapshot-dir "$TEST_MODEL_SNAPSHOT_DIR"
+          git diff --exit-code -- admission/model-files.json
+      - name: Extract hash-verified held-out test input
+        working-directory: backend
+        run: |
+          uv run python - <<'PY'
+          import hashlib, json, os, zipfile
+          from pathlib import Path
+          frame = json.loads(Path('../evaluation/held-out-v1.json').read_text())['frames'][0]
+          with zipfile.ZipFile(os.environ['EVALUATION_ARCHIVE_PATH']) as archive:
+              data = archive.read(frame['image']['archive_member'])
+          assert hashlib.sha256(data).hexdigest() == frame['image']['sha256']
+          Path(os.environ['TEST_HELD_OUT_IMAGE_PATH']).write_bytes(data)
+          PY
+      - name: Backend contracts and real PostgreSQL/S3 integration (hardware admission separate)
+        working-directory: backend
+        run: uv run pytest tests -q -k 'not test_offline_cpu_admission_publishes_and_authorizes'
+      - name: Build checksum-verified human annotation workspace
+        env:
+          ANNOTATION_ARCHIVE_URL: ${{ secrets.ANNOTATION_ARCHIVE_URL }}
+        run: |
+          test -n "$ANNOTATION_ARCHIVE_URL"
+          curl --fail --silent --show-error --location "$ANNOTATION_ARCHIVE_URL" --output "$RUNNER_TEMP/organizer.zip"
+          python scripts/build_annotation_review.py --archive "$RUNNER_TEMP/organizer.zip" --output "$RUNNER_TEMP/annotation-review"
+      - name: Headless annotation persistence and review checks
+        run: |
+          npm install --prefix "$RUNNER_TEMP/annotation-test" playwright@1.62.1
+          "$RUNNER_TEMP/annotation-test/node_modules/.bin/playwright" install --with-deps chromium
+          PLAYWRIGHT_MODULE="$RUNNER_TEMP/annotation-test/node_modules/playwright/index.mjs" PLAYWRIGHT_BROWSER=chromium node scripts/test_annotation_review.mjs "$RUNNER_TEMP/annotation-review" "$RUNNER_TEMP/annotation-qa"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: annotation-headless-evidence
+          path: ${{ runner.temp }}/annotation-qa
+          if-no-files-found: ignore
+      - name: Verify migration replay
+        working-directory: backend
+        run: DATABASE_URL="$TEST_DATABASE_URL" uv run alembic upgrade head
+      - if: always()
+        run: docker compose -f infra/compose.yaml down -v
