@@ -87,10 +87,17 @@ def validate_owner_evidence(evidence: dict, canary_hashes: list[str], allowed_ha
         raise CloudObserverError("cloud_upload_scope_invalid")
 
 
-def _read_json(http_request: request.Request, seconds: float) -> dict:
+def paid_call_block_reason() -> str | None:
+    return "cloud_budget_reservation_unavailable"
+
+
+def _read_json(http_request: request.Request, seconds: float, *, transport=None) -> dict:
+    if http_request.full_url == ENDPOINT and transport is None and paid_call_block_reason():
+        # Token usage after a response cannot reserve an upper bound before a paid call.
+        raise CloudObserverError("cloud_budget_reservation_unavailable")
     started = time.monotonic()
     try:
-        with request.urlopen(http_request, timeout=seconds) as response:
+        with (transport or request.urlopen)(http_request, timeout=seconds) as response:
             chunks = bytearray()
             while True:
                 remaining = seconds - (time.monotonic() - started)

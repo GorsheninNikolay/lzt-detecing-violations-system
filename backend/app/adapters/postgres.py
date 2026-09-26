@@ -9,6 +9,7 @@ import math
 import tempfile
 import uuid
 from pathlib import Path
+from datetime import datetime, timezone
 from time import monotonic
 
 from app.domain.observations import CLASSES, STAGES, normalized_states, normalized_objects, scene_features, stage_hypotheses
@@ -20,7 +21,8 @@ from app.profiles import cloud_api, grounding_dino, grounding_dino_v2
 from app.profiles.grounding_dino import canonical_bytes, digest
 from app.adapters.artifacts import ArtifactGateError, ArtifactStore
 from app.domain.rule import RULE, RULE_POLICY, evaluate_rule
-from app.domain.site_analysis import compare_equipment
+from app.domain.site_analysis import compare_equipment, utc_frame_times
+from app.domain.construction_stages import STAGES as CONSTRUCTION_STAGES
 
 
 class DatabaseGateError(RuntimeError):
@@ -1479,31 +1481,49 @@ class PostgresStore:
                 projection["stage_hypotheses"] = stage_hypotheses(
                     [{**dict(item), "input_id": str(item["input_id"])} for item in detected],
                     [{**dict(item), "input_id": str(item["input_id"])} for item in scene])
+            if "quick_expectations" in binding.request_context:
+                period = datetime.fromisoformat(binding.request_context["period"])
+                input_rows = connection.execute(text(
+                    "SELECT input_id,sha256 FROM run_inputs WHERE run_id=:run ORDER BY ordinal"), {"run": run_id}).all()
+                input_ids = [str(item.input_id) for item in input_rows]
+                projection["comparison_scope"] = {"mode": "quick", "confirmed_expectations": binding.request_context["quick_expectations"], "period": period.isoformat()}
+                projection["rule_results"] = compare_equipment([{
+                    "id": None, "starts_at": period, "ends_at": period, "state": "active",
+                    "expected_equipment": binding.request_context["quick_expectations"],
+                    "allowed_equipment": [], "excluded_equipment": []}],
+                    [period.isoformat()] * len(input_ids), projection["frames"], [str(item) for item in usable],
+                    set(grounding_dino_v2.EQUIPMENT_PROMPTS if row.profile_snapshot.get("observation_contract")
+                        == "equipment-boxes-v2" else CLASSES), input_ids,
+                    {str(item.input_id): item.sha256 for item in input_rows})
             plan = connection.execute(text("""SELECT zone_id,revision_id,frame_times
                 FROM run_plan_bindings WHERE run_id=:run"""), {"run": run_id}).mappings().one_or_none()
             if plan:
-                lineage_root = connection.execute(text("""WITH RECURSIVE lineage AS (
-                    SELECT id,retry_predecessor_id FROM analysis_runs WHERE id=:run
-                    UNION ALL
-                    SELECT prior.id,prior.retry_predecessor_id FROM analysis_runs prior
-                    JOIN lineage current ON prior.id=current.retry_predecessor_id)
-                    SELECT id FROM lineage WHERE retry_predecessor_id IS NULL LIMIT 1"""),
-                    {"run": run_id}).scalar_one()
                 entries = connection.execute(text("""SELECT id,starts_at,ends_at,state,stage_key,
                     expected_equipment,allowed_equipment,excluded_equipment
                     FROM zone_plan_entries WHERE revision_id=:revision"""),
                     {"revision": plan["revision_id"]}).mappings().all()
+                input_rows = connection.execute(text("SELECT input_id,sha256 FROM run_inputs WHERE run_id=:run ORDER BY ordinal"),
+                                                {"run": run_id}).all()
+                input_hashes = {str(item.input_id): item.sha256 for item in input_rows}
                 signals = compare_equipment([dict(item) for item in entries], plan["frame_times"],
                     [{**dict(item), "input_id": str(item["input_id"])} for item in evidence],
-                    usable_ids, set(grounding_dino_v2.EQUIPMENT_PROMPTS if
-                                    row.profile_snapshot.get("observation_contract") == "equipment-boxes-v2" else CLASSES))
+                    [str(item) for item in usable], set(grounding_dino_v2.EQUIPMENT_PROMPTS if
+                                    row.profile_snapshot.get("observation_contract") == "equipment-boxes-v2" else CLASSES),
+                    [str(item.input_id) for item in input_rows], input_hashes)
                 projection["plan_revision_id"] = str(plan["revision_id"])
+                projection["comparison_scope"] = {"mode": "calendar", "revision_id": str(plan["revision_id"]),
+                    "capture_times": plan["frame_times"], "confirmed_expectations": sorted({
+                        name for item in entries if item["state"] == "active" for name in item["expected_equipment"]})}
                 projection["rule_results"] = [{**signal, "entry_id": str(signal["entry_id"])
                                                 if signal["entry_id"] else None} for signal in signals]
                 for signal in signals:
-                    fingerprint = digest(canonical_bytes({"run": str(lineage_root), **signal,
-                                                         "entry_id": str(signal["entry_id"])
-                                                         if signal["entry_id"] else None}))
+                    fingerprint = digest(canonical_bytes({
+                        "revision": str(plan["revision_id"]), "zone": str(plan["zone_id"]),
+                        "kind": signal["kind"], "class_name": signal.get("class_name"),
+                        "entry_id": str(signal["entry_id"]) if signal["entry_id"] else None,
+                        "frames": [(item.sha256, time) for item, time in zip(input_rows, utc_frame_times(plan["frame_times"]))],
+                        "supporting_hashes": [input_hashes[item] for item in signal["supporting_input_ids"]],
+                        "rule_revision": "site-equipment-v2"}))
                     connection.execute(text("""INSERT INTO site_signals
                         (id,fingerprint,run_id,zone_id,revision_id,work_entry_id,kind,basis)
                         VALUES (:id,:fingerprint,:run,:zone,:revision,:entry,:kind,CAST(:basis AS jsonb))
@@ -1511,8 +1531,10 @@ class PostgresStore:
                         {"id": uuid.uuid4(), "fingerprint": fingerprint, "run": run_id,
                          "zone": plan["zone_id"], "revision": plan["revision_id"],
                          "entry": signal["entry_id"], "kind": signal["kind"],
-                         "basis": json.dumps({"rule_revision": "site-equipment-v1",
-                                              "supporting_input_ids": usable_ids, **signal}, default=str)})
+                         "basis": json.dumps({"rule_revision": "site-equipment-v2",
+                                              "capture_times": plan["frame_times"],
+                                              "recommendation": "Проверьте план, видимость участка и полноту серии вручную.",
+                                              **signal}, default=str)})
             connection.execute(text("""INSERT INTO result_projections (run_id, outcome, snapshot)
                 VALUES (:run, :outcome, CAST(:snapshot AS jsonb))"""),
                 {"run": run_id, "outcome": projection["outcome"], "snapshot": json.dumps(projection)})
@@ -1637,6 +1659,9 @@ class PostgresStore:
             rows = connection.execute(text("""SELECT r.id, r.state, r.created_at,
                 COALESCE(r.stage_key, r.request_context->>'stage_id') AS stage,
                 r.analysis_intent, r.retry_predecessor_id, s.id AS retry_successor_id,
+                CASE WHEN EXISTS (SELECT 1 FROM run_plan_bindings b WHERE b.run_id=r.id) THEN 'plan'
+                     WHEN jsonb_exists(r.request_context, 'quick_expectations') THEN 'quick'
+                     ELSE NULL END AS comparison_mode,
                 CASE WHEN r.state = 'succeeded' THEN p.outcome END AS outcome
                 FROM analysis_runs r
                 LEFT JOIN analysis_runs s ON s.retry_predecessor_id = r.id
@@ -1646,7 +1671,7 @@ class PostgresStore:
         return {"runs": [{"id": str(row.id), "run_id": str(row.id), "state": row.state,
                  "created_at": row.created_at.isoformat() if row.created_at else None,
                  "stage": row.stage, "intent": row.analysis_intent or "observation_only",
-                 "outcome": row.outcome,
+                 "comparison_mode": row.comparison_mode, "outcome": row.outcome,
                  "retry_predecessor_id": str(row.retry_predecessor_id) if row.retry_predecessor_id else None,
                  "retry_successor_id": str(row.retry_successor_id) if row.retry_successor_id else None,
                  "retry_of_run_id": str(row.retry_predecessor_id) if row.retry_predecessor_id else None,
@@ -1655,37 +1680,26 @@ class PostgresStore:
 
     def stage_summary(self) -> dict:
         with self.engine.connect().execution_options(isolation_level="REPEATABLE READ") as connection:
-            rows = connection.execute(text("""WITH latest_run AS (
-                    SELECT r.id, r.state, r.created_at, NULL::jsonb AS snapshot, 'run' AS kind
-                    FROM analysis_runs r
-                    WHERE r.purpose = 'ordinary' AND (r.stage_key = 'excavation' OR (r.stage_key IS NULL AND r.request_context->>'stage_id' = 'excavation'))
-                    ORDER BY r.created_at DESC NULLS LAST, r.id DESC LIMIT 1
-                ), latest_result AS (
-                    SELECT r.id, r.state, r.created_at, p.snapshot, 'result' AS kind
-                    FROM analysis_runs r JOIN result_projections p ON p.run_id = r.id
-                    WHERE r.purpose = 'ordinary' AND r.state = 'succeeded'
-                      AND (r.stage_key = 'excavation' OR (r.stage_key IS NULL AND r.request_context->>'stage_id' = 'excavation'))
-                    ORDER BY r.created_at DESC NULLS LAST, r.id DESC LIMIT 1
-                ) SELECT * FROM latest_run UNION ALL SELECT * FROM latest_result""")).mappings().all()
-        result = next((row for row in rows if row["kind"] == "result"), None)
-        latest = next((row for row in rows if row["kind"] == "run"), None)
-        newer = latest if latest and (not result or latest["id"] != result["id"]) else None
-
-        def reference(row: dict | None) -> dict | None:
-            return ({"run_id": str(row["id"]), "created_at": row["created_at"].isoformat() if row["created_at"] else None}
-                    if row else None)
-
-        return {"stages": [
-            {"stage_id": "preparation", "name": "Подготовительные работы", "supported": False,
-             "latest_result": None, "latest_lifecycle": None},
-            {"stage_id": "excavation", "name": "Земляные работы котлована", "supported": True,
-             "latest_result": {**reference(result), "projection": result["snapshot"]} if result else None,
-             "latest_lifecycle": {**reference(newer), "state": newer["state"]} if newer else None},
-            {"stage_id": "foundation", "name": "Устройство фундамента", "supported": False,
-             "latest_result": None, "latest_lifecycle": None},
-            {"stage_id": "monolithic", "name": "Монолитные работы", "supported": False,
-             "latest_result": None, "latest_lifecycle": None},
-        ]}
+            rows = connection.execute(text("""SELECT DISTINCT ON (stage,kind) * FROM (
+                SELECT r.id,r.state,r.created_at,COALESCE(r.stage_key,r.request_context->>'stage_id') AS stage,
+                    p.snapshot,'result' AS kind
+                FROM analysis_runs r JOIN result_projections p ON p.run_id=r.id
+                WHERE r.purpose='ordinary' AND r.state='succeeded'
+                UNION ALL
+                SELECT r.id,r.state,r.created_at,COALESCE(r.stage_key,r.request_context->>'stage_id'),
+                    NULL::jsonb,'run' FROM analysis_runs r WHERE r.purpose='ordinary'
+                ) candidates ORDER BY stage,kind,created_at DESC NULLS LAST,id DESC""")).mappings().all()
+        stages = []
+        for key, (label, _) in CONSTRUCTION_STAGES.items():
+            result = next((row for row in rows if row["stage"] == key and row["kind"] == "result"), None)
+            latest = next((row for row in rows if row["stage"] == key and row["kind"] == "run"), None)
+            def reference(row):
+                return {"run_id": str(row["id"]), "created_at": row["created_at"].astimezone(timezone.utc).isoformat() if row["created_at"] else None}
+            stages.append({"stage_id": key, "name": label, "supported": True,
+                "latest_result": {**reference(result), "projection": result["snapshot"]} if result else None,
+                "latest_lifecycle": {**reference(latest), "state": latest["state"]}
+                    if latest and (not result or latest["id"] != result["id"]) else None})
+        return {"stages": stages}
 
     def retry_ordinary(self, source_id: uuid.UUID, profile_id: uuid.UUID, revision: int,
                        snapshot: dict, artifacts: ArtifactStore) -> uuid.UUID:

@@ -16,6 +16,9 @@ from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 
 
+from app.domain.construction_stages import STAGES, catalog_suggestion
+
+
 router = APIRouter()
 XML_NS = {"x": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"}
 WORKBOOK = next((Path(__file__).resolve().parents[3] / "artifacts/dataset").glob("Свод*.xlsx"), None)
@@ -154,7 +157,8 @@ def list_catalog(request: Request):
                 FROM catalog_works WHERE source_sha256=:hash ORDER BY source_row"""),
                 {"hash": source_hash}).mappings().all()
         return {"source_sha256": source_hash, "total": len(rows),
-                "works": [{**dict(row), "id": str(row["id"])} for row in rows]}
+                "works": [{**dict(row), "id": str(row["id"]),
+                           **catalog_suggestion(source_hash, row["source_row"], row["title"])} for row in rows]}
     except SiteError as error:
         return _response(error)
 
@@ -239,7 +243,7 @@ def _entry(value: dict) -> dict:
     if state not in ("planned", "active", "completed"):
         raise SiteError("invalid_plan_state")
     stage_key = value.get("stage_key")
-    if stage_key not in (None, "excavation", "concreting", "roadwork"):
+    if stage_key is not None and (not isinstance(stage_key, str) or stage_key not in STAGES):
         raise SiteError("invalid_plan_stage")
     equipment = {}
     for field in ("expected_equipment", "allowed_equipment", "excluded_equipment"):

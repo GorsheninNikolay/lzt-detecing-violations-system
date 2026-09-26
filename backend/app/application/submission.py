@@ -9,6 +9,9 @@ import time
 import uuid
 from datetime import datetime
 
+from app.domain.construction_stages import STAGES
+from app.profiles import cloud_api
+
 from PIL import Image, UnidentifiedImageError
 
 from app.adapters.artifacts import ArtifactGateError, ArtifactStore
@@ -41,13 +44,13 @@ def image_media_type(image: bytes) -> str:
 def validate_images(body: dict, series: bool) -> tuple[list[bytes], dict, list[str], str]:
     if not isinstance(body, dict) or body.get("intent") not in ("observation_only", "rule_evaluation"):
         raise SubmissionError("invalid_observation_intent")
-    if "stage_id" in body and (body["stage_id"] != "excavation"
+    if "stage_id" in body and (not isinstance(body["stage_id"], str) or body["stage_id"] not in STAGES
                                or ("stage" in body and body["stage"] != body["stage_id"])):
         raise SubmissionError("invalid_stage_id")
     stage = body.get("stage", body.get("stage_id"))
     if body["intent"] == "rule_evaluation" and stage != "excavation":
         raise SubmissionError("rule_not_applicable")
-    if "stage" in body and body["stage"] not in ("excavation", "other"):
+    if "stage" in body and (not isinstance(body["stage"], str) or body["stage"] not in (*STAGES, "other")):
         raise SubmissionError("invalid_stage")
     context = {key: body.get(key) for key in ("scenario", "observation_area", "period")}
     if not all(isinstance(value, str) and 0 < len(value.strip()) <= 256 for value in context.values()):
@@ -60,6 +63,17 @@ def validate_images(body: dict, series: bool) -> tuple[list[bytes], dict, list[s
             raise ValueError
     except ValueError:
         raise SubmissionError("invalid_observation_context") from None
+    if "quick_expectations" in body:
+        expectations = body["quick_expectations"]
+        if (stage not in STAGES or body["intent"] != "observation_only" or body.get("expectations_confirmed") is not True
+                or not isinstance(expectations, list) or not expectations or len(expectations) > 32
+                or any(not isinstance(name, str) or not name.isidentifier() or len(name) > 64 for name in expectations)
+                or len(set(expectations)) != len(expectations)
+                or any(key in body for key in ("project_id", "zone_id", "plan_revision_id", "capture_times"))):
+            raise SubmissionError("invalid_quick_expectations")
+        context["quick_expectations"] = sorted(expectations)
+        context["expectations_confirmed"] = True
+        context["comparison_revision"] = "site-equipment-v2"
     requested = body.get("requested_classes", ["excavator", "dump_truck"])
     if (not isinstance(requested, list) or not requested or len(requested) > 32
             or any(not isinstance(name, str) or not name.isidentifier() or len(name) > 64 for name in requested)
@@ -118,6 +132,8 @@ def submit(store: PostgresStore, artifacts: ArtifactStore, key: str, body: dict,
            profile_id: uuid.UUID, revision: int, snapshot: dict) -> tuple[str, uuid.UUID | None]:
     if not isinstance(key, str) or not 0 < len(key) <= 128 or any(ord(char) < 33 or ord(char) > 126 for char in key):
         raise SubmissionError("invalid_idempotency_key")
+    if snapshot.get("kind") == "cloud_api" and (reason := cloud_api.paid_call_block_reason()):
+        raise SubmissionError(reason)
     image, context, requested, request_hash = validate_request(body)
     if body["intent"] == "rule_evaluation" and snapshot.get("observation_contract") == "equipment-boxes-v2":
         raise SubmissionError("rule_not_applicable")
@@ -166,6 +182,8 @@ def submit_series(store: PostgresStore, artifacts: ArtifactStore, key: str, body
                   profile_id: uuid.UUID, revision: int, snapshot: dict) -> tuple[str, uuid.UUID | None]:
     if not isinstance(key, str) or not 0 < len(key) <= 128 or any(ord(char) < 33 or ord(char) > 126 for char in key):
         raise SubmissionError("invalid_idempotency_key")
+    if snapshot.get("kind") == "cloud_api" and (reason := cloud_api.paid_call_block_reason()):
+        raise SubmissionError(reason)
     images, context, requested, request_hash = validate_images(body, True)
     if body["intent"] == "rule_evaluation" and snapshot.get("observation_contract") == "equipment-boxes-v2":
         raise SubmissionError("rule_not_applicable")

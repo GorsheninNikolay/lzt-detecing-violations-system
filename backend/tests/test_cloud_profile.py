@@ -152,7 +152,8 @@ def test_expired_gate_rejects_enabled_snapshot():
         validate_owner_evidence(evidence, [image_hash], [image_hash])
 
 
-def test_unapproved_bytes_rejected_before_publication():
+def test_unapproved_bytes_rejected_before_publication(monkeypatch):
+    monkeypatch.setattr(cloud_api, "paid_call_block_reason", lambda: None)
     image = Image.new("RGB", (2, 2), "white")
     buffer = io.BytesIO()
     image.save(buffer, "JPEG")
@@ -278,7 +279,8 @@ def _cloud_admission_fixture(monkeypatch, tmp_path, response=None, artifact_fail
                             (extra or {}).get("probe_detected") else '{"excavator":false,"dump_truck":false}'),
             "usage": {"input_tokens": 10, "output_tokens": 5}})
         return io.BytesIO(json.dumps(payload).encode())
-    monkeypatch.setattr(cloud_api.request, "urlopen", urlopen)
+    read_json = cloud_api._read_json
+    monkeypatch.setattr(cloud_api, "_read_json", lambda req, seconds: read_json(req, seconds, transport=urlopen))
     monkeypatch.setattr(cloud_api, "observe_bounded", cloud_api.observe)
     return store, artifacts, requests, inventories, evidence_path
 
@@ -465,6 +467,7 @@ def test_persisted_cloud_successor_held_out_and_series(isolated_admission_databa
                 "peak_memory_bytes": None,
                 "native": {"response_id": "response-1", "request_data_controls": {"store": False}}}
     monkeypatch.setattr(cloud_api.CloudObserver, "observe", observed)
+    monkeypatch.setattr(cloud_api, "paid_call_block_reason", lambda: None)
     monkeypatch.setenv("YANDEX_AI_STUDIO_API_KEY", "transient-test-key")
     monkeypatch.setenv("YANDEX_CLOUD_IAM_TOKEN", "transient-iam-token")
     monkeypatch.setenv("YANDEX_AI_STUDIO_API_KEY_ID", "key-id")
@@ -553,3 +556,11 @@ def test_persisted_cloud_successor_held_out_and_series(isolated_admission_databa
             store.require_authorized(profile_id)
     finally:
         store.close()
+
+
+def test_paid_transport_fails_closed_before_network(monkeypatch):
+    def unexpected_network(*args, **kwargs):
+        pytest.fail("Paid request reached the network without an upper-bound reservation")
+    monkeypatch.setattr(cloud_api.request, "urlopen", unexpected_network)
+    with pytest.raises(CloudObserverError, match="cloud_budget_reservation_unavailable"):
+        cloud_api._read_json(cloud_api.request.Request(cloud_api.ENDPOINT), 1)

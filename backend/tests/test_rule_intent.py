@@ -223,8 +223,10 @@ def test_choices_are_served_as_authoritative_api_contract():
             response = await client.get("/analysis-choices")
         assert response.status_code == 200
         stages = response.json()["stages"]
-        assert stages[0]["id"] == "excavation" and stages[0]["rule"]["provenance"] == "demonstration rule"
-        assert stages[1]["rule"] is None
+        assert len(stages) == 8
+        assert all(stage["rule"] is None for stage in stages)
+        assert response.json()["supported_classes"] == []
+        assert response.json()["runtime_available"] is False
     import asyncio
     asyncio.run(check())
 
@@ -552,3 +554,46 @@ def test_rule_intent_survives_publication_execution_and_readback(integration, mo
     assert retained["context"] == CONTEXT
     assert retained["policy_snapshot"] == {"intent": "rule_evaluation", **RULE_POLICY}
     assert retained["rule_snapshot"] == RULE
+
+
+@pytest.mark.parametrize("contract,rule_available", [("presence-only-v1", True), ("equipment-boxes-v2", False)])
+def test_choices_follow_authorized_runtime_capability(contract, rule_available):
+    from types import SimpleNamespace
+    import asyncio
+    app = create_app()
+    app.state.claim_loop = SimpleNamespace(runtime_binding=("profile", 1))
+    app.state.store = SimpleNamespace(require_authorized=lambda *_: ({"observation_contract": contract}, 1))
+    async def check():
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            response = await client.get("/analysis-choices")
+        result = response.json()
+        assert len(result["stages"]) == 8
+        excavation = next(item for item in result["stages"] if item["id"] == "excavation")
+        assert bool(excavation["rule"]) is rule_available
+        assert result["runtime_available"] is True
+        assert result["model_acceptance"] == "unverified"
+        installation = next(item for item in result["stages"] if item["id"] == "installation")
+        assert installation["suggested_equipment"] == ["mobile_crane"]
+        assert installation["requires_manual_confirmation"] is True
+    asyncio.run(check())
+
+
+def test_cloud_choices_and_submission_expose_budget_block_before_persistence():
+    from types import SimpleNamespace
+    from app.application.submission import submit, submit_series
+    import asyncio
+    app = create_app()
+    app.state.claim_loop = SimpleNamespace(runtime_binding=("profile", 1))
+    app.state.store = SimpleNamespace(require_authorized=lambda *_: ({"kind": "cloud_api"}, 1))
+    async def check():
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            response = await client.get("/analysis-choices")
+        result = response.json()
+        assert result["runtime_available"] is False
+        assert result["blocked_reason"] == "cloud_budget_reservation_unavailable"
+        assert "1000" in result["blocked_message"]
+        assert all(item["rule"] is None for item in result["stages"])
+    asyncio.run(check())
+    for operation in (submit, submit_series):
+        with pytest.raises(SubmissionError, match="cloud_budget_reservation_unavailable"):
+            operation(None, None, "budget-block", {}, None, 1, {"kind": "cloud_api"})

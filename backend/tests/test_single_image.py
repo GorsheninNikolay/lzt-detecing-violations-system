@@ -94,6 +94,7 @@ def test_ordinary_history_orders_and_guards_outcome(database):
         assert rows[-1]["created_at"] is None
         assert rows[2]["retry_predecessor_id"] == str(first)
         assert rows[2]["stage"] == "excavation"
+        assert rows[2]["comparison_mode"] is None
         assert store.read_ordinary(second)["stage"] == "excavation"
         assert rows[2]["retry_of_run_id"] == str(first)
         assert rows[3]["retry_successor_id"] == str(second)

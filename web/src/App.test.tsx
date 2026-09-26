@@ -1191,7 +1191,7 @@ describe('Zone plan and signals', () => {
     vi.stubGlobal('fetch', fetchMock)
     render(<App />)
     await fillContext(user)
-    await user.click(screen.getByRole('button', { name: 'Привязать к плану' }))
+    await user.click(screen.getByRole('radio', { name: 'Проверить соответствие плану' }))
     await user.selectOptions(await screen.findByLabelText('Проект плана'), projectId)
     await user.selectOptions(await screen.findByLabelText('Зона плана'), zoneId)
     expect(await screen.findByText('Ревизия плана: 2.')).toBeTruthy()
@@ -1215,11 +1215,11 @@ describe('Zone plan and signals', () => {
     render(<App />)
     await fillContext(user)
     await user.upload(screen.getByLabelText('Выбрать изображение'), image('frame.jpg'))
-    await user.click(screen.getByRole('button', { name: 'Привязать к плану' }))
+    await user.click(screen.getByRole('radio', { name: 'Проверить соответствие плану' }))
     await user.click(screen.getByRole('button', { name: 'Запустить анализ' }))
     expect(await screen.findByText(/Выберите проект и зону с сохранённой ревизией плана/)).toBeTruthy()
     expect(fetchMock.mock.calls.some(([, options]) => options?.method === 'POST')).toBe(false)
-    await user.click(screen.getByRole('button', { name: 'Без привязки к плану' }))
+    await user.click(screen.getByRole('radio', { name: 'Только распознать технику' }))
     expect(screen.queryByLabelText('Проект плана')).toBeNull()
   })
 
@@ -1232,6 +1232,8 @@ describe('Zone plan and signals', () => {
     vi.stubGlobal('fetch', fetchMock)
     const user = userEvent.setup()
     render(<App />)
+    await user.click(screen.getByText('Историческая проверка вывоза грунта'))
+    await user.click(screen.getByRole('button', { name: 'Использовать историческое правило' }))
     await fillContext(user)
     await user.upload(screen.getByLabelText('Выбрать изображение'), new File([png], 'frame.png', { type: 'image/png' }))
     await user.click(screen.getByRole('button', { name: 'Запустить анализ' }))
@@ -1480,7 +1482,7 @@ describe('New Analysis', () => {
     const dropzone = screen.getByRole('group', { name: 'Загрузка кадров' })
     fireEvent.drop(dropzone, { dataTransfer: { files: [image('first.jpg'), image('second.jpg')] } })
     expect(await screen.findByText('second.jpg')).toBeTruthy()
-    expect(screen.getAllByRole('img', { name: /Предпросмотр: кадр/ })).toHaveLength(2)
+    expect(await screen.findAllByRole('img', { name: /Предпросмотр: кадр/ })).toHaveLength(2)
     expect(create).toHaveBeenCalledTimes(2)
     await user.click(screen.getByRole('button', { name: 'Удалить: first.jpg, кадр 1' }))
     expect(revoke).toHaveBeenCalledWith('blob:first')
@@ -1512,7 +1514,7 @@ describe('New Analysis', () => {
       expect((screen.getByLabelText('Сценарий') as HTMLInputElement).value).toBe(demo.scenario)
       expect((screen.getByLabelText('Зона наблюдения') as HTMLInputElement).value).toBe(demo.observationArea)
       expect((screen.getByLabelText('Дата и время наблюдения') as HTMLInputElement).value).toBe(demo.period)
-      expect((screen.getByRole('radio', { name: 'Проверить правило этапа' }) as HTMLInputElement).checked).toBe(true)
+      expect(screen.getByText(/Исторический сценарий: проверка вывоза грунта/)).toBeTruthy()
       expect(screen.queryByText(demo.ruleRevision)).toBeNull()
       expect(screen.getByText(/В исходном примере время 12:00 условное/)).toBeTruthy()
       expect(screen.getByText(/порядок кадров соответствует архиву/)).toBeTruthy()
@@ -1620,14 +1622,14 @@ describe('New Analysis', () => {
     expect(sessionStorage.getItem('observation-pending')).toBe(JSON.stringify(saved))
   })
 
-  it('loads live choices and defaults to an enabled rule submission', async () => {
+  it('loads live choices without silently enabling a legacy rule', async () => {
     vi.stubGlobal('__ANALYSIS_CHOICES__', undefined)
     const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => configuredChoices })
     vi.stubGlobal('fetch', fetchMock)
     render(<App />)
     await waitFor(() => expect((screen.getByRole('button', { name: 'Запустить анализ' }) as HTMLButtonElement).disabled).toBe(false))
     expect(fetchMock.mock.calls[0][0]).toBe('/api/analysis-choices')
-    expect((screen.getByRole('radio', { name: 'Проверить правило этапа' }) as HTMLInputElement).checked).toBe(true)
+    expect((screen.getByRole('radio', { name: 'Только распознать технику' }) as HTMLInputElement).checked).toBe(true)
     expect((screen.getByRole('button', { name: 'Запустить анализ' }) as HTMLButtonElement).disabled).toBe(false)
   })
 
@@ -1655,10 +1657,10 @@ describe('New Analysis', () => {
     await user.selectOptions(screen.getByLabelText('Этап'), 'other')
     await user.selectOptions(screen.getByLabelText('Этап'), 'excavation')
     expect((screen.getByRole('radio', { name: 'Только распознать технику' }) as HTMLInputElement).checked).toBe(true)
-    expect((screen.getByRole('radio', { name: 'Проверить правило этапа' }) as HTMLInputElement).disabled).toBe(false)
+    expect(screen.getByText('Историческая проверка вывоза грунта')).toBeTruthy()
   })
 
-  it('defaults to the server-provided excavation rule and explains an unconfigured stage', async () => {
+  it('defaults to observation and offers the historical rule separately', async () => {
     const user = userEvent.setup()
     vi.stubGlobal('__ANALYSIS_CHOICES__', [{ id: 'excavation', label: 'Земляные работы', rule: {
       name: 'Проверка вывоза грунта на этапе земляных работ',
@@ -1667,7 +1669,7 @@ describe('New Analysis', () => {
       provenance: 'demonstration rule', recommendation: 'Проверить организацию вывоза грунта на участке вручную.',
     } }, { id: 'other', label: 'Другой этап', rule: null }])
     render(<App />)
-    expect((screen.getByRole('radio', { name: 'Проверить правило этапа' }) as HTMLInputElement).checked).toBe(true)
+    expect((screen.getByRole('radio', { name: 'Только распознать технику' }) as HTMLInputElement).checked).toBe(true)
     expect(screen.queryByText('Проверка вывоза грунта на этапе земляных работ')).toBeNull()
     expect(screen.queryByText('rule-34a0c9535d378f7482cac065e0d474e7b33a4fb545beee1922b962a837b9d97d')).toBeNull()
     expect(screen.queryByText('Экскаватор работает постоянно, самосвалы появляются периодически.')).toBeNull()
@@ -1675,7 +1677,7 @@ describe('New Analysis', () => {
     expect(screen.getByText(/Зона: не указана/)).toBeTruthy()
     await user.selectOptions(screen.getByLabelText('Этап'), 'other')
     expect((screen.getByRole('radio', { name: 'Только распознать технику' }) as HTMLInputElement).checked).toBe(true)
-    expect((screen.getByRole('radio', { name: 'Проверить правило этапа' }) as HTMLInputElement).disabled).toBe(true)
+    expect(screen.queryByText('Историческая проверка вывоза грунта')).toBeNull()
     expect(screen.getByText('Для этого этапа правило не настроено в прототипе')).toBeTruthy()
   })
 
@@ -1687,6 +1689,8 @@ describe('New Analysis', () => {
     const post = vi.fn().mockResolvedValue({ status: 202, json: async () => ({ run_id: '12345678-1234-1234-1234-123456789abc' }) })
     vi.stubGlobal('fetch', post)
     render(<App />)
+    await user.click(screen.getByText('Историческая проверка вывоза грунта'))
+    await user.click(screen.getByRole('button', { name: 'Использовать историческое правило' }))
     await fillContext(user)
     await user.upload(screen.getByLabelText('Выбрать изображение'), image('one.jpg'))
     expect(screen.getByText(/нужны минимум три пригодных кадра/)).toBeTruthy()
@@ -2266,4 +2270,137 @@ describe('New Analysis', () => {
       expect((await screen.findAllByText(/Укажите существующие местные дату и время/)).length).toBeGreaterThan(0)
     } finally { vi.unstubAllEnvs() }
   })
+})
+
+it('renders historical plan comparisons without supporting frame IDs', async () => {
+  history.replaceState({}, '', '/runs/11111111-1111-1111-1111-111111111111')
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => ({
+    ...snapshot('succeeded', Array(6).fill('succeeded')),
+    result_projection: { outcome: 'observations_only', frames: [], rule_results: [{
+      kind: 'expected_equipment_missing', class_name: 'excavator', reason: 'Historical stored result',
+    }] },
+  }) }))
+  render(<App />)
+  expect(await screen.findByText('Сравнение с ожиданиями')).toBeTruthy()
+  expect(screen.getByText('Historical stored result')).toBeTruthy()
+})
+
+it('requires quick expectations to be reconfirmed after stage and equipment changes and sends only the confirmed payload', async () => {
+  const user = userEvent.setup()
+  vi.stubGlobal('__ANALYSIS_CHOICES__', [
+    { id: 'excavation', label: 'Земляные работы', rule: null, suggested_equipment: ['excavator', 'dump_truck'] },
+    { id: 'concreting', label: 'Бетонные работы', rule: null, suggested_equipment: ['concrete_mixer_truck'] },
+  ])
+  const fetchMock = vi.fn(async (_url: string, options?: RequestInit) => options?.method === 'POST'
+    ? { ok: true, status: 202, json: async () => ({ run_id: '11111111-1111-1111-1111-111111111111', state: 'queued' }) }
+    : { ok: true, json: async () => snapshot('queued') })
+  vi.stubGlobal('fetch', fetchMock)
+  render(<App />)
+  await fillContext(user)
+  await user.upload(screen.getByLabelText('Выбрать изображение'), image('quick.jpg'))
+  await user.click(screen.getByRole('radio', { name: 'Проверить выбранный этап' }))
+  await user.click(screen.getByRole('button', { name: 'Предложить шаблон техники' }))
+  const confirm = screen.getByRole('checkbox', { name: /Подтверждаю ожидания техники/ })
+  await user.click(screen.getByRole('button', { name: 'Запустить анализ' }))
+  expect(await screen.findByText('Подтвердите ожидания техники перед анализом.')).toBeTruthy()
+  expect(fetchMock.mock.calls.some(([, options]) => options?.method === 'POST')).toBe(false)
+  await user.click(confirm)
+  await user.deselectOptions(screen.getByLabelText('Ожидаемая техника'), 'dump_truck')
+  expect((confirm as HTMLInputElement).checked).toBe(false)
+  await user.click(confirm)
+  await user.selectOptions(screen.getByLabelText('Этап'), 'concreting')
+  expect((confirm as HTMLInputElement).checked).toBe(false)
+  await user.click(screen.getByRole('button', { name: 'Предложить шаблон техники' }))
+  await user.click(screen.getByRole('button', { name: 'Запустить анализ' }))
+  expect(fetchMock.mock.calls.some(([, options]) => options?.method === 'POST')).toBe(false)
+  await user.click(confirm)
+  await user.click(screen.getByRole('button', { name: 'Запустить анализ' }))
+  await waitFor(() => expect(fetchMock.mock.calls.some(([, options]) => options?.method === 'POST')).toBe(true))
+  const request = fetchMock.mock.calls.find(([, options]) => options?.method === 'POST')
+  const payload = JSON.parse(String(request?.[1]?.body))
+  expect(payload).toMatchObject({ stage: 'concreting', intent: 'observation_only', quick_expectations: ['concrete_mixer_truck'], expectations_confirmed: true })
+  expect(payload).not.toHaveProperty('plan_revision_id')
+})
+
+it('keeps the selected non-excavation intent when choices arrive after navigation', async () => {
+  const user = userEvent.setup()
+  vi.stubGlobal('__ANALYSIS_CHOICES__', undefined)
+  history.replaceState({}, '', '/')
+  vi.stubGlobal('fetch', vi.fn(async (url: string) => ({ ok: true, json: async () => url === '/api/stages/summary'
+    ? { stages: [{ stage_id: 'concreting', name: 'Бетонные работы', supported: true, latest_result: null, latest_lifecycle: null }] }
+    : { stages: [{ id: 'excavation', label: 'Земляные работы', rule: { name: 'Вывоз грунта' } }, { id: 'concreting', label: 'Бетонные работы', rule: null }] } })))
+  render(<App />)
+  await user.click(await screen.findByRole('button', { name: /Бетонные работы/ }))
+  await user.click(screen.getByRole('link', { name: 'Новый анализ' }))
+  await waitFor(() => expect(screen.getByLabelText('Этап')).toHaveProperty('value', 'concreting'))
+  expect(screen.getByRole('radio', { name: 'Только распознать технику' })).toHaveProperty('checked', true)
+  expect(screen.getByRole('radio', { name: 'Проверить выбранный этап' })).toHaveProperty('checked', false)
+})
+
+it('explains a completed comparison without warnings and its confirmed scope', async () => {
+  history.replaceState({}, '', '/runs/11111111-1111-1111-1111-111111111111')
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => ({
+    ...snapshot('succeeded', Array(6).fill('succeeded')),
+    result_projection: { outcome: 'observations_only', frames: [], rule_results: [], comparison_scope: {
+      mode: 'quick', confirmed_expectations: ['excavator'], period: '2030-01-01T12:00:00Z',
+    } },
+  }) }))
+  render(<App />)
+  expect(await screen.findByText('Сравнение завершено')).toBeTruthy()
+  expect(screen.getByText(/По проверенным ожиданиям предупреждений нет/)).toBeTruthy()
+  expect(screen.getByText(/Подтверждённая ожидаемая техника: Экскаватор/)).toBeTruthy()
+})
+
+it('hides quick and plan fields in recognition mode and omits their previous settings from the request', async () => {
+  const user = userEvent.setup()
+  vi.stubGlobal('__ANALYSIS_CHOICES__', [{ id: 'excavation', label: 'Земляные работы', rule: null, suggested_equipment: ['excavator'] }])
+  const fetchMock = vi.fn(async (_url: string, options?: RequestInit) => options?.method === 'POST'
+    ? { status: 202, json: async () => ({ run_id: '11111111-1111-1111-1111-111111111111' }) }
+    : { ok: true, json: async () => snapshot('queued') })
+  vi.stubGlobal('fetch', fetchMock)
+  render(<App />)
+  expect(screen.queryByLabelText('Ожидаемая техника')).toBeNull()
+  expect(screen.queryByLabelText('Проект плана')).toBeNull()
+  await fillContext(user)
+  await user.upload(screen.getByLabelText('Выбрать изображение'), image('observation.jpg'))
+  await user.click(screen.getByRole('radio', { name: 'Проверить выбранный этап' }))
+  await user.click(screen.getByRole('button', { name: 'Запустить анализ' }))
+  expect(await screen.findByText('Подтвердите ожидания техники перед анализом.')).toBeTruthy()
+  await user.click(screen.getByRole('button', { name: 'Предложить шаблон техники' }))
+  await user.click(screen.getByRole('checkbox', { name: /Подтверждаю ожидания техники/ }))
+  await user.click(screen.getByRole('radio', { name: 'Только распознать технику' }))
+  expect(screen.queryByLabelText('Ожидаемая техника')).toBeNull()
+  await user.click(screen.getByRole('button', { name: 'Запустить анализ' }))
+  await waitFor(() => expect(fetchMock.mock.calls.some(([, options]) => options?.method === 'POST')).toBe(true))
+  const payload = JSON.parse(String(fetchMock.mock.calls.find(([, options]) => options?.method === 'POST')?.[1]?.body))
+  expect(payload.intent).toBe('observation_only')
+  expect(payload).not.toHaveProperty('quick_expectations')
+  expect(payload).not.toHaveProperty('expectations_confirmed')
+  expect(payload).not.toHaveProperty('plan_revision_id')
+})
+
+it('shows persisted comparison modes and all named stages in history with legacy fallback', async () => {
+  history.replaceState({}, '', '/history')
+  const rows = [
+    { id: '11111111-1111-1111-1111-111111111111', stage: 'concreting', comparison_mode: 'quick', intent: 'observation_only' },
+    { id: '22222222-2222-2222-2222-222222222222', stage: 'utilities', comparison_mode: 'plan', intent: 'observation_only' },
+    { id: '33333333-3333-3333-3333-333333333333', stage: 'installation', intent: 'observation_only' },
+    { id: '44444444-4444-4444-4444-444444444444', stage: 'excavation', intent: 'rule_evaluation' },
+  ]
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => ({ runs: rows.map(row => ({
+    ...row, run_id: row.id, state: 'succeeded', created_at: '2030-01-01T12:00:00Z', outcome: 'observations_only',
+    retry_predecessor_id: null, retry_successor_id: null,
+  })) }) }))
+  render(<App />)
+  const expected = [
+    ['Бетонные работы', 'Проверить выбранный этап'],
+    ['Наружные инженерные сети', 'Проверить соответствие плану'],
+    ['Подъём и монтаж конструкций', 'Только распознать технику'],
+    ['Земляные работы и котлован', 'Проверить правило этапа'],
+  ]
+  for (const [index, row] of rows.entries()) {
+    const item = (await screen.findByRole('link', { name: `Анализ ${row.id}` })).closest('li')!
+    expect(within(item).getByText(expected[index][0])).toBeTruthy()
+    expect(within(item).getByText(expected[index][1])).toBeTruthy()
+  }
 })

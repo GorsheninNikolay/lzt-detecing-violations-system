@@ -11,6 +11,8 @@ from fastapi.testclient import TestClient
 from app.adapters.postgres import PostgresStore
 from app.application.site import router as site_router
 from app.application.signals import router as signals_router
+from test_admission import isolated_admission_database
+from test_startup import database, integration
 
 
 @pytest.mark.skipif(not os.getenv("TEST_DATABASE_URL"), reason="isolated PostgreSQL required")
@@ -135,5 +137,141 @@ def test_catalog_plan_and_due_signal_round_trip():
             with pytest.raises(DatabaseError), store.engine.begin() as connection:
                 connection.execute(text("UPDATE site_signals SET basis='{}'::jsonb WHERE id=:id"),
                                    {"id": signal_id})
+    finally:
+        store.close()
+
+
+@pytest.mark.skipif(not os.getenv("TEST_DATABASE_URL"), reason="isolated PostgreSQL required")
+def test_stage_confirmation_matches_each_frame_and_deduplicates_evidence():
+    store = PostgresStore(os.environ["TEST_DATABASE_URL"])
+    app = FastAPI()
+    app.include_router(site_router)
+    app.include_router(signals_router)
+    app.state.store = store
+    app.state.readiness = type("Ready", (), {"ready": type("Event", (), {"is_set": lambda self: True})()})()
+    try:
+        with TestClient(app) as client:
+            work = client.get("/catalog/works").json()["works"][0]["id"]
+            project = client.post("/projects", json={"name": f"Transition {uuid4()}", "timezone": "UTC"}).json()["id"]
+            zone = client.post(f"/projects/{project}/zones", json={"name": "Test"}).json()["id"]
+            entries = [{"catalog_work_id": work, "start_at": f"2030-01-0{day}T00:00:00Z",
+                        "end_at": f"2030-01-0{day}T23:59:00Z", "state": "active", "stage_key": stage}
+                       for day, stage in ((1, "excavation"), (2, "concreting"))]
+            revision = client.put(f"/zones/{zone}/plan", json={"expected_revision": 0, "entries": entries}).json()["revision_id"]
+            runs = [uuid4(), uuid4()]
+            first_inputs = None
+            for run in runs:
+                inputs = [uuid4(), uuid4()]
+                first_inputs = first_inputs or inputs
+                with store.engine.begin() as connection:
+                    connection.execute(text("INSERT INTO analysis_runs(id,state,purpose) VALUES (:run,'succeeded','ordinary')"), {"run": run})
+                    for ordinal, input_id in enumerate(inputs):
+                        connection.execute(text("""INSERT INTO run_inputs(run_id,ordinal,input_id,sha256,size,context)
+                            VALUES (:run,:ordinal,:input,:hash,1,'{}'::jsonb)"""),
+                            {"run": run, "ordinal": ordinal, "input": input_id, "hash": str(ordinal) * 64})
+                    connection.execute(text("""INSERT INTO run_plan_bindings(run_id,zone_id,revision_id,frame_times)
+                        VALUES (:run,:zone,:revision,CAST(:times AS jsonb))"""),
+                        {"run": run, "zone": zone, "revision": revision,
+                         "times": json.dumps(["2030-01-01T12:00:00Z", "2030-01-02T12:00:00Z"] if run == runs[0] else ["2030-01-01T15:00:00+03:00", "2030-01-02T15:00:00+03:00"])})
+                response = client.post(f"/runs/{run}/confirm-stage", json={"stage": "excavation"})
+                assert response.status_code == 200, response.text
+            for invalid_stage in ([], {}, 1, None):
+                response = client.post(f"/runs/{runs[0]}/confirm-stage", json={"stage": invalid_stage})
+                assert response.status_code == 400
+                assert response.json()["code"] == "invalid_stage_confirmation"
+            signals = client.get(f"/signals?zone_id={zone}").json()["signals"]
+            assert len(signals) == 1
+            assert signals[0]["kind"] == "stage_plan_mismatch"
+            assert signals[0]["basis"]["supporting_input_ids"] == [str(first_inputs[1])]
+            assert signals[0]["basis"]["planned_stages"] == ["concreting"]
+    finally:
+        store.close()
+
+
+def test_quick_and_calendar_completion_readback_and_equivalent_evidence_dedup(isolated_admission_database, integration, monkeypatch):
+    import asyncio
+    import base64
+    from app.adapters.artifacts import ArtifactStore
+    from app.application import executor, submission
+    from app.config import Config
+    from test_single_image import jpeg
+
+    base_config, _, _ = integration
+    config = Config(isolated_admission_database, base_config.s3_endpoint, base_config.s3_bucket,
+                    base_config.s3_access_key, base_config.s3_secret_key)
+    store, artifacts = PostgresStore(isolated_admission_database), ArtifactStore(config)
+    profile, parent = uuid4(), uuid4()
+    snapshot = {"model_files": {"model.safetensors": "a" * 64},
+                "runtime": {"per_image_timeout_seconds": 2, "batch_timeout_seconds": 600}}
+    try:
+        with store.engine.begin() as connection:
+            connection.execute(text("INSERT INTO observer_profiles(id,status,profile_hash,snapshot) VALUES (:id,'draft',:hash,'{}'::jsonb)"),
+                               {"id": parent, "hash": str(parent)})
+            connection.execute(text("""INSERT INTO observer_profiles(id,parent_id,status,profile_hash,snapshot,audit_hash)
+                VALUES (:id,:parent,'admitted',:hash,'{}'::jsonb,'test')"""),
+                               {"id": profile, "parent": parent, "hash": str(profile)})
+            connection.execute(text("""INSERT INTO profile_authorizations(profile_id,revision,state,reason,audit_hash,interactive_retry_allowed)
+                VALUES (:id,1,'enabled','test','test',false)"""), {"id": profile})
+        monkeypatch.setattr(store, "require_authorized", lambda *_: (snapshot, 1))
+        monkeypatch.setattr(executor, "_observe_bounded", lambda *_: {
+            "states": {"excavator": "not_detected_in_frame", "dump_truck": "not_detected_in_frame"},
+            "returned_model_identity": "checkpoint-sha256:" + "a" * 64, "actual_device": "cpu",
+            "latency_ms": 1.0, "peak_memory_bytes": 1024,
+            "native": {"detections": [], "image_size": [96, 96]}})
+        loop = executor.ClaimLoop()
+        loop.store, loop.artifacts, loop.snapshot_dir = store, artifacts, "unused"
+        images = [jpeg((20, 50, 80)), jpeg((40, 90, 130)), jpeg((100, 140, 200))]
+        body = {"intent": "observation_only", "stage": "excavation", "stage_id": "excavation",
+                "scenario": "comparison", "observation_area": "north", "period": "2030-01-01T12:00:00Z",
+                "requested_classes": ["excavator"], "images_base64": [base64.b64encode(image).decode() for image in images]}
+
+        def complete(payload):
+            _, run_id = submission.submit_series(store, artifacts, str(uuid4()), payload, profile, 1, snapshot)
+            work = store.claim_ordinary(profile, 1, 60)
+            asyncio.run(loop._execute(work, 1))
+            run = store.read_ordinary(run_id)
+            assert run["state"] == "succeeded", run
+            return run
+
+        quick = complete({**body, "quick_expectations": ["excavator"], "expectations_confirmed": True})
+        assert quick["context"]["quick_expectations"] == ["excavator"]
+        assert quick["result_projection"]["rule_results"][0]["kind"] == "expected_equipment_missing"
+        assert quick["result_projection"]["rule_results"][0]["supporting_input_ids"] == [item["input_id"] for item in quick["inputs"]]
+        assert quick["result_projection"]["comparison_scope"]["confirmed_expectations"] == ["excavator"]
+        repeated = complete({**body, "images_base64": [body["images_base64"][0]] * 3,
+                             "quick_expectations": ["excavator"], "expectations_confirmed": True})
+        assert len(repeated["inputs"]) == 3
+        assert repeated["result_projection"]["rule_results"][0]["kind"] == "insufficient_observations"
+
+        app = FastAPI()
+        app.include_router(site_router)
+        app.state.store = store
+        app.state.readiness = type("Ready", (), {"ready": type("Event", (), {"is_set": lambda self: True})()})()
+        with TestClient(app) as client:
+            work_id = client.get("/catalog/works").json()["works"][0]["id"]
+            project = client.post("/projects", json={"name": "Readback", "timezone": "UTC"}).json()["id"]
+            zone = client.post(f"/projects/{project}/zones", json={"name": "north"}).json()["id"]
+            revision = client.put(f"/zones/{zone}/plan", json={"expected_revision": 0, "entries": [{
+                "catalog_work_id": work_id, "stage_key": "excavation", "state": "active",
+                "start_at": "2030-01-01T00:00:00Z", "end_at": "2030-01-02T00:00:00Z",
+                "expected_equipment": ["excavator"]}]}).json()["revision_id"]
+        bound = {**body, "project_id": project, "zone_id": zone, "plan_revision_id": revision}
+        first = complete({**bound, "capture_times": ["2030-01-01T12:00:00Z"] * 3})
+        second = complete({**bound, "capture_times": ["2030-01-01T15:00:00+03:00"] * 3})
+        history = {item["run_id"]: item for item in store.list_ordinary()["runs"]}
+        assert history[quick["run_id"]]["comparison_mode"] == "quick"
+        assert history[repeated["run_id"]]["comparison_mode"] == "quick"
+        assert history[first["run_id"]]["comparison_mode"] == "plan"
+        assert history[second["run_id"]]["comparison_mode"] == "plan"
+        for run in (first, second):
+            result = run["result_projection"]["rule_results"][0]
+            assert result["kind"] == "expected_equipment_missing"
+            assert result["supporting_input_ids"] == [item["input_id"] for item in run["inputs"]]
+            assert run["plan_binding"]["revision_id"] == revision
+        with store.engine.connect() as connection:
+            assert connection.execute(text("SELECT count(*) FROM site_signals WHERE revision_id=:revision"), {"revision": revision}).scalar_one() == 1
+        complete({**bound, "capture_times": ["2030-01-01T12:01:00Z"] * 3})
+        with store.engine.connect() as connection:
+            assert connection.execute(text("SELECT count(*) FROM site_signals WHERE revision_id=:revision"), {"revision": revision}).scalar_one() == 2
     finally:
         store.close()

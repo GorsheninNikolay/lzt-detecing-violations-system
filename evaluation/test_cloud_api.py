@@ -1,5 +1,4 @@
 import json
-from urllib import error
 
 import pytest
 
@@ -29,11 +28,7 @@ def test_invalid_response_is_terminal():
             "usage": {"input_tokens": 1, "output_tokens": 1}}, MODEL, 1)
 
 
-def test_timeout_is_terminal_without_leaking_key(monkeypatch):
-    def timeout(*_args, **_kwargs):
-        raise error.URLError(TimeoutError("secret key never goes here"))
-
-    monkeypatch.setattr("cloud_api.request.urlopen", timeout)
-    with pytest.raises(CloudObserverError, match="observer_timeout_or_transport_failed") as exc:
+def test_paid_calls_fail_closed_without_reservation():
+    with pytest.raises(CloudObserverError, match="cloud_budget_reservation_unavailable") as exc:
         observe(b"image", "folder", "secret-key")
     assert "secret-key" not in str(exc.value)

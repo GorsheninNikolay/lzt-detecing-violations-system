@@ -85,7 +85,7 @@ def report_snapshot():
     return {"id": str(uuid.uuid4()), "manifest_hash": canonical_hash(manifest),
             "evaluation_revision_id": str(uuid.uuid4()), "manifest": manifest, "cells": cells,
             "evaluation_frames": [{"id": frame["id"], "ordinal": frame["ordinal"],
-                                   "manual_labels": frame["manual_labels"]}
+                                   "manual_labels": copy.deepcopy(frame["manual_labels"])}
                                   for frame in EVALUATION["frames"]]}
 
 
@@ -727,7 +727,8 @@ def test_expired_cloud_evidence_is_rejected_by_real_gate(database):
                                   {"id": revision}).scalar_one() == 0
 
 
-def test_downgrade_refuses_planned_campaign_and_keeps_evidence(database, monkeypatch):
+def test_downgrade_refuses_planned_campaign_and_keeps_evidence(isolated_campaign_database, monkeypatch):
+    database = isolated_campaign_database
     from alembic import command
     from alembic.config import Config as AlembicConfig
 

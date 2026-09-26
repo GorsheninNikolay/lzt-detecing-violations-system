@@ -13,11 +13,15 @@ from app.adapters.artifacts import ArtifactGateError, ArtifactStore
 from app.adapters.postgres import AdmissionStoreError, DatabaseGateError, PostgresStore, ReconciliationGateError, RecoveryGateError
 from app.application.executor import ClaimLoop
 from app.application.submission import SubmissionError, submit, submit_series
-from app.domain.rule import ANALYSIS_CHOICES
+from app.domain.rule import RULE
+from app.domain.construction_stages import STAGES as CONSTRUCTION_STAGES
+from app.domain.observations import CLASSES
+from app.profiles.grounding_dino_v2 import EQUIPMENT_PROMPTS
 from app.domain.comparison_campaign import CampaignGateError
 from app.config import Config
 from app.profiles.grounding_dino import verify_snapshot
 from app.profiles.cloud_api import CloudObserver
+from app.profiles import cloud_api
 from app.application.site import router as site_router
 from app.application.signals import router as signals_router
 
@@ -129,7 +133,23 @@ def create_app() -> FastAPI:
 
     @app.get("/analysis-choices")
     def analysis_choices() -> dict:
-        return ANALYSIS_CHOICES
+        binding = getattr(getattr(app.state, "claim_loop", None), "runtime_binding", None)
+        snapshot = None
+        if binding is not None:
+            try:
+                snapshot, _ = app.state.store.require_authorized(binding[0], binding[1])
+            except AdmissionStoreError:
+                pass
+        blocked = cloud_api.paid_call_block_reason() if snapshot and snapshot.get("kind") == "cloud_api" else None
+        boxed = snapshot is not None and snapshot.get("observation_contract") == "equipment-boxes-v2"
+        supported = list(EQUIPMENT_PROMPTS if boxed else CLASSES) if snapshot else []
+        return {"runtime_available": snapshot is not None and blocked is None, "supported_classes": supported,
+                "blocked_reason": blocked, "blocked_message": "Облачный запуск закрыт: сначала настройте проверяемое резервирование верхней стоимости в бюджете 1000 ₽." if blocked else None,
+                "model_acceptance": "unverified", "stages": [
+                    {"id": key, "label": label, "rule": RULE if key == "excavation" and snapshot and not boxed and not blocked else None,
+                     "suggested_equipment": equipment, "requires_manual_confirmation": True,
+                     "unsupported_equipment": [name for name in equipment if name not in supported]}
+                    for key, (label, equipment) in CONSTRUCTION_STAGES.items()]}
 
     @app.post("/runs/single-image")
     @app.post("/runs/series")
@@ -163,7 +183,7 @@ def create_app() -> FastAPI:
             code = str(exc)
             status = (202 if code == "submission_in_progress" else
                       409 if code == "idempotency_key_conflict" else
-                      503 if code in {"submission_publication_failed", "submission_interrupted"} else 400)
+                      503 if code in {"submission_publication_failed", "submission_interrupted", "cloud_budget_reservation_unavailable"} else 400)
             return JSONResponse({"code": code}, status_code=status)
         except AdmissionStoreError:
             return JSONResponse({"code": "profile_unauthorized"}, status_code=503)

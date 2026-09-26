@@ -337,7 +337,8 @@ def test_stage_summary_separates_projection_and_newer_lifecycle(isolated_admissi
         assert excavation["latest_result"] == {"run_id": str(result), "created_at": "2026-09-24T08:22:00+00:00",
                                                 "projection": {"outcome": "observations_only"}}
         assert excavation["latest_lifecycle"]["run_id"] == str(newer[-1])
-        assert all(not stage["supported"] and stage["latest_result"] is None for stage in summary if stage is not excavation)
+        assert len(summary) == 8
+        assert all(stage["supported"] and stage["latest_result"] is None for stage in summary if stage is not excavation)
     finally:
         store.close()
 

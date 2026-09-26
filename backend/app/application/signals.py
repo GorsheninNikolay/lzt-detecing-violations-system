@@ -9,9 +9,11 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
 
+from app.domain.site_analysis import utc_frame_times
+
 
 router = APIRouter()
-STAGES = {"excavation", "concreting", "roadwork"}
+from app.domain.construction_stages import STAGES
 STATES = {"new", "in_progress", "closed"}
 
 
@@ -24,7 +26,7 @@ def _insert_signal(connection, *, run_id, zone_id, revision_id, entry_id, kind, 
         (id,fingerprint,run_id,zone_id,revision_id,work_entry_id,kind,basis)
         VALUES (:id,:fingerprint,:run,:zone,:revision,:entry,:kind,CAST(:basis AS jsonb))
         ON CONFLICT (fingerprint) DO NOTHING"""),
-        {"id": uuid.uuid4(), "fingerprint": _fingerprint(run_id, revision_id, entry_id, kind),
+        {"id": uuid.uuid4(), "fingerprint": _fingerprint(basis.get("evidence_identity", run_id), revision_id, entry_id, kind),
          "run": run_id, "zone": zone_id, "revision": revision_id, "entry": entry_id,
          "kind": kind, "basis": json.dumps(basis, default=str)})
 
@@ -109,7 +111,7 @@ def confirm_stage(run_id: uuid.UUID, request: Request, body: dict):
     if not request.app.state.readiness.ready.is_set():
         return JSONResponse({"code": "service_not_ready"}, status_code=503)
     stage, comment = body.get("stage"), body.get("comment", "")
-    if stage not in STAGES or not isinstance(comment, str) or len(comment) > 2000:
+    if not isinstance(stage, str) or stage not in STAGES or not isinstance(comment, str) or len(comment) > 2000:
         return JSONResponse({"code": "invalid_stage_confirmation"}, status_code=400)
     with request.app.state.store.engine.begin() as connection:
         run = connection.execute(text("""SELECT r.state,b.zone_id,b.revision_id,b.frame_times
@@ -132,13 +134,22 @@ def confirm_stage(run_id: uuid.UUID, request: Request, body: dict):
             entries = connection.execute(text("""SELECT id,stage_key,starts_at,ends_at FROM zone_plan_entries
                 WHERE revision_id=:revision AND state='active' AND stage_key IS NOT NULL"""),
                 {"revision": run["revision_id"]}).mappings().all()
-            active = [entry for entry in entries if all(entry["starts_at"] <= datetime.fromisoformat(value)
-                      <= entry["ends_at"] for value in run["frame_times"])]
-            if active and stage not in {entry["stage_key"] for entry in active}:
+            inputs = connection.execute(text("SELECT input_id,sha256 FROM run_inputs WHERE run_id=:run ORDER BY ordinal"),
+                                        {"run": run_id}).all()
+            mismatches = []
+            planned = set()
+            for item, value in zip(inputs, utc_frame_times(run["frame_times"])):
+                active = [entry for entry in entries if entry["starts_at"] <= datetime.fromisoformat(value) <= entry["ends_at"]]
+                frame_stages = {entry["stage_key"] for entry in active}
+                if frame_stages and stage not in frame_stages:
+                    mismatches.append(str(item.input_id))
+                    planned.update(frame_stages)
+            if mismatches:
                 _insert_signal(connection, run_id=run_id, zone_id=run["zone_id"],
                                revision_id=run["revision_id"], entry_id=None,
                                kind="stage_plan_mismatch",
-                               basis={"rule_revision": "confirmed-stage-v1", "confirmed_stage": stage,
-                                      "planned_stages": sorted({entry["stage_key"] for entry in active}),
-                                      "recommendation": "Review the active zone plan."})
+                               basis={"rule_revision": "confirmed-stage-v2", "confirmed_stage": stage,
+                                      "planned_stages": sorted(planned), "supporting_input_ids": mismatches,
+                                      "evidence_identity": [stage, [(item.sha256, value) for item, value in zip(inputs, utc_frame_times(run["frame_times"]))]],
+                                      "recommendation": "Review the active zone plan at the supporting frame times."})
     return {"run_id": str(run_id), "stage": stage, "comment": comment}
