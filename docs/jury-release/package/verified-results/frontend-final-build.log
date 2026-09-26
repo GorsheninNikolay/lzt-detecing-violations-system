@@ -1,0 +1,14 @@
+npm notice run construction-evidence-web@0.1.0 build
+npm notice run tsc -b && vite build
+vite v8.2.2 building client environment for production...
+transforming...
+✓ 273 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                              0.45 kB │ gzip:  0.33 kB
+dist/assets/onest-cyrillic-DayYxulF.woff2   15.86 kB
+dist/assets/onest-latin-Dun_Rd-l.woff2      33.76 kB
+dist/assets/index-CO0Pkawg.css             718.08 kB │ gzip: 89.38 kB
+dist/assets/index-IJXu_JEV.js              343.22 kB │ gzip: 98.78 kB
+
+✓ built in 124ms

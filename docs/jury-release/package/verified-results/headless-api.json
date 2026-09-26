@@ -1,0 +1,12 @@
+{
+  "scope": "Real API/PostgreSQL/MinIO plan creation and UI rendering, no observer bound and no image inference",
+  "project_id": "466c96ad-5617-48a1-8398-cf30313ff9af",
+  "zone_id": "0047f4c8-cc81-40b8-b63a-dcc5907a5417",
+  "stages": 8,
+  "plan_entries": 8,
+  "viewports": [
+    "1366x900",
+    "390x844"
+  ],
+  "errors": []
+}

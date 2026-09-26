@@ -1,0 +1,9 @@
+{
+  "scope": "UI automation only; synthetic test decisions are not human ground truth",
+  "source_image_count": 100,
+  "source_checksums_verified": true,
+  "headless": true,
+  "viewports": ["1440x1000", "390x844"],
+  "passed": ["draw_box", "explicit_class_and_scene_decisions", "confirm", "reload_progress", "export", "import", "edit_invalidates_review", "candidate_adoption", "candidate_duplicate_block", "invalid_import_rejection", "draft_overwrite_confirmation", "calendar_date_validation", "mobile_zoom", "missing_image_blocks_confirmation"],
+  "javascript_errors": []
+}

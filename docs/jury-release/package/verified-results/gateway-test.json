@@ -1,0 +1,13 @@
+{
+  "scope": "Local isolated Nginx with a test self-signed certificate; not deployed HTTPS acceptance",
+  "anonymous_html": 401,
+  "anonymous_readiness": 401,
+  "anonymous_history": 401,
+  "anonymous_evidence_route": 401,
+  "wrong_code_html": 401,
+  "valid_test_code_html": 200,
+  "valid_test_code_api": 502,
+  "api_limitation": "No backend in the isolated proxy test; 502 confirms only authentication passed",
+  "production_tls_verified": false,
+  "compose_overlay_validation": "Passed using server Docker Compose v5.1.1: one HTTPS port, three secrets; config only, no deployment"
+}

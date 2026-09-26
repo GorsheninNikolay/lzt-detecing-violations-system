@@ -1,0 +1,11 @@
+npm notice run construction-evidence-web@0.1.0 test
+npm notice run vitest --run
+
+ RUN  v5.0.0 /private/tmp/lzt-jury-ready-release/web
+
+
+ Test Files  2 passed (2)
+      Tests  117 passed (117)
+   Start at  15:31:33
+   Duration  8.17s (tests 92%, environment 4%, transform 3%, import 2%)
+

@@ -1,0 +1,15 @@
+{
+  "kind": "read_only_existing_deployment",
+  "date": "2026-09-26",
+  "host": "158.160.42.119",
+  "hostname": "my-own-machine",
+  "compose_working_directory": "/home/gorshenin-nik/apps/construction-evidence-releases/c5766cc8eaacf9a16e9006d5c294ab6567b26a5e/infra/deploy",
+  "readiness": {"ready": true, "code": "ready"},
+  "stage_ids": ["excavation", "other"],
+  "succeeded_run_count": 5,
+  "docker_version": "29.3.0",
+  "compose_version": "v5.1.1",
+  "new_release_deployed": false,
+  "new_model_invocations": 0,
+  "scope": "Readiness and existing deployment metadata only; not model or jury release acceptance."
+}
