@@ -2038,7 +2038,7 @@ describe('New Analysis', () => {
     expect(screen.getByRole('heading', { name: 'Анализ выполняется' })).toBeTruthy()
     await act(async () => { await vi.advanceTimersByTimeAsync(3000) })
     expect(screen.getByRole('status').textContent).toBe('Связь потеряна. Анализ может продолжаться на сервере.')
-    expect(screen.getByText('Проверка пригодности кадров')).toBeTruthy()
+    expect(screen.getAllByText('Проверка пригодности кадров').length).toBeGreaterThan(0)
     fireEvent.click(screen.getByRole('button', { name: 'Проверить статус' }))
     await act(async () => { await Promise.resolve() })
     expect(screen.getByRole('button', { name: 'Проверяем статус…' })).toHaveProperty('disabled', true)
@@ -2088,7 +2088,7 @@ describe('New Analysis', () => {
     await act(async () => { render(<App />) })
     await act(async () => { await vi.advanceTimersByTimeAsync(3000) })
     expect(screen.getByRole('heading', { name: 'Анализ выполняется' })).toBeTruthy()
-    expect(screen.getByText('Проверка пригодности кадров')).toBeTruthy()
+    expect(screen.getAllByText('Проверка пригодности кадров').length).toBeGreaterThan(0)
     expect(screen.getByRole('status').textContent).toContain('Не удалось получить актуальный статус')
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Проверить статус' })) })
     expect(screen.getByRole('heading', { name: 'Статус анализа неизвестен' })).toBeTruthy()
@@ -2108,7 +2108,7 @@ describe('New Analysis', () => {
     await act(async () => { await vi.advanceTimersByTimeAsync(10000) })
     expect(fetchMock.mock.calls[1][1].signal.aborted).toBe(true)
     expect(screen.getByRole('button', { name: 'Проверить статус' })).toBeTruthy()
-    expect(screen.getByText('Проверка пригодности кадров')).toBeTruthy()
+    expect(screen.getAllByText('Проверка пригодности кадров').length).toBeGreaterThan(0)
   })
 
   it('keeps undo disabled when a restored frame would exceed eight', async () => {
@@ -2152,4 +2152,43 @@ describe('New Analysis', () => {
       expect((await screen.findAllByText(/Укажите существующие местные дату и время/)).length).toBeGreaterThan(0)
     } finally { vi.unstubAllEnvs() }
   })
+})
+
+it('jumps straight to received pipeline stages and removes processing immediately on completion',async()=>{
+ history.replaceState({},'', '/runs/12345678-1234-1234-1234-123456789abc')
+ localStorage.removeItem('analysis-motion')
+ let index=0
+ const snapshots=[snapshot('running',['succeeded','succeeded','running','pending','pending','pending']),snapshot('running',['succeeded','succeeded','succeeded','skipped','skipped','running'],{3:'not_applicable',4:'not_applicable'}),snapshot('succeeded',['succeeded','succeeded','succeeded','skipped','skipped','succeeded'])]
+ vi.stubGlobal('fetch',vi.fn(async()=>({ok:true,json:async()=>snapshots[Math.min(index++,2)]})))
+ vi.useFakeTimers()
+ try{
+  await act(async()=>{render(<App/>)})
+  expect(document.querySelector('.analysis-scene.is-recognizing')).toBeTruthy()
+  expect(within(screen.getByRole('list',{name:'Краткие этапы'})).getAllByRole('listitem')).toHaveLength(6)
+  await act(async()=>{await vi.advanceTimersByTimeAsync(3000)})
+  expect(within(screen.getByRole('region',{name:'Ход анализа'})).getByRole('heading').textContent).toBe('Формирование результата')
+  expect(document.querySelector('.analysis-scene.is-recognizing')).toBeNull()
+  expect(document.querySelectorAll('.analysis-route .route-skipped')).toHaveLength(2)
+  await act(async()=>{await vi.advanceTimersByTimeAsync(3000)})
+  expect(document.querySelector('.analysis-scene')).toBeNull()
+ }finally{vi.useRealTimers();cleanup();vi.unstubAllGlobals()}
+})
+
+it('retries a failed processing thumbnail without nesting buttons or changing selected frame',async()=>{
+ history.replaceState({},'', '/runs/12345678-1234-1234-1234-123456789abc')
+ Object.defineProperty(URL,'createObjectURL',{configurable:true,value:vi.fn(()=> 'blob:photo')})
+ Object.defineProperty(URL,'revokeObjectURL',{configurable:true,value:vi.fn()})
+ let attempts=0
+ vi.stubGlobal('fetch',vi.fn(async(url:string)=>url.endsWith('/thumbnail')?(++attempts===1?{ok:false,json:async()=>({})}:{ok:true,blob:async()=>new Blob(['image'])}):url.includes('/artifacts/')?{ok:true,blob:async()=>new Blob(['image'])}:{ok:true,json:async()=>({...snapshot('running',['succeeded','succeeded','running','pending','pending','pending']),inputs:[{input_id:'f1',ordinal:0,artifact_id:'a1',sha256:'s1'},{input_id:'f2',ordinal:1,artifact_id:'a2',sha256:'s2'}]})}))
+ try{
+  render(<App/>);const thumbnails=await screen.findByLabelText('Кадры обработки')
+  const retry=await within(thumbnails).findByRole('button',{name:'Повторить'})
+  expect(thumbnails.querySelector('button button')).toBeNull()
+  const first=within(thumbnails).getByRole('button',{name:'Кадр 1'})
+  expect(first.getAttribute('aria-pressed')).toBe('true')
+  await userEvent.setup().click(retry)
+  await waitFor(()=>expect(attempts).toBe(3))
+  expect(first.getAttribute('aria-pressed')).toBe('true')
+  expect(within(thumbnails).queryByRole('button',{name:'Повторить'})).toBeNull()
+ }finally{cleanup();vi.unstubAllGlobals()}
 })

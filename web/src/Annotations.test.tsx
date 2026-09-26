@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { AnnotationEditor, AnnotationQueue, shiftBox, validObjects } from './Annotations'
+import { AnnotationEditor, AnnotationQueue, shiftBox, resizeBox, validObjects } from './Annotations'
 
 const initial = [{id:'00000000-0000-4000-8000-000000000001',class_name:'excavator',box:[.1,.2,.5,.6] as [number,number,number,number]}]
 const review={id:'proposal',run_id:'run',input_id:'frame',input_sha256:'sha',artifact_id:'artifact',original_objects:initial,objects:initial,revision:1,status:'pending',version_id:'version',whole_frame_verified:false,reason:''}
@@ -233,4 +233,104 @@ it('keeps an approved pending request frozen when its image fails before reload'
  expect(fetchMock.mock.calls[1][1].body).toBe(fetchMock.mock.calls[0][1].body)
  expect(fetchMock.mock.calls[1][1].headers['Idempotency-Key']).toBe(fetchMock.mock.calls[0][1].headers['Idempotency-Key'])
  expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toMatchObject({status:'approved',whole_frame_verified:true,expected_revision:1})
+})
+
+it('draws in reverse on a scaled, translated image and records one undo operation',async()=>{
+ vi.stubGlobal('PointerEvent',MouseEvent)
+ const user=userEvent.setup(),view=render(<AnnotationEditor {...props}/>)
+ vi.spyOn(view.container.querySelector('.annotation-canvas')!,'getBoundingClientRect').mockReturnValue({width:400,height:200,left:50,top:30,right:450,bottom:230,x:50,y:30,toJSON:()=>({})})
+ await user.click(screen.getByRole('button',{name:'Нарисовать объект'}))
+ const viewport=view.container.querySelector('.annotation-viewport')!
+ fireEvent.pointerDown(viewport,{clientX:370,clientY:190})
+ fireEvent.pointerMove(viewport,{clientX:130,clientY:70})
+ fireEvent.pointerUp(viewport,{clientX:130,clientY:70})
+ const saved=JSON.parse(localStorage.getItem('annotation:run:frame:sha:visitor')!)
+ expect(saved.history).toHaveLength(2)
+ expect(saved.history[1][1].box).toEqual([.2,.2,.8,.8])
+ fireEvent.click(screen.getByRole('button',{name:'Объект 1: Экскаватор'}),{detail:1})
+ expect(screen.getByRole('button',{name:'Объект 2'}).getAttribute('aria-pressed')).toBe('true')
+ await waitFor(()=>expect(document.activeElement).toBe(screen.getByLabelText('Класс')))
+ expect(screen.getAllByRole('button',{name:/Изменить размер/})).toHaveLength(8)
+ await user.selectOptions(screen.getByLabelText('Класс'),'mobile_crane')
+ expect(JSON.parse(localStorage.getItem('annotation:run:frame:sha:visitor')!).history.at(-1)[1].class_name).toBe('mobile_crane')
+ await user.click(screen.getByRole('button',{name:'Отменить'}));await user.click(screen.getByRole('button',{name:'Отменить'}))
+ expect(view.container.querySelectorAll('.annotation-box')).toHaveLength(1)
+})
+
+it('cancels a geometry preview when a second touch starts pinch and keeps history unchanged',()=>{
+ class TouchPointer extends MouseEvent {pointerId:number;constructor(type:string,options:PointerEventInit){super(type,options);this.pointerId=options.pointerId??0}}
+ vi.stubGlobal('PointerEvent',TouchPointer)
+ const view=render(<AnnotationEditor {...props}/>)
+ const viewport=view.container.querySelector('.annotation-viewport')!,canvas=view.container.querySelector('.annotation-canvas')!
+ const bounds={width:400,height:200,left:0,top:0,right:400,bottom:200,x:0,y:0,toJSON:()=>({})}
+ vi.spyOn(canvas,'getBoundingClientRect').mockReturnValue(bounds);vi.spyOn(viewport,'getBoundingClientRect').mockReturnValue(bounds)
+ const box=screen.getByRole('button',{name:'Объект 1: Экскаватор'}),before=localStorage.getItem('annotation:run:frame:sha:visitor')
+ fireEvent.pointerDown(box,{pointerId:1,clientX:60,clientY:80})
+ fireEvent.pointerMove(box,{pointerId:1,clientX:100,clientY:90})
+ fireEvent.pointerDown(viewport,{pointerId:2,clientX:200,clientY:90})
+ fireEvent.pointerMove(viewport,{pointerId:2,clientX:300,clientY:90})
+ fireEvent.pointerUp(box,{pointerId:1,clientX:100,clientY:90});fireEvent.pointerUp(viewport,{pointerId:2,clientX:300,clientY:90})
+ expect(localStorage.getItem('annotation:run:frame:sha:visitor')).toBe(before)
+ expect(screen.getByLabelText('Масштаб фото').textContent).toBe('200%')
+})
+
+it('clamps every resize handle including tiny boxes at all image edges',()=>{
+ for(const handle of ['n','ne','e','se','s','sw','w','nw'] as const){
+  for(const [dx,dy] of [[-2,-2],[2,2],[-2,2],[2,-2]]){
+   expect(validObjects([{...initial[0],box:resizeBox(initial[0].box,dx,dy,handle)}])).toBe(true)
+   expect(validObjects([{...initial[0],box:resizeBox([.9999,.9999,1,1],dx,dy,handle)}])).toBe(true)
+  }
+ }
+})
+
+it('focuses a clicked box so the next keyboard arrow edits that object',async()=>{
+ const user=userEvent.setup();render(<AnnotationEditor {...props}/> )
+ await user.click(screen.getByRole('button',{name:'Выбрать'}))
+ const box=screen.getByRole('button',{name:'Объект 1: Экскаватор'})
+ await user.click(box);expect(document.activeElement).toBe(box)
+ await user.keyboard('{ArrowRight}')
+ expect(JSON.parse(localStorage.getItem('annotation:run:frame:sha:visitor')!).history.at(-1)[0].box[0]).toBe(.11)
+})
+
+it('disables drawing at capacity and never falls through to moving an existing box',async()=>{
+ vi.stubGlobal('PointerEvent',MouseEvent)
+ const user=userEvent.setup(),objects=Array.from({length:299},(_,index)=>({...initial[0],id:`object-${index}`}))
+ const view=render(<AnnotationEditor {...props} initial={objects}/>)
+ vi.spyOn(view.container.querySelector('.annotation-canvas')!,'getBoundingClientRect').mockReturnValue({width:100,height:100,left:0,top:0,right:100,bottom:100,x:0,y:0,toJSON:()=>({})})
+ await user.click(screen.getByRole('button',{name:'Нарисовать объект'}));await user.click(screen.getByRole('button',{name:'Добавить объект'}))
+ expect(screen.getByRole('button',{name:'Нарисовать объект'})).toHaveProperty('disabled',true)
+ expect(screen.getByText(/Достигнут предел: 300 объектов/)).toBeTruthy()
+ const before=localStorage.getItem('annotation:run:frame:sha:visitor'),box=screen.getByRole('button',{name:'Объект 1: Экскаватор'})
+ fireEvent.pointerDown(box,{clientX:20,clientY:20});fireEvent.pointerMove(box,{clientX:40,clientY:40});fireEvent.pointerUp(box,{clientX:40,clientY:40})
+ expect(localStorage.getItem('annotation:run:frame:sha:visitor')).toBe(before)
+})
+
+it('opens and focuses the affected object when pending coordinates are hidden by selection',async()=>{
+ const user=userEvent.setup(),view=render(<AnnotationEditor {...props} initial={[...initial,{...initial[0],id:'second'}]}/> )
+ fireEvent.change(screen.getByLabelText('Слева'),{target:{value:'.9'}})
+ await user.click(screen.getByRole('button',{name:'Объект 2'}))
+ expect(screen.getByRole('button',{name:'Отправить поправки на проверку'})).toHaveProperty('disabled',true)
+ await user.click(screen.getByRole('button',{name:'Исправить границы объекта 1'}))
+ await waitFor(()=>expect(document.activeElement).toBe(screen.getByLabelText('Слева')))
+ expect(view.container.querySelector('.annotation-selected details')).toHaveProperty('open',true)
+ expect(screen.getByLabelText('Слева')).toHaveProperty('value','.9')
+ await user.click(screen.getByRole('button',{name:'Вернуть сохранённые границы'}))
+ expect(screen.getByRole('button',{name:'Отправить поправки на проверку'})).toHaveProperty('disabled',false)
+})
+
+it.each(['n','ne','e','se','s','sw','w','nw'] as const)('persists the exact %s handle drag once and preserves its opposite edges',handle=>{
+ vi.stubGlobal('PointerEvent',MouseEvent)
+ const view=render(<AnnotationEditor {...props}/> )
+ vi.spyOn(view.container.querySelector('.annotation-canvas')!,'getBoundingClientRect').mockReturnValue({width:100,height:100,left:0,top:0,right:100,bottom:100,x:0,y:0,toJSON:()=>({})})
+ const button=view.container.querySelector(`.handle-${handle}`)!
+ fireEvent.pointerDown(button,{clientX:20,clientY:20});fireEvent.pointerMove(button,{clientX:25,clientY:25});fireEvent.pointerMove(button,{clientX:30,clientY:30});fireEvent.pointerUp(button,{clientX:30,clientY:30})
+ const stored=JSON.parse(localStorage.getItem('annotation:run:frame:sha:visitor')!)
+ expect(stored.history).toHaveLength(2);expect(stored.cursor).toBe(1)
+ expect(stored.history[1][0].box).toEqual([
+  handle.includes('w') ? .1+.1 : .1, handle.includes('n') ? .2+.1 : .2,
+  handle.includes('e') ? .5+.1 : .5, handle.includes('s') ? .6+.1 : .6,
+ ])
+ fireEvent.click(screen.getByRole('button',{name:'Отменить'}))
+ const undone=JSON.parse(localStorage.getItem('annotation:run:frame:sha:visitor')!)
+ expect(undone.cursor).toBe(0);expect(undone.history[undone.cursor][0].box).toEqual(initial[0].box)
 })

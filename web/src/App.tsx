@@ -1,3 +1,4 @@
+import { SourceImage, EvidenceViewer, makeResultFrames, frameDescription, type Input, type Observation, type NativeEvidence, type DetectedObject, type ProfileSnapshot } from './EvidenceViewer'
 import { useEffect, useRef, useState, type FormEvent, type RefObject } from 'react'
 import demoCases from './demoCases.json'
 import AppHeader from './AppHeader'
@@ -16,16 +17,10 @@ type DemoCase = (typeof demoCases.cases)[number]
 type Pending = { endpoint: string; body: string; key: string }
 type Errors = Partial<Record<'scenario' | 'observation_area' | 'period' | 'images' | 'submit', string>>
 type Stage = { name: string; state: string; reason?: string | null; timestamp?: string | null }
-type Input = { input_id: string; ordinal: number; sha256: string; artifact_id: string | null }
-type Observation = { input_id: string; ordinal: number; class_name: string; state: string; reason?: string | null; source_artifact_id: string | null; input_sha256?: string; invocation_id?: string | null }
-type NativeEvidence = { artifact_id: string; input_id: string; ordinal: number; sha256: string; invocation_id: string; profile_id: string; profile_revision: number; preprocessing_revision?: string | null }
-type DetectedObject = { id?: string; input_id: string; class_name: string; score: number; box: [number, number, number, number]; image_size: [number, number]; invocation_id: string }
 type Series = { usable_count: number; usable_input_ids: string[]; declared_observation_area: string | null; input_order: string[]; excavator_supporting_input_ids: string[]; dump_truck_persistence_input_ids: string[]; dump_truck_persistence_text: string | null }
 type Rule = { name: string; revision: string; expectation: string; provenance: string; recommendation: string | null }
 type Choice = { id: string; label: string; rule: Rule | null }
 type ResultProjection = { outcome: string; frames?: Observation[]; context?: { period?: string; observation_area?: string; stage_id?: string; project_id?: string; zone_id?: string; capture_times?: string[] }; series?: Series; reason?: string | null; uncertainty?: string | null; recommendation?: string | null; rule?: Rule | null; supporting_input_ids?: string[] | null; stage_hypotheses?: { stage: string; equipment: string; scene_features: string[] }[] }
-type ProfileSnapshot = { observation_contract?: string; adapter?: { code?: string } }
-type ResultFrame = { input_id: string; ordinal: number; artifact_id: string | null; sha256: string | null; usable: boolean | null; observations: Observation[] }
 type RunSnapshot = { planned_works?: { title: string; stage_key: string | null; starts_at: string; ends_at: string; state: string }[]; project_id?: string | null; zone_id?: string | null; run_id?: string; purpose?: string; state: string; stages: Stage[]; context?: { period?: string; observation_area?: string; stage_id?: string; project_id?: string; zone_id?: string; capture_times?: string[] }; intent?: string; stage?: string | null; profile_snapshot?: ProfileSnapshot; rule_snapshot?: Rule | null; requested_classes?: string[]; inputs?: Input[]; observations?: Observation[]; objects?: DetectedObject[]; native_evidence_by_frame?: NativeEvidence[]; outcome?: string | null; result_projection?: ResultProjection | null; plan_binding?: { zone_id: string; revision_id: string; capture_times: string[] } | null; stage_confirmation?: { stage: string; comment: string; created_at?: string } | null; retry_predecessor_id?: string | null; retry_successor_id?: string | null; retry_of_run_id?: string | null; successor_run_id?: string | null; retry_eligible?: boolean; retry_profile_id?: string; retry_authorization_revision?: number; profile_id?: string; authorization_revision?: number; created_at?: string }
 
 type HistoryRun = { project_id?: string | null; id: string; run_id: string; created_at: string | null; stage: string | null; intent: string; state: string; outcome: string | null; retry_predecessor_id: string | null; retry_successor_id: string | null; retry_of_run_id?: string | null; successor_run_id?: string | null }
@@ -41,129 +36,6 @@ type PlanEntry = { id?: string; catalog_work_id: string; starts_at: string; ends
 type ZonePlan = { revision_id?: string; revision_number: number; entries: PlanEntry[] }
 const OBSERVATION_STATES: Record<string, string> = { detected: 'Обнаружен', not_detected_in_frame: 'Не обнаружен в кадре', insufficient_data: 'Недостаточно данных', not_analyzed: 'Не анализировалось' }
 const OBSERVATION_REASONS: Record<string, string> = { frame_unassessable: 'Кадр непригоден для распознавания.', unsupported_class: 'Класс не поддерживается профилем распознавания.', observer_unavailable: 'Распознавание недоступно.' }
-
-function artifactUrl(runId: string, artifactId: string) { return `/api/runs/${runId}/artifacts/${artifactId}` }
-
-function useArtifact(runId: string, artifactId: string | null, thumbnail = false) {
-  const [attempt, retry] = useState(0)
-  const [loaded, setLoaded] = useState<{ id: string; url: string } | null>(null)
-  const [failure, setFailure] = useState<{ id: string; code: string } | null>(null)
-  useEffect(() => {
-    if (!artifactId) return
-    const controller = new AbortController()
-    let url: string | null = null
-    void fetch(artifactUrl(runId, artifactId) + (thumbnail ? '/thumbnail' : ''), { signal: controller.signal }).then(async response => {
-      if (!response.ok) {
-        const body = await response.json().catch(() => ({})) as { code?: string }
-        throw new Error(body.code === 'artifact_integrity_failed' ? 'integrity' : 'unavailable')
-      }
-      url = URL.createObjectURL(await response.blob())
-      if (!controller.signal.aborted) { setLoaded({ id: artifactId, url }); setFailure(null) }
-      else URL.revokeObjectURL(url)
-    }).catch(error => { if (!controller.signal.aborted) setFailure({ id: artifactId, code: error.message === 'integrity' ? 'integrity' : 'unavailable' }) })
-    return () => { controller.abort(); if (url) URL.revokeObjectURL(url) }
-  }, [runId, artifactId, attempt, thumbnail])
-  return { url: loaded?.id === artifactId && failure?.id !== artifactId ? loaded.url : null,
-    error: failure?.id === artifactId ? failure.code : null,
-    retry: () => { setLoaded(null); setFailure(null); retry(value => value + 1) } }
-}
-
-function SourceImage({ runId, artifactId, label, description, objects = [], showBoxes = false, selectedObject, onSelectObject, thumbnail = false }: { runId: string; artifactId: string | null; label: string; description: string; objects?: DetectedObject[]; showBoxes?: boolean; selectedObject?: number | null; onSelectObject?: (index: number) => void; thumbnail?: boolean }) {
-  const artifact = useArtifact(runId, artifactId, thumbnail)
-  return <div className="source-image">{!artifactId ? <p className="error">Исходное изображение недоступно для этого кадра.</p> : artifact.url ? <div className="annotated-image"><img src={artifact.url} alt={`Исходное изображение: ${label}. ${description}`} />{showBoxes && objects.map((object, index) => {
-    const [x1, y1, x2, y2] = object.box
-    if (!(x1 >= 0 && y1 >= 0 && x2 <= 1 && y2 <= 1 && x2 > x1 && y2 > y1 && [x1, y1, x2, y2].every(Number.isFinite))) return null
-    const Overlay = onSelectObject ? 'button' : 'div'
-    return <Overlay key={`${object.invocation_id}-${index}`} aria-hidden={!onSelectObject} className={`object-box ${selectedObject === index ? 'selected' : ''}`} aria-label={`Объект ${index + 1}: ${CLASS_LABELS[object.class_name] ?? object.class_name}`} aria-pressed={selectedObject === index} onClick={() => onSelectObject?.(index)} style={{ pointerEvents: onSelectObject ? 'auto' : 'none', left: `${100 * x1}%`, top: `${100 * y1}%`, width: `${100 * (x2 - x1)}%`, height: `${100 * (y2 - y1)}%` }}><span>{index + 1}</span></Overlay>
-  })}</div> :
-    artifact.error ? <p className="error">{artifact.error === 'integrity' ? 'Целостность артефакта не подтверждена' : 'Не удалось открыть исходное изображение'} <button type="button" className="secondary" onClick={artifact.retry}>Повторить</button></p> :
-      <p className="muted">Загружаем изображение…</p>}</div>
-}
-
-function frameDescription(observations: Observation[]): string {
-  return observations.map(item =>
-    `${CLASS_LABELS[item.class_name] ?? item.class_name}: ${OBSERVATION_STATES[item.state] ?? item.state}${item.reason ? `; ${OBSERVATION_REASONS[item.reason] ?? item.reason}` : ''}`).join('. ')
-}
-
-function makeResultFrames(observations: Observation[], inputs: Input[], usableInputIds?: string[], projected = false): ResultFrame[] {
-  const inputsById = new Map(inputs.map(input => [input.input_id, input]))
-  const frames = new Map<string, ResultFrame>(inputs.map(input => [input.input_id, {
-    input_id: input.input_id, ordinal: input.ordinal, artifact_id: input.artifact_id, sha256: input.sha256,
-    usable: usableInputIds ? usableInputIds.includes(input.input_id) : null, observations: [],
-  }]))
-  for (const observation of observations) {
-    let frame = frames.get(observation.input_id)
-    if (!frame) {
-      const input = inputsById.get(observation.input_id)
-      frame = { input_id: observation.input_id, ordinal: observation.ordinal,
-        artifact_id: observation.source_artifact_id ?? input?.artifact_id ?? null,
-        sha256: input?.sha256 ?? observation.input_sha256 ?? null,
-        usable: usableInputIds ? usableInputIds.includes(observation.input_id) : null, observations: [] }
-      frames.set(observation.input_id, frame)
-    }
-    if (projected) {
-      frame.ordinal = observation.ordinal
-      frame.artifact_id = observation.source_artifact_id ?? frame.artifact_id
-    }
-    frame.observations.push(observation)
-  }
-  return [...frames.values()].sort((left, right) => left.ordinal - right.ordinal)
-}
-
-function EvidenceViewer({ runId, frames, native, objects, showBoxes, profile, context, selected, onClose, onSelect }: {
-  runId: string; frames: ResultFrame[]; native: NativeEvidence[]; objects: DetectedObject[]; showBoxes: boolean; profile?: ProfileSnapshot; context?: RunSnapshot['context']; selected: number;
-  onClose: () => void; onSelect: (index: number) => void
-}) {
-  const dialog = useRef<HTMLDialogElement>(null)
-  const handledClose = useRef(false)
-  const [zoom, setZoom] = useState(1)
-  const [nativeResult, setNativeResult] = useState<{ id: string; text: string } | null>(null)
-  const [nativeError, setNativeError] = useState<{ id: string; code: string } | null>(null)
-  const [nativeAttempt, retryNative] = useState(0)
-  const frame = frames[selected]
-  const evidence = native.find(item => item.input_id === frame.input_id)
-  const handleClose = () => {
-    if (handledClose.current) return
-    handledClose.current = true
-    onClose()
-  }
-  useEffect(() => {
-    handledClose.current = false
-    dialog.current?.showModal()
-    return () => { if (dialog.current?.open) dialog.current.close() }
-  }, [])
-  useEffect(() => {
-    if (!evidence) return
-    const controller = new AbortController()
-    void fetch(artifactUrl(runId, evidence.artifact_id), { signal: controller.signal }).then(async response => {
-      if (!response.ok) {
-        const body = await response.json().catch(() => ({})) as { code?: string }
-        throw new Error(body.code === 'artifact_integrity_failed' ? 'integrity' : 'unavailable')
-      }
-      const text = await response.text()
-      if (!controller.signal.aborted) { setNativeResult({ id: evidence.artifact_id, text }); setNativeError(null) }
-    }).catch(error => { if (!controller.signal.aborted) setNativeError({ id: evidence.artifact_id, code: error.message === 'integrity' ? 'integrity' : 'unavailable' }) })
-    return () => controller.abort()
-  }, [runId, evidence?.artifact_id, nativeAttempt])
-  return <dialog ref={dialog} aria-label="Просмотр исходных кадров" onClose={handleClose} onKeyDown={event => {
-    if (event.key !== 'Tab' || !dialog.current) return
-    const focusable = [...dialog.current.querySelectorAll<HTMLElement>('a[href],button:not(:disabled),input:not(:disabled):not([type="hidden"]),select:not(:disabled),textarea:not(:disabled),summary,[tabindex]:not([tabindex="-1"]),[contenteditable="true"]')]
-      .filter(element => element.getClientRects().length > 0 && getComputedStyle(element).visibility !== 'hidden')
-    const first = focusable[0]
-    const last = focusable[focusable.length - 1]
-    if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus() }
-    else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus() }
-  }} className="evidence-dialog">
-    <div className="viewer-toolbar"><button type="button" className="secondary" onClick={() => dialog.current?.close()}>Закрыть</button><button type="button" className="secondary" disabled={selected === 0} onClick={() => { onSelect(selected - 1); setZoom(1) }}>Предыдущий кадр</button><button type="button" className="secondary" disabled={selected === frames.length - 1} onClick={() => { onSelect(selected + 1); setZoom(1) }}>Следующий кадр</button><button type="button" className="secondary" onClick={() => setZoom(value => Math.min(4, value + .5))}>Увеличить</button><button type="button" className="secondary" onClick={() => setZoom(value => Math.max(1, value - .5))}>Уменьшить</button><button type="button" className="secondary" onClick={() => setZoom(1)}>Сбросить масштаб</button></div>
-    <p role="status">Кадр {selected + 1} из {frames.length}. Масштаб {Math.round(zoom * 100)}%.</p>
-    <p>Номер кадра: {frame.ordinal + 1}. Пригодность: {frame.usable === null ? 'не указана' : frame.usable ? 'пригоден' : 'не пригоден'}.</p>
-    <p>Наблюдения: {frameDescription(frame.observations) || 'не указаны'}.</p>
-    <p>Период: {context?.period ?? 'не указан'}.</p>
-    <div className="viewer-image"><div style={{ width: `${zoom * 100}%` }}><SourceImage key={frame.input_id} runId={runId} artifactId={frame.artifact_id} label={`Кадр ${frame.ordinal + 1}`} description={frameDescription(frame.observations)} objects={objects.filter(item => item.input_id === frame.input_id)} showBoxes={showBoxes} /></div></div>
-    <details><summary>Подробности кадра</summary><p>Входной ID: <code>{frame.input_id}</code>.</p><p>Исходный артефакт ID: <code>{frame.artifact_id ?? 'не указан'}</code>. SHA-256 исходного кадра: <code>{frame.sha256 ?? 'не указан'}</code>.</p></details>
-    {evidence && <details><summary>Технические данные наблюдателя</summary><p>Данные конкретного наблюдателя. Не используются правилом этапа.</p><p>Адаптер: <code>{profile?.adapter?.code ?? 'не указан'}</code>. Профиль <code>{evidence.profile_id}</code>, ревизия допуска: {evidence.profile_revision}. Вызов <code>{evidence.invocation_id}</code>. Входной ID <code>{evidence.input_id}</code>. Предобработка: {evidence.preprocessing_revision ? <code>{evidence.preprocessing_revision}</code> : 'не указана'}. Артефакт <code>{evidence.artifact_id}</code>, SHA-256 <code>{evidence.sha256}</code>.</p>{nativeError?.id === evidence.artifact_id ? <p className="error">{nativeError.code === 'integrity' ? 'Целостность артефакта не подтверждена' : 'Не удалось открыть технические данные'} <button type="button" className="secondary" onClick={() => { setNativeResult(null); setNativeError(null); retryNative(value => value + 1) }}>Повторить</button></p> : nativeResult?.id === evidence.artifact_id ? <pre>{nativeResult.text}</pre> : <p>Загружаем технические данные…</p>}</details>}
-  </dialog>
-}
 
 function ObservationResult({ run, runId, pageHeading, onOpen }: { run: RunSnapshot; runId: string; pageHeading?: RefObject<HTMLHeadingElement | null>; onOpen?: (path: string) => void }) {
   const heading = useRef<HTMLHeadingElement>(null)
@@ -216,7 +88,7 @@ function ObservationResult({ run, runId, pageHeading, onOpen }: { run: RunSnapsh
       </div>
 
       <div className="result-layout">
-        <section className="result-visual" aria-labelledby="source-heading">
+        <section className={`result-visual ${editing?'is-editing':''}`} aria-labelledby="source-heading">
           <div className="result-visual-heading">
             <h3 id="source-heading">Исходные кадры</h3>
             {objects.length > 0 && <label className="box-toggle"><input type="checkbox" checked={showBoxes} onChange={event => setShowBoxes(event.target.checked)} /> Показывать рамки объектов</label>}
@@ -232,7 +104,7 @@ function ObservationResult({ run, runId, pageHeading, onOpen }: { run: RunSnapsh
             </div>
             <ol className="object-list">{objects.filter(item => item.input_id === activeFrame.input_id).map((item, index) => <li key={item.id ?? item.invocation_id + '-' + index}><button type="button" aria-pressed={selectedObject === index} onClick={() => setSelectedObject(index)}>{index + 1}. {CLASS_LABELS[item.class_name] ?? item.class_name}</button><details><summary>Оценка модели</summary><p>{Math.round(item.score * 100)}% — оценка модели для этого объекта, не гарантия правильности и не вероятность нарушения.</p></details></li>)}</ol>
             {!objects.some(item => item.input_id === activeFrame.input_id) && <p>Рамок объектов нет. {activeFrame.observations.filter(item => item.state !== 'not_analyzed').map(item => `${CLASS_LABELS[item.class_name] ?? item.class_name}: ${OBSERVATION_STATES[item.state] ?? item.state}`).join('. ') || 'Текстовые наблюдения пока не получены.'}</p>}
-            {activeFrame.artifact_id && activeFrame.sha256 && run.purpose !== 'comparison_campaign' && <details ref={correction} onToggle={event => setEditing(event.currentTarget.open)}><summary>Исправить разметку</summary>{editing && <><button type="button" onClick={() => { if (correction.current) { correction.current.open = false; correction.current.querySelector('summary')?.focus() } }}>Вернуться к результату</button><AnnotationEditor key={activeFrame.input_id} runId={runId} inputId={activeFrame.input_id} checksum={activeFrame.sha256} artifactId={activeFrame.artifact_id} initial={objects.filter(item => item.input_id === activeFrame.input_id).map((item,index) => ({ id: item.id ?? `00000000-0000-4000-8000-${String(index).padStart(12,'0')}`, class_name:item.class_name, box:item.box }))} /></>}</details>}
+            {activeFrame.artifact_id && activeFrame.sha256 && run.purpose !== 'comparison_campaign' && <details className="correction-workspace" ref={correction} onToggle={event => setEditing(event.currentTarget.open)}><summary>Исправить разметку</summary>{editing && <><button type="button" className="secondary" onClick={() => { if (correction.current) { correction.current.open = false; correction.current.querySelector('summary')?.focus() } }}>Вернуться к результату</button><AnnotationEditor key={activeFrame.input_id} runId={runId} inputId={activeFrame.input_id} checksum={activeFrame.sha256} artifactId={activeFrame.artifact_id} initial={objects.filter(item => item.input_id === activeFrame.input_id).map((item,index) => ({ id: item.id ?? `00000000-0000-4000-8000-${String(index).padStart(12,'0')}`, class_name:item.class_name, box:item.box }))} /></>}</details>}
           </> : <p>{complete ? 'Исходные кадры в проекции недоступны.' : 'Исходные кадры недоступны.'}</p>}
           {frames.length > 1 && <div className="source-thumbnails" aria-label="Выбор исходного кадра">{frames.map(frame => <article className="source-thumbnail" key={frame.input_id}>
             <SourceImage thumbnail runId={runId} artifactId={frame.artifact_id} label={'Кадр ' + (frame.ordinal + 1)} description={frameDescription(frame.observations)} />
@@ -313,10 +185,20 @@ function ObservationResult({ run, runId, pageHeading, onOpen }: { run: RunSnapsh
 function RunPipeline({ run, runId, disconnected }: { run: RunSnapshot; runId: string; disconnected: boolean }) {
   const [motion, setMotion] = useState(() => { try { return localStorage.getItem('analysis-motion') !== 'off' } catch { return false } })
   useEffect(() => { document.documentElement.dataset.analysisMotion = motion ? 'on' : 'off' }, [motion])
+  const [activeId,setActiveId] = useState<string|null>(null)
   const current = run.stages.find(stage => stage.state === 'running')
+  const failed = run.stages.find(stage=>stage.state==='failed')
   const active = run.state === 'running' && !disconnected
-  const input = run.inputs?.[0]
-  return <>{run.state !== 'succeeded' && <section className={`analysis-scene ${active && motion ? 'is-running' : ''}`} aria-label="Ход анализа"><div className="analysis-photo">{input?.artifact_id ? <SourceImage runId={runId} artifactId={input.artifact_id} label="Кадр анализа" description="" objects={(run.objects ?? []).filter(item => item.input_id === input.input_id)} showBoxes /> : <p>Ожидаем зарегистрированные фотографии</p>}<div className="analysis-sweep" aria-hidden="true" /></div><div className="analysis-state"><h2>{disconnected ? 'Связь прервана — проверяем состояние' : 'Ход обработки фотографий'}</h2><p>{disconnected ? 'Последнее полученное состояние сохранено. Движение остановлено до ответа сервера.' : current ? STAGE_LABELS[current.name] ?? current.name : run.state === 'queued' ? 'Ожидает начала обработки на сервере.' : 'Сохранены только полученные данные.'}</p><ol aria-label="Краткие этапы">{run.stages.map(stage => <li key={stage.name}>{STAGE_LABELS[stage.name]} — {STAGE_STATES[stage.state]}</li>)}</ol><label><input type="checkbox" checked={motion} onChange={event => { setMotion(event.target.checked); try { localStorage.setItem('analysis-motion',event.target.checked ? 'on' : 'off') } catch { /* Motion remains optional without storage. */ } }} /> Движение во время анализа</label></div></section>}<details className="panel pipeline pipeline-details" >
+  const inputs=run.inputs??[]
+  const input = inputs.find(item=>item.input_id===activeId)??inputs[0]
+  const title=disconnected?'Связь прервана — проверяем состояние':failed?`Ошибка: ${STAGE_LABELS[failed.name]??'обработка'}`:current?STAGE_LABELS[current.name]??'Обработка фотографий':run.state==='queued'?'Ожидает начала обработки':run.state==='failed'?'Анализ завершился ошибкой':'Ожидаем состояние следующего этапа'
+  const explanation=disconnected?'Последнее полученное состояние сохранено. Движение остановлено до ответа сервера.':failed?STAGE_REASONS[failed.reason??'']??'Обработка остановилась. Полученные данные сохранены; подробности и повтор анализа доступны ниже.':current?STAGE_EXPLANATIONS[current.name]??'Сервер обрабатывает фотографии.':run.state==='queued'?'Фотографии приняты. Обработка начнётся, когда сервер назначит исполнителя.':'Неполученные этапы не считаются завершёнными. Пропущенные этапы отмечены отдельно.'
+  return <>{run.state !== 'succeeded' && <section className={`analysis-scene ${active && motion ? 'is-running' : ''} ${active && motion && current?.name==='equipment_observation'?'is-recognizing':''}`} aria-label="Ход анализа">
+    <div className="analysis-photo-column"><div className="analysis-photo">{input?.artifact_id ? <SourceImage runId={runId} artifactId={input.artifact_id} label={`Кадр анализа ${input.ordinal+1}`} description="" objects={(run.objects ?? []).filter(item => item.input_id === input.input_id)} showBoxes /> : <p>Ожидаем зарегистрированные фотографии</p>}<div className="analysis-sweep" aria-hidden="true" /></div>
+    {inputs.length>1&&<div className="analysis-thumbnails" aria-label="Кадры обработки">{inputs.map(frame=><div key={frame.input_id} className="analysis-thumbnail"><SourceImage thumbnail runId={runId} artifactId={frame.artifact_id} label={`Кадр ${frame.ordinal+1}`} description=""/><button aria-pressed={frame.input_id===input?.input_id} onClick={()=>setActiveId(frame.input_id)}>Кадр {frame.ordinal+1}</button></div>)}</div>}</div>
+    <div className="analysis-state"><div key={`${title}:${disconnected}`} className={`analysis-stage-copy ${motion&&!disconnected?'motion-enabled':''}`}><h2>{title}</h2><p>{explanation}</p></div>
+    <ol className="analysis-route" aria-label="Краткие этапы">{Object.keys(STAGE_LABELS).map(name=>{const stage=run.stages.find(item=>item.name===name),state=stage?.state??'pending';return <li key={name} className={`route-${state}`} aria-current={state==='running'?'step':undefined}><span className="route-marker" aria-hidden="true">{state==='succeeded'?<svg viewBox="0 0 20 20"><path d="m4 10 4 4 8-9" fill="none" stroke="currentColor" strokeWidth="2"/></svg>:null}</span><span>{STAGE_LABELS[name]}<small>{STAGE_STATES[state]??state}{state==='skipped'?` · ${STAGE_REASONS[stage?.reason??'']??'Не выполнено для этого анализа'}`:''}</small></span></li>})}</ol>
+    <label><input type="checkbox" checked={motion} onChange={event => { setMotion(event.target.checked); try { localStorage.setItem('analysis-motion',event.target.checked ? 'on' : 'off') } catch { /* Motion remains optional without storage. */ } }} /> Движение во время анализа</label></div></section>}<details className="panel pipeline pipeline-details" >
     <summary>Этапы анализа</summary>
     <ol className="pipeline-stages">{run.stages.map(stage => <li key={stage.name} className={'pipeline-stage stage-' + stage.state}>
       <h3>{STAGE_LABELS[stage.name] ?? 'Этап анализа'}</h3>
@@ -331,6 +213,14 @@ const STAGE_LABELS: Record<string, string> = {
   input_registration: 'Регистрация входных данных', frame_usability: 'Проверка пригодности кадров',
   equipment_observation: 'Распознавание техники', series_aggregation: 'Объединение наблюдений серии',
   rule_evaluation: 'Проверка правила', result_projection: 'Формирование результата',
+}
+const STAGE_EXPLANATIONS: Record<string,string> = {
+  input_registration:'Сохраняем фотографии и связываем каждый кадр с этим анализом.',
+  frame_usability:'Проверяем, какие кадры пригодны для наблюдений.',
+  equipment_observation:'Распознаём технику. Рамки появляются только после получения объектов от сервера.',
+  series_aggregation:'Сопоставляем полученные наблюдения в пределах одной серии.',
+  rule_evaluation:'Проверяем применимое правило по подтверждённым наблюдениям.',
+  result_projection:'Сохраняем результат, его основания и ограничения.',
 }
 const STAGE_STATES: Record<string, string> = {
   pending: 'Ожидает', running: 'Выполняется', succeeded: 'Завершено', failed: 'Ошибка выполнения', skipped: 'Пропущено',
@@ -1438,7 +1328,7 @@ export default function App() {
           </li>
         })}</ol>}
         {historyNextOffset !== null && !historyError && <button type="button" className="secondary" disabled={historyPageLoading} onClick={() => setHistoryPage(historyNextOffset)}>{historyPageLoading ? 'Загружаем…' : 'Показать ещё'}</button>}
-      </section> : route === 'readiness' ? <ReadinessPage heading={pageHeading} onOpen={navigate} /> : route === 'provider-comparison' ? <ProviderComparisonPage heading={pageHeading} onOpen={navigate} /> : route === 'about' ? <About heading={pageHeading} returnPath={history.state?.aboutFromApp ? history.state.returnPath : '/'} onReturn={returnFromAbout} /> : route === null ? <section className="panel" aria-labelledby="not-found-heading"><h1 ref={pageHeading} tabIndex={-1} id="not-found-heading">Страница не найдена</h1><p>Проверьте адрес или откройте обзор этапов.</p></section> : route !== 'new' ? <section className="run-workspace" aria-labelledby="run-heading" aria-busy={runReading}>{visibleRunSnapshot?.state === 'succeeded' && visibleRunSnapshot.result_projection?.outcome && <ObservationResult onOpen={navigate} run={visibleRunSnapshot} runId={route!} pageHeading={pageHeading} />}{visibleRunSnapshot && <StageConfirmation key={route} run={visibleRunSnapshot} runId={route!} />}{visibleRunSnapshot && <section className="panel"><h2>Этап по сохранённому плану</h2>{visibleRunSnapshot.plan_binding ? (visibleRunSnapshot.planned_works?.length ? <ul>{visibleRunSnapshot.planned_works.map((work, index) => <li key={index}>{work.title}: {work.stage_key ? STAGE_NAMES[work.stage_key] ?? work.stage_key : 'этап не указан'}; {new Date(work.starts_at).toLocaleString('ru-RU')} — {new Date(work.ends_at).toLocaleString('ru-RU')}</li>)}</ul> : <p>В выбранной версии плана нет работ.</p>) : <p>Этот анализ выполнен без сопоставления с планом. Добавленный позже план не меняет сохранённый результат.</p>}</section>}{visibleRunSnapshot?.plan_binding && <details className="panel run-plan-binding"><summary>Привязка к плану</summary><p>Участок <code>{visibleRunSnapshot.plan_binding.zone_id}</code>, ревизия <code>{visibleRunSnapshot.plan_binding.revision_id}</code>. Время кадров: {visibleRunSnapshot.plan_binding.capture_times.join(', ')}.</p></details>}{visibleRunSnapshot && <RunPipeline run={visibleRunSnapshot} runId={route!} disconnected={offline || !!runError} />}<div className="panel run-header"><details className="run-meta" open={visibleRunSnapshot?.state !== 'succeeded' || !visibleRunSnapshot?.result_projection?.outcome || !!runError}><summary>{visibleRunSnapshot?.state === 'succeeded' && visibleRunSnapshot.result_projection?.outcome ? 'Технические сведения' : 'Данные анализа'}</summary><p className="eyebrow">{visibleRunSnapshot?.purpose === "comparison_campaign" ? "Доказательство сравнительной кампании" : "Анализ"}</p>{visibleRunSnapshot?.state === 'succeeded' && visibleRunSnapshot.result_projection?.outcome ? <h2 id="run-status-heading">Анализ завершён</h2> : <h1 ref={pageHeading} tabIndex={-1} id="run-heading">{runMissing ? 'Анализ не найден' : visibleRunSnapshot ? RUN_HEADINGS[visibleRunSnapshot.state] ?? 'Статус анализа неизвестен' : runChecked ? 'Статус анализа неизвестен' : 'Проверяем анализ…'}</h1>}<p>Номер анализа: <code>{route}</code></p>{(visibleRunSnapshot?.stage ?? visibleRunSnapshot?.context?.stage_id) === 'excavation' && <p>Этап строительства: <strong>Земляные работы котлована</strong></p>}{visibleRunSnapshot && <p>Состояние сервера: <strong>{RUN_STATES[visibleRunSnapshot.state] ?? 'Состояние доступно на сервере'}</strong></p>}{runError && <div className="attention"><p>{runError}</p><button type="button" className="secondary" disabled={runReading} onClick={() => { if (!runReading) { setRunReading(true); setRunReadAttempt(value => value + 1) } }}>{runReading ? 'Проверяем статус…' : 'Проверить статус'}</button></div>}<p role="status" className="sr-only">{runError || runAnnouncement}</p>{(visibleRunSnapshot?.retry_predecessor_id ?? visibleRunSnapshot?.retry_of_run_id) && <p>Повтор анализа <a href={`/runs/${(visibleRunSnapshot.retry_predecessor_id ?? visibleRunSnapshot.retry_of_run_id)}`} onClick={event => { event.preventDefault(); navigate(`/runs/${(visibleRunSnapshot.retry_predecessor_id ?? visibleRunSnapshot.retry_of_run_id)}`) }}>{(visibleRunSnapshot.retry_predecessor_id ?? visibleRunSnapshot.retry_of_run_id)}</a></p>}{(visibleRunSnapshot?.retry_successor_id ?? visibleRunSnapshot?.successor_run_id) && <p>Следующий анализ <a href={`/runs/${(visibleRunSnapshot.retry_successor_id ?? visibleRunSnapshot.successor_run_id)}`} onClick={event => { event.preventDefault(); navigate(`/runs/${(visibleRunSnapshot.retry_successor_id ?? visibleRunSnapshot.successor_run_id)}`) }}>{(visibleRunSnapshot.retry_successor_id ?? visibleRunSnapshot.successor_run_id)}</a></p>}{visibleRunSnapshot?.retry_eligible && <p>Повтор использует текущий профиль <code>{visibleRunSnapshot.retry_profile_id}</code>, ревизия допуска {visibleRunSnapshot.retry_authorization_revision}.{visibleRunSnapshot.profile_id !== visibleRunSnapshot.retry_profile_id && <> Исходный анализ использовал профиль <code>{visibleRunSnapshot.profile_id}</code>.</>}</p>}{visibleRunSnapshot?.retry_eligible && <button type="button" className="primary" disabled={retrying || offline} onClick={() => void retryRun()}>{retrying ? 'Создаём повтор…' : 'Повторить анализ'}</button>}{retryError && <p className="error" role="alert">{retryError}</p>}</details></div>{visibleRunSnapshot && !(visibleRunSnapshot.state === 'succeeded' && visibleRunSnapshot.result_projection?.outcome) && <ObservationResult onOpen={navigate} run={visibleRunSnapshot} runId={route!} />}</section> : <NewAnalysisPage>
+      </section> : route === 'readiness' ? <ReadinessPage heading={pageHeading} onOpen={navigate} /> : route === 'provider-comparison' ? <ProviderComparisonPage heading={pageHeading} onOpen={navigate} /> : route === 'about' ? <About heading={pageHeading} returnPath={history.state?.aboutFromApp ? history.state.returnPath : '/'} onReturn={returnFromAbout} /> : route === null ? <section className="panel" aria-labelledby="not-found-heading"><h1 ref={pageHeading} tabIndex={-1} id="not-found-heading">Страница не найдена</h1><p>Проверьте адрес или откройте обзор этапов.</p></section> : route !== 'new' ? <section className="run-workspace" aria-labelledby="run-heading" aria-busy={runReading}>{visibleRunSnapshot && visibleRunSnapshot.state !== 'succeeded' && <RunPipeline run={visibleRunSnapshot} runId={route!} disconnected={offline || !!runError} />}{visibleRunSnapshot?.state === 'succeeded' && visibleRunSnapshot.result_projection?.outcome && <ObservationResult onOpen={navigate} run={visibleRunSnapshot} runId={route!} pageHeading={pageHeading} />}{visibleRunSnapshot?.state === 'succeeded' && <RunPipeline run={visibleRunSnapshot} runId={route!} disconnected={offline || !!runError} />}{visibleRunSnapshot && <StageConfirmation key={route} run={visibleRunSnapshot} runId={route!} />}{visibleRunSnapshot && <section className="panel"><h2>Этап по сохранённому плану</h2>{visibleRunSnapshot.plan_binding ? (visibleRunSnapshot.planned_works?.length ? <ul>{visibleRunSnapshot.planned_works.map((work, index) => <li key={index}>{work.title}: {work.stage_key ? STAGE_NAMES[work.stage_key] ?? work.stage_key : 'этап не указан'}; {new Date(work.starts_at).toLocaleString('ru-RU')} — {new Date(work.ends_at).toLocaleString('ru-RU')}</li>)}</ul> : <p>В выбранной версии плана нет работ.</p>) : <p>Этот анализ выполнен без сопоставления с планом. Добавленный позже план не меняет сохранённый результат.</p>}</section>}{visibleRunSnapshot?.plan_binding && <details className="panel run-plan-binding"><summary>Привязка к плану</summary><p>Участок <code>{visibleRunSnapshot.plan_binding.zone_id}</code>, ревизия <code>{visibleRunSnapshot.plan_binding.revision_id}</code>. Время кадров: {visibleRunSnapshot.plan_binding.capture_times.join(', ')}.</p></details>}<div className="panel run-header"><details className="run-meta" open={visibleRunSnapshot?.state !== 'succeeded' || !visibleRunSnapshot?.result_projection?.outcome || !!runError}><summary>{visibleRunSnapshot?.state === 'succeeded' && visibleRunSnapshot.result_projection?.outcome ? 'Технические сведения' : 'Данные анализа'}</summary><p className="eyebrow">{visibleRunSnapshot?.purpose === "comparison_campaign" ? "Доказательство сравнительной кампании" : "Анализ"}</p>{visibleRunSnapshot?.state === 'succeeded' && visibleRunSnapshot.result_projection?.outcome ? <h2 id="run-status-heading">Анализ завершён</h2> : <h1 ref={pageHeading} tabIndex={-1} id="run-heading">{runMissing ? 'Анализ не найден' : visibleRunSnapshot ? RUN_HEADINGS[visibleRunSnapshot.state] ?? 'Статус анализа неизвестен' : runChecked ? 'Статус анализа неизвестен' : 'Проверяем анализ…'}</h1>}<p>Номер анализа: <code>{route}</code></p>{(visibleRunSnapshot?.stage ?? visibleRunSnapshot?.context?.stage_id) === 'excavation' && <p>Этап строительства: <strong>Земляные работы котлована</strong></p>}{visibleRunSnapshot && <p>Состояние сервера: <strong>{RUN_STATES[visibleRunSnapshot.state] ?? 'Состояние доступно на сервере'}</strong></p>}{runError && <div className="attention"><p>{runError}</p><button type="button" className="secondary" disabled={runReading} onClick={() => { if (!runReading) { setRunReading(true); setRunReadAttempt(value => value + 1) } }}>{runReading ? 'Проверяем статус…' : 'Проверить статус'}</button></div>}<p role="status" className="sr-only">{runError || runAnnouncement}</p>{(visibleRunSnapshot?.retry_predecessor_id ?? visibleRunSnapshot?.retry_of_run_id) && <p>Повтор анализа <a href={`/runs/${(visibleRunSnapshot.retry_predecessor_id ?? visibleRunSnapshot.retry_of_run_id)}`} onClick={event => { event.preventDefault(); navigate(`/runs/${(visibleRunSnapshot.retry_predecessor_id ?? visibleRunSnapshot.retry_of_run_id)}`) }}>{(visibleRunSnapshot.retry_predecessor_id ?? visibleRunSnapshot.retry_of_run_id)}</a></p>}{(visibleRunSnapshot?.retry_successor_id ?? visibleRunSnapshot?.successor_run_id) && <p>Следующий анализ <a href={`/runs/${(visibleRunSnapshot.retry_successor_id ?? visibleRunSnapshot.successor_run_id)}`} onClick={event => { event.preventDefault(); navigate(`/runs/${(visibleRunSnapshot.retry_successor_id ?? visibleRunSnapshot.successor_run_id)}`) }}>{(visibleRunSnapshot.retry_successor_id ?? visibleRunSnapshot.successor_run_id)}</a></p>}{visibleRunSnapshot?.retry_eligible && <p>Повтор использует текущий профиль <code>{visibleRunSnapshot.retry_profile_id}</code>, ревизия допуска {visibleRunSnapshot.retry_authorization_revision}.{visibleRunSnapshot.profile_id !== visibleRunSnapshot.retry_profile_id && <> Исходный анализ использовал профиль <code>{visibleRunSnapshot.profile_id}</code>.</>}</p>}{visibleRunSnapshot?.retry_eligible && <button type="button" className="primary" disabled={retrying || offline} onClick={() => void retryRun()}>{retrying ? 'Создаём повтор…' : 'Повторить анализ'}</button>}{retryError && <p className="error" role="alert">{retryError}</p>}</details></div>{visibleRunSnapshot && !(visibleRunSnapshot.state === 'succeeded' && visibleRunSnapshot.result_projection?.outcome) && <ObservationResult onOpen={navigate} run={visibleRunSnapshot} runId={route!} />}</section> : <NewAnalysisPage>
         <div className="page-intro new-analysis-intro"><h1 ref={pageHeading} tabIndex={-1}>Новый анализ</h1><p>Подготовьте наблюдение за техникой: выберите цель, укажите контекст и добавьте кадры в порядке съёмки. Привязка сохранится в анализе и его повторе.</p>{unsupportedStageNotice && <p className="attention">Выбранный этап не настроен в прототипе. Выберите доступный этап и цель анализа.</p>}</div>
         <details className="demo-examples panel" aria-busy={demoLoading}>
           <summary id="demo-heading">Включённые примеры</summary>

@@ -1,0 +1,11 @@
+{
+  "scope": "Headless Chromium, deterministic local API fixtures, no screenshots",
+  "before_fix": {
+    "retryRequested": false,
+    "imageVisible": false
+  },
+  "after_fix": {
+    "retryRequested": true,
+    "imageVisible": true
+  }
+}

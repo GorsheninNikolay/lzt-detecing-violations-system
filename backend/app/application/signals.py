@@ -78,11 +78,19 @@ def list_signals(request: Request, project_id: uuid.UUID | None = None,
               AND (CAST(:state AS text) IS NULL OR s.state=:state)
             ORDER BY s.created_at DESC,s.id DESC LIMIT 500"""),
             {"zone": zone_id, "project": project_id, "state": state}).mappings().all()
-        count = connection.execute(text("""SELECT count(*) FROM site_signals s JOIN site_zones z ON z.id=s.zone_id
-            WHERE s.state='new' AND (CAST(:zone AS uuid) IS NULL OR s.zone_id=:zone)
+        counts = connection.execute(text("""SELECT
+            count(*) FILTER (WHERE s.state='new') AS new_count,
+            count(*) FILTER (WHERE s.state IN ('new','in_progress')) AS open_count,
+            count(*) FILTER (WHERE s.state IN ('new','in_progress')
+                AND s.kind <> 'insufficient_observations') AS attention_count,
+            count(*) FILTER (WHERE s.state IN ('new','in_progress')
+                AND s.kind = 'insufficient_observations') AS insufficient_data_count
+            FROM site_signals s JOIN site_zones z ON z.id=s.zone_id
+            WHERE (CAST(:zone AS uuid) IS NULL OR s.zone_id=:zone)
               AND (CAST(:project AS uuid) IS NULL OR z.project_id=:project)"""),
-            {"zone": zone_id, "project": project_id}).scalar_one()
-    return {"new_count": count, "signals": [{**dict(item),
+            {"zone": zone_id, "project": project_id}).mappings().one()
+    return {"new_count": counts["new_count"], "summary": {
+        key: counts[key] for key in ("open_count", "attention_count", "insufficient_data_count")}, "signals": [{**dict(item),
             "id": str(item["id"]), "run_id": str(item["run_id"]) if item["run_id"] else None,
             "zone_id": str(item["zone_id"]), "revision_id": str(item["revision_id"]),
             "work_entry_id": str(item["work_entry_id"]) if item["work_entry_id"] else None,

@@ -197,3 +197,42 @@ def test_workspace_without_plan_and_filtered_history_before_pagination():
                 store.list_ordinary(project_id=str(uuid4()))
     finally:
         store.close()
+
+
+@pytest.mark.skipif(not os.getenv("TEST_DATABASE_URL"), reason="isolated PostgreSQL required")
+def test_signal_summary_is_scoped_before_filter_and_list_limit():
+    store = PostgresStore(os.environ["TEST_DATABASE_URL"])
+    app = FastAPI()
+    app.include_router(site_router)
+    app.include_router(signals_router)
+    app.state.store = store
+    app.state.readiness = type("Ready", (), {"ready": type("Event", (), {"is_set": lambda self: True})()})()
+    try:
+        with TestClient(app) as client:
+            projects = [client.post('/projects', json={'name': f'Summary {uuid4()}', 'timezone': 'UTC'}).json() for _ in range(2)]
+            zones = [projects[0]['default_zone_id'], client.post(f"/projects/{projects[0]['id']}/zones", json={'name': 'Other'}).json()['id'], projects[1]['default_zone_id']]
+            revisions = [client.put(f'/zones/{zone}/plan', json={'expected_revision': 0, 'entries': []}).json()['revision_id'] for zone in zones]
+            rows = []
+            for index in range(530):
+                rows.append({'id': uuid4(), 'fingerprint': str(uuid4()), 'zone': zones[0], 'revision': revisions[0],
+                             'kind': 'insufficient_observations' if index < 20 else 'expected_equipment_missing',
+                             'state': 'new' if index < 510 else 'in_progress' if index < 520 else 'closed'})
+            rows += [{'id': uuid4(), 'fingerprint': str(uuid4()), 'zone': zones[i], 'revision': revisions[i], 'kind': 'completion_unconfirmed', 'state': 'new'} for i in (1, 2)]
+            with store.engine.begin() as connection:
+                connection.execute(text("""INSERT INTO site_signals (id,fingerprint,zone_id,revision_id,kind,state,basis)
+                    VALUES (:id,:fingerprint,:zone,:revision,:kind,:state,'{}'::jsonb)"""), rows)
+            scope = f'/signals?zone_id={zones[0]}'
+            result = client.get(scope).json()
+            assert len(result['signals']) == 500
+            assert result['new_count'] == 510
+            assert result['summary'] == {'open_count': 520, 'attention_count': 500, 'insufficient_data_count': 20}
+            for state, count in [('new', 500), ('in_progress', 10), ('closed', 10)]:
+                filtered = client.get(scope + f'&state={state}').json()
+                assert len(filtered['signals']) == count
+                assert filtered['summary'] == result['summary']
+            assert client.get(f"/signals?project_id={projects[0]['id']}").json()['summary']['open_count'] == 521
+            assert client.get(f"/signals?project_id={projects[1]['id']}&zone_id={zones[0]}").json()['summary']['open_count'] == 0
+            assert client.patch(f"/signals/{rows[0]['id']}", json={'state': 'closed', 'comment': 'Reviewed'}).status_code == 200
+            assert client.get(scope).json()['summary'] == {'open_count': 519, 'attention_count': 500, 'insufficient_data_count': 19}
+    finally:
+        store.close()

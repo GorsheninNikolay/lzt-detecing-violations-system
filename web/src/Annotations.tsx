@@ -18,6 +18,20 @@ export function shiftBox(box: AnnotationObject['box'], dx: number, dy: number, r
   return [x1+dx,y1+dy,x2+dx,y2+dy]
 }
 
+
+type Handle = 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w' | 'nw'
+const handles: Handle[] = ['nw','n','ne','e','se','s','sw','w']
+const handleNames: Record<Handle,string> = {n:'верх',ne:'верхний правый угол',e:'право',se:'нижний правый угол',s:'низ',sw:'нижний левый угол',w:'лево',nw:'верхний левый угол'}
+export function resizeBox(box: AnnotationObject['box'], dx: number, dy: number, handle: Handle): AnnotationObject['box'] {
+  const result = [...box] as AnnotationObject['box']
+  const epsilon = Math.min(.001, (box[2]-box[0])/2, (box[3]-box[1])/2)
+  if(handle.includes('w')) result[0] = Math.max(0, Math.min(box[2]-epsilon, box[0]+dx))
+  if(handle.includes('e')) result[2] = Math.min(1, Math.max(box[0]+epsilon, box[2]+dx))
+  if(handle.includes('n')) result[1] = Math.max(0, Math.min(box[3]-epsilon, box[1]+dy))
+  if(handle.includes('s')) result[3] = Math.min(1, Math.max(box[1]+epsilon, box[3]+dy))
+  return result
+}
+
 function restoreDraft(raw: string | null, binding: string, checksum: string, owner: boolean): Draft | null {
   try {
     const saved = JSON.parse(raw ?? 'null')
@@ -50,7 +64,7 @@ export function AnnotationEditor({ runId, inputId, checksum, artifactId, initial
     try { const saved = restoreDraft(localStorage.getItem(storage),storage,checksum,!!review); if(saved)return saved } catch { /* Storage may be unavailable. */ }
     return { history: [initial], cursor: 0, pending: null, verified: false, reason: '', reviewRevision:review?.revision, binding:storage, geometry:{}, completed:false }
   })
-  const [selected, select] = useState<string | null>(null)
+  const [selected, select] = useState<string | null>(initial[0]?.id ?? null)
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState('')
   const [stale, setStale] = useState(!!review && draft.reviewRevision !== review.revision)
@@ -61,8 +75,16 @@ export function AnnotationEditor({ runId, inputId, checksum, artifactId, initial
   const [attempt, setAttempt] = useState(0)
   const [preview, setPreview] = useState<{id:string;box:AnnotationObject['box']} | null>(null)
   const surface = useRef<HTMLDivElement>(null)
-  const drag = useRef<{ id: string; x: number; y: number; box: AnnotationObject['box']; resize: boolean; start: AnnotationObject[] } | null>(null)
+  const [mode, setMode] = useState<'select'|'draw'|'pan'>('select')
+  const [view, setView] = useState({zoom:1,x:0,y:0})
+  const [newBox, setNewBox] = useState<AnnotationObject['box'] | null>(null)
+  const coordinates = useRef<HTMLDetailsElement>(null)
+  const classSelect = useRef<HTMLSelectElement>(null)
+  const pointers = useRef(new Map<number,{x:number;y:number}>())
+  const drag = useRef<{id?:string;x:number;y:number;box?:AnnotationObject['box'];handle?:Handle;kind:'object'|'draw'|'pan';view:typeof view} | null>(null)
+  const pinch = useRef<{distance:number;x:number;y:number;view:typeof view} | null>(null)
   const current = draft.history[draft.cursor]
+  useEffect(()=>{if(!current.some(item=>item.id===selected))select(current[0]?.id??null)},[current,selected])
   const locked = busy || !!draft.pending
   const geometryPending = Object.keys(draft.geometry).length > 0
   const persist = (next: Draft) => {
@@ -72,24 +94,73 @@ export function AnnotationEditor({ runId, inputId, checksum, artifactId, initial
   useEffect(() => { try { localStorage.setItem(storage, JSON.stringify(draft)) } catch { setStorageError(true) } }, [])
   const edit = (next: AnnotationObject[]) => { if (!locked && validObjects(next)) persist({ ...draft, history: [...draft.history.slice(0,draft.cursor + 1), next].slice(-100), cursor: Math.min(draft.cursor + 1,99), verified: false, geometry:Object.fromEntries(Object.entries(draft.geometry).filter(([id])=>next.some(item=>item.id===id && JSON.stringify(item.box)===JSON.stringify(current.find(old=>old.id===id)?.box)))), completed:false }) }
   const change = (id: string, patch: Partial<AnnotationObject>) => edit(current.map(item => item.id === id ? { ...item, ...patch } : item))
-  function begin(event: PointerEvent<HTMLButtonElement>, item: AnnotationObject, resize: boolean) {
-    select(item.id)
-    if (locked || !window.matchMedia('(min-width: 769px)').matches) return
-    event.preventDefault(); event.currentTarget.setPointerCapture(event.pointerId)
-    drag.current = { id: item.id, x: event.clientX, y: event.clientY, box: item.box, resize, start: current }
+  const point = (x:number,y:number) => {
+    const bounds=surface.current!.getBoundingClientRect()
+    return {x:Math.max(0,Math.min(1,(x-bounds.left)/bounds.width)),y:Math.max(0,Math.min(1,(y-bounds.top)/bounds.height))}
   }
-  function move(event: PointerEvent<HTMLButtonElement>) {
-    const start = drag.current, bounds = surface.current?.getBoundingClientRect()
-    if(start && bounds?.width && bounds.height) setPreview({id:start.id,box:shiftBox(start.box,(event.clientX-start.x)/bounds.width,(event.clientY-start.y)/bounds.height,start.resize)})
+  function begin(event: PointerEvent<HTMLElement>, item?: AnnotationObject, handle?:Handle) {
+    event.stopPropagation()
+    if(event.button !== 0) return
+    event.preventDefault()
+    event.currentTarget.setPointerCapture(event.pointerId)
+    pointers.current.set(event.pointerId,{x:event.clientX,y:event.clientY})
+    if(pointers.current.size===2){
+      const [a,b]=[...pointers.current.values()]
+      pinch.current={distance:Math.hypot(a.x-b.x,a.y-b.y),x:(a.x+b.x)/2,y:(a.y+b.y)/2,view}
+      drag.current=null;setPreview(null);setNewBox(null);return
+    }
+    if(pointers.current.size>2) return
+    if(mode==='pan') drag.current={kind:'pan',x:event.clientX,y:event.clientY,view}
+    else if(!locked && mode==='draw' && current.length<300){
+      const start=point(event.clientX,event.clientY)
+      drag.current={kind:'draw',x:start.x,y:start.y,view}
+    }else if(mode==='select' && item){
+      select(item.id)
+      event.currentTarget.focus({preventScroll:true})
+      if(!locked) drag.current={kind:'object',id:item.id,x:event.clientX,y:event.clientY,box:item.box,handle,view}
+    }
   }
-  function finish(event: PointerEvent<HTMLButtonElement>) {
-    const start = drag.current, bounds = surface.current?.getBoundingClientRect()
-    if (!start || !bounds?.width || !bounds.height) return
-    drag.current = null
-    setPreview(null)
-    const box = shiftBox(start.box,(event.clientX-start.x)/bounds.width,(event.clientY-start.y)/bounds.height,start.resize)
-    if (JSON.stringify(box) !== JSON.stringify(start.box)) change(start.id,{ box })
+  function move(event: PointerEvent<HTMLElement>) {
+    if(!pointers.current.has(event.pointerId)) return
+    pointers.current.set(event.pointerId,{x:event.clientX,y:event.clientY})
+    if(pinch.current && pointers.current.size>=2){
+      const [a,b]=[...pointers.current.values()],start=pinch.current
+      const zoom=Math.max(1,Math.min(6,start.view.zoom*Math.hypot(a.x-b.x,a.y-b.y)/Math.max(1,start.distance)))
+      const bounds=surface.current!.parentElement!.getBoundingClientRect()
+      const ratio=zoom/start.view.zoom
+      setView({zoom,x:(a.x+b.x)/2-bounds.left-(start.x-bounds.left-start.view.x)*ratio,y:(a.y+b.y)/2-bounds.top-(start.y-bounds.top-start.view.y)*ratio})
+      return
+    }
+    const start=drag.current,bounds=surface.current?.getBoundingClientRect()
+    if(!start || !bounds?.width || !bounds.height) return
+    if(start.kind==='pan') setView({...start.view,x:start.view.x+event.clientX-start.x,y:start.view.y+event.clientY-start.y})
+    else if(start.kind==='draw'){
+      const end=point(event.clientX,event.clientY)
+      setNewBox([Math.min(start.x,end.x),Math.min(start.y,end.y),Math.max(start.x,end.x),Math.max(start.y,end.y)])
+    }else if(start.box && start.id){
+      const dx=(event.clientX-start.x)/bounds.width,dy=(event.clientY-start.y)/bounds.height
+      setPreview({id:start.id,box:start.handle?resizeBox(start.box,dx,dy,start.handle):shiftBox(start.box,dx,dy)})
+    }
   }
+  function finish(event: PointerEvent<HTMLElement>) {
+    pointers.current.delete(event.pointerId)
+    if(pinch.current){if(!pointers.current.size)pinch.current=null;drag.current=null;return}
+    const start=drag.current,bounds=surface.current?.getBoundingClientRect()
+    drag.current=null;setPreview(null);setNewBox(null)
+    if(!start || !bounds?.width || !bounds.height || event.type==='pointercancel')return
+    if(start.kind==='object' && start.box && start.id){
+      const dx=(event.clientX-start.x)/bounds.width,dy=(event.clientY-start.y)/bounds.height
+      const box=start.handle?resizeBox(start.box,dx,dy,start.handle):shiftBox(start.box,dx,dy)
+      if(JSON.stringify(box)!==JSON.stringify(start.box))change(start.id,{box})
+    }else if(start.kind==='draw'){
+      const end=point(event.clientX,event.clientY)
+      const box:AnnotationObject['box']=[Math.min(start.x,end.x),Math.min(start.y,end.y),Math.max(start.x,end.x),Math.max(start.y,end.y)]
+      if((box[2]-box[0])*bounds.width<4 || (box[3]-box[1])*bounds.height<4)return
+      const id=crypto.randomUUID();edit([...current,{id,class_name:'excavator',box}]);select(id);setMode('select')
+      requestAnimationFrame(()=>classSelect.current?.focus())
+    }
+  }
+  const boxStyle=(box:AnnotationObject['box'])=>({left:`${box[0]*100}%`,top:`${box[1]*100}%`,width:`${(box[2]-box[0])*100}%`,height:`${(box[3]-box[1])*100}%`})
   async function submit(status: string) {
     if (geometryPending || (!draft.pending && status === 'approved' && (!imageLoaded || imageError || !draft.verified))) return
     const pending = draft.pending ?? { key: crypto.randomUUID(), body: JSON.stringify(review ? { expected_revision: draft.reviewRevision ?? review.revision, objects: current, status, whole_frame_verified: draft.verified, reason: draft.reason } : { input_sha256: checksum, objects: current }) }
@@ -114,15 +185,24 @@ export function AnnotationEditor({ runId, inputId, checksum, artifactId, initial
     <p>Редактируется отдельная копия. Исходные наблюдения и выводы сохраняются.</p>
     {storageError && <p role="alert" className="error">Локальное сохранение недоступно. Не закрывайте страницу до успешной отправки.</p>}
     <div className="annotation-tools"><button disabled={locked || draft.cursor === 0} onClick={() => persist({ ...draft, cursor:draft.cursor-1, verified:false,geometry:{},completed:false })}>Отменить</button><button disabled={locked || draft.cursor === draft.history.length-1} onClick={() => persist({ ...draft, cursor:draft.cursor+1, verified:false,geometry:{},completed:false })}>Повторить правку</button><button className="geometry-control" disabled={locked || current.length >= 300} onClick={() => { const id = crypto.randomUUID(); edit([...current,{id,class_name:'excavator',box:[.25,.25,.5,.5]}]); select(id) }}>Добавить объект</button></div>
-    <p className="geometry-control">Выберите рамку. Перемещайте мышью или стрелками; Shift + стрелки изменяют размер. Координаты — доли ширины и высоты.</p><p className="phone-editor-note">На телефоне можно изменить класс или удалить объект. Геометрия доступна на большом экране.</p>
-    <div className="annotation-layout"><div>{imageError ? <p role="alert">Изображение недоступно. <button onClick={() => {setImageError(false);setAttempt(v=>v+1)}}>Повторить изображение</button></p> : <div className="annotation-canvas" ref={surface}><img key={attempt} src={`/api/runs/${runId}/artifacts/${artifactId}`} alt="Кадр для исправления объектов" onLoad={event=>setImageLoaded(event.currentTarget.naturalWidth>0 && event.currentTarget.naturalHeight>0)} onError={() => {setImageError(true);setImageLoaded(false);if(!draft.pending)persist({...draft,verified:false})}} />{current.map((saved,index) => { const item = preview?.id === saved.id ? { ...saved, box:preview.box } : saved; return <button key={item.id} className={`annotation-box ${selected === item.id ? 'selected' : ''}`} aria-label={`Объект ${index+1}: ${labels[item.class_name]}`} aria-pressed={selected === item.id} style={{left:`${item.box[0]*100}%`,top:`${item.box[1]*100}%`,width:`${(item.box[2]-item.box[0])*100}%`,height:`${(item.box[3]-item.box[1])*100}%`}} onClick={() => select(item.id)} onPointerDown={event=>begin(event,item,false)} onPointerMove={move} onPointerUp={finish} onPointerCancel={()=>{drag.current=null;setPreview(null)}} onKeyDown={event => { if (locked || !window.matchMedia('(min-width: 769px)').matches) return; const vector:Record<string,[number,number]> = {ArrowLeft:[-.01,0],ArrowRight:[.01,0],ArrowUp:[0,-.01],ArrowDown:[0,.01]}; if (vector[event.key]) { event.preventDefault(); change(item.id,{box:shiftBox(item.box,...vector[event.key],event.shiftKey)}) } }}><span>{index+1}</span></button>})}{current.filter(item=>item.id===selected).map(item=><button key={`resize-${item.id}`} disabled={locked} className="annotation-resize geometry-control" aria-label="Изменить размер выбранного объекта" style={{left:`${(preview?.id===item.id?preview.box:item.box)[2]*100}%`,top:`${(preview?.id===item.id?preview.box:item.box)[3]*100}%`}} onPointerDown={event=>begin(event,item,true)} onPointerMove={move} onPointerUp={finish} onPointerCancel={()=>{drag.current=null;setPreview(null)}}>↔</button>)}</div>}</div>
-    <ol className="annotation-objects">{current.map((item,index) => <li key={item.id} className={selected===item.id?'selected':''}><button aria-pressed={selected===item.id} onClick={()=>select(item.id)}>Объект {index+1}</button><label>Класс<select disabled={locked} value={item.class_name} onChange={event=>change(item.id,{class_name:event.target.value})}>{Object.entries(labels).map(([key,label])=><option key={key} value={key}>{label}</option>)}</select></label><GeometryFields item={item} disabled={locked} pending={draft.geometry[item.id]} onInput={values=>persist({...draft,geometry:{...draft.geometry,[item.id]:values},verified:false,completed:false})} onRevert={()=>{const geometry={...draft.geometry};delete geometry[item.id];persist({...draft,geometry,verified:false})}} onCommit={box=>{const geometry={...draft.geometry};delete geometry[item.id];if(JSON.stringify(box)!==JSON.stringify(item.box))change(item.id,{box});else persist({...draft,geometry})}} /><button disabled={locked} onClick={()=>edit(current.filter(value=>value.id!==item.id))}>Удалить объект {index+1}</button></li>)}</ol></div>
+    <div className="annotation-tools" aria-label="Инструменты фотографии">{([['select','Выбрать'],['draw','Нарисовать объект'],['pan','Двигать фото']] as const).map(([value,label])=><button key={value} aria-pressed={mode===value} disabled={value==='draw' && (locked || current.length>=300)} onClick={()=>setMode(value)}>{label}</button>)}<button onClick={()=>setView({...view,zoom:Math.min(6,view.zoom+.5)})}>Увеличить фото</button><button onClick={()=>setView({...view,zoom:Math.max(1,view.zoom-.5)})}>Уменьшить фото</button><button onClick={()=>setView({zoom:1,x:0,y:0})}>Вписать фото</button><output aria-label="Масштаб фото">{Math.round(view.zoom*100)}%</output></div>
+    {current.length>=300&&<p role="status">Достигнут предел: 300 объектов. Удалите объект, чтобы добавить новый.</p>}
+    <p>Выберите рамку или нарисуйте новую. Стрелки перемещают объект; Shift + стрелки меняют размер. Два пальца меняют масштаб фотографии.</p>
+    <div className="annotation-layout"><div className="annotation-photo-workspace">{imageError ? <p role="alert">Изображение недоступно. <button onClick={() => {setImageError(false);setAttempt(v=>v+1)}}>Повторить изображение</button></p> : <div className={`annotation-viewport mode-${mode}`} tabIndex={0} aria-label="Фото для исправления: стрелки перемещают фото, плюс и минус меняют масштаб, Home вписывает" onKeyDown={event=>{if(event.target!==event.currentTarget)return;const delta:Record<string,[number,number]>={ArrowLeft:[40,0],ArrowRight:[-40,0],ArrowUp:[0,40],ArrowDown:[0,-40]};if(delta[event.key]){event.preventDefault();const [dx,dy]=delta[event.key];setView({...view,x:view.x+dx,y:view.y+dy})}else if(event.key==='+'||event.key==='='||event.key==='-'){event.preventDefault();setView({...view,zoom:Math.max(1,Math.min(6,view.zoom+(event.key==='-'?-.5:.5)))})}else if(event.key==='Home'){event.preventDefault();setView({zoom:1,x:0,y:0})}}} onPointerDown={event=>begin(event)} onPointerMove={move} onPointerUp={finish} onPointerCancel={finish}>
+      <div className="annotation-canvas" ref={surface} style={{transform:`translate(${view.x}px,${view.y}px) scale(${view.zoom})`}}><img key={attempt} draggable={false} src={`/api/runs/${runId}/artifacts/${artifactId}`} alt="Кадр для исправления объектов" onLoad={event=>setImageLoaded(event.currentTarget.naturalWidth>0 && event.currentTarget.naturalHeight>0)} onError={() => {setImageError(true);setImageLoaded(false);if(!draft.pending)persist({...draft,verified:false})}} />
+      {current.map((saved,index)=>{const item=preview?.id===saved.id?{...saved,box:preview.box}:saved;return <button key={item.id} className={`annotation-box ${selected===item.id?'selected':''}`} aria-label={`Объект ${index+1}: ${labels[item.class_name]}`} aria-pressed={selected===item.id} style={boxStyle(item.box)} onClick={event=>{if(event.detail===0 && mode==='select')select(item.id)}} onPointerDown={event=>begin(event,item)} onKeyDown={event=>{if(locked)return;const vector:Record<string,[number,number]>={ArrowLeft:[-.01,0],ArrowRight:[.01,0],ArrowUp:[0,-.01],ArrowDown:[0,.01]};if(vector[event.key]){event.preventDefault();change(item.id,{box:shiftBox(item.box,...vector[event.key],event.shiftKey)})}if(event.key==='Delete'){event.preventDefault();edit(current.filter(value=>value.id!==item.id))}}}><span>{index+1}</span></button>})}
+      {newBox&&<span className="annotation-box annotation-drawing" style={boxStyle(newBox)} />}
+      {mode==='select'&&current.filter(item=>item.id===selected).flatMap(item=>handles.map(handle=>{const box=preview?.id===item.id?preview.box:item.box;return <button key={`${item.id}-${handle}`} disabled={locked} className={`annotation-resize handle-${handle}`} aria-label={handle==='se'?'Изменить размер выбранного объекта':`Изменить размер: ${handleNames[handle]}`} style={{left:`${(handle.includes('w')?box[0]:handle.includes('e')?box[2]:(box[0]+box[2])/2)*100}%`,top:`${(handle.includes('n')?box[1]:handle.includes('s')?box[3]:(box[1]+box[3])/2)*100}%`,transform:`translate(-50%,-50%) scale(${1/view.zoom})`}} onPointerDown={event=>begin(event,item,handle)} onKeyDown={event=>{const vector:Record<string,[number,number]>={ArrowLeft:[-.01,0],ArrowRight:[.01,0],ArrowUp:[0,-.01],ArrowDown:[0,.01]};if(!locked&&vector[event.key]){event.preventDefault();change(item.id,{box:resizeBox(item.box,...vector[event.key],handle)})}}} />}))}
+      </div></div>}</div>
+    <aside className="annotation-properties"><h3>Объекты · {current.length}</h3><ol className="annotation-objects">{current.map((item,index)=><li key={item.id} className={selected===item.id?'selected':''}><button aria-label={`Объект ${index+1}`} aria-pressed={selected===item.id} onClick={()=>select(item.id)}>{index+1}. {labels[item.class_name]}</button></li>)}</ol>
+    {current.filter(item=>item.id===selected).map(item=><div key={item.id} className="annotation-selected"><label>Класс<select ref={classSelect} disabled={locked} value={item.class_name} onChange={event=>change(item.id,{class_name:event.target.value})}>{Object.entries(labels).map(([key,label])=><option key={key} value={key}>{label}</option>)}</select></label><details ref={coordinates}><summary>Точные координаты</summary><GeometryFields item={item} disabled={locked} pending={draft.geometry[item.id]} onInput={values=>persist({...draft,geometry:{...draft.geometry,[item.id]:values},verified:false,completed:false})} onRevert={()=>{const geometry={...draft.geometry};delete geometry[item.id];persist({...draft,geometry,verified:false})}} onCommit={box=>{const geometry={...draft.geometry};delete geometry[item.id];if(JSON.stringify(box)!==JSON.stringify(item.box))change(item.id,{box});else persist({...draft,geometry})}} /></details><button disabled={locked} onClick={()=>edit(current.filter(value=>value.id!==item.id))}>Удалить объект {current.indexOf(item)+1}</button></div>)}
+    </aside></div>
     {!current.length && <p>В копии нет объектов. Пустой кадр тоже можно отправить на проверку.</p>}
-    {review && <><label className="annotation-verification"><input type="checkbox" disabled={locked || geometryPending || !imageLoaded || imageError} checked={draft.verified && imageLoaded && !imageError} onChange={event=>persist({...draft,verified:event.target.checked,completed:false})} /> Проверил весь кадр: все объекты и их границы</label><label className="field annotation-reason">Причина решения<textarea disabled={locked} maxLength={3000} value={draft.reason} onChange={event=>persist({...draft,reason:event.target.value,completed:false})} /></label></>}
+    {review && <><label className="annotation-verification"><input type="checkbox" disabled={locked || geometryPending || !imageLoaded || imageError} checked={draft.verified && imageLoaded && !imageError} onChange={event=>persist({...draft,verified:event.target.checked,completed:false})} /> Проверил весь кадр: все объекты и их границы</label><label className="field annotation-reason">Причина решения<textarea disabled={locked} maxLength={3000} value={draft.reason} onChange={event=>persist({...draft,reason:event.target.value,verified:false,completed:false})} /></label></>}
     {draft.pending ? <button className="primary" disabled={busy || geometryPending} onClick={()=>void submit('pending')}>{busy?'Отправляем…':'Повторить сохранённый запрос'}</button> : <div className="annotation-tools"><button className="primary" disabled={busy || geometryPending} onClick={()=>void submit('pending')}>{review?'Сохранить правки':'Отправить поправки на проверку'}</button>{review && <><button className="primary" disabled={busy || geometryPending || !draft.verified || !imageLoaded || imageError} onClick={()=>void submit('approved')}>Одобрить весь кадр</button><button disabled={busy || geometryPending || !draft.reason.trim()} onClick={()=>void submit('rejected')}>Отклонить с причиной</button></>}</div>}
     {stale && review && <button disabled={busy || !!draft.pending} onClick={async () => { setBusy(true); try { const response = await fetch(`/api/admin/annotations/${review.id}`, { signal:AbortSignal.timeout(10000) }); if(!response.ok) throw new Error(); const latest = await response.json() as Proposal; setServerVersion(latest); persist({...draft,reviewRevision:latest.revision,verified:false,completed:false});setStale(false);setMessage('Новая версия загружена для сравнения. Ваши правки сохранены. Сверьте объекты и проверьте весь кадр повторно перед решением.') } catch {setMessage('Не удалось загрузить новую версию. Правки сохранены.')} finally {setBusy(false)} }}>Загрузить новую версию для сравнения</button>}
     {serverVersion && <details open><summary>Серверная версия {serverVersion.revision} для сравнения</summary><ol>{serverVersion.objects.map(item=><li key={item.id}>{labels[item.class_name]}: {item.box.join(', ')}</li>)}</ol>{!serverVersion.objects.length && <p>На сервере список объектов пуст.</p>}</details>}
-    {geometryPending && <p>Завершите ввод границ или верните сохранённые границы перед отправкой.</p>}
+    {geometryPending && <div><p>Завершите ввод границ или верните сохранённые границы перед отправкой.</p>{current.filter(item=>draft.geometry[item.id]).map(item=><button key={item.id} onClick={()=>{select(item.id);requestAnimationFrame(()=>{if(coordinates.current){coordinates.current.open=true;coordinates.current.querySelector<HTMLInputElement>('input')?.focus()}})}}>Исправить границы объекта {current.indexOf(item)+1}</button>)}</div>}
     {draft.completed && !draft.pending && !geometryPending && <button onClick={()=>{try{localStorage.removeItem(storage);setDraft({...draft,completed:false});setMessage('Завершённый локальный черновик удалён. Сохранённая версия остаётся на сервере.')}catch{setStorageError(true)}}}>Удалить завершённый локальный черновик</button>}
     {message && <p role="status">{message}</p>}
   </section>

@@ -158,3 +158,97 @@ describe('SignalsPage', () => {
     fireEvent(window, new Event('resize'))
   })
 })
+
+it('uses server totals independently of the visible list and refreshes them after patch',async()=>{
+ let closed=false
+ vi.stubGlobal('fetch',vi.fn(async (_url:string,options?:RequestInit)=>{
+  if(options?.method==='PATCH'){closed=true;return json({state:'closed',comment:'Проверено'})}
+  return json({new_count:closed?0:1,summary:{open_count:closed?0:520,attention_count:closed?0:500,insufficient_data_count:closed?0:20},signals:[signal('signal-1','completion_unconfirmed',{state:closed?'closed':'new'})]})
+ }))
+ const user=userEvent.setup();page()
+ const summary=await screen.findByLabelText('Сводка открытых сигналов')
+ expect(summary.textContent).toContain('Всего открытых: 520')
+ expect(summary.textContent).toContain('Требуют проверки: 500')
+ await user.selectOptions(screen.getByLabelText('Показать'),'closed')
+ expect(summary.textContent).toContain('Недостаточно данных: 20')
+ await screen.findByLabelText('Состояние')
+ await user.selectOptions(screen.getByLabelText('Состояние'),'closed')
+ await user.click(screen.getByRole('button',{name:'Сохранить'}))
+ expect(await screen.findByText('Открытых сигналов нет')).toBeTruthy()
+})
+
+it('opens shared photo viewer, switches frames, toggles boxes and restores comment and focus',async()=>{
+ Object.defineProperty(URL,'createObjectURL',{configurable:true,value:vi.fn(()=> 'blob:photo')})
+ Object.defineProperty(URL,'revokeObjectURL',{configurable:true,value:vi.fn()})
+ HTMLDialogElement.prototype.showModal=function(){this.setAttribute('open','');this.querySelector('button')?.focus()}
+ HTMLDialogElement.prototype.close=function(){this.removeAttribute('open');this.dispatchEvent(new Event('close'))}
+ const record=signal('photo','equipment_not_planned',{run_id:'run-1',basis:{class_name:'truck',supporting_input_ids:['f2']}})
+ vi.stubGlobal('fetch',vi.fn(async(url:string)=>url==='/api/signals'?json({signals:[record],new_count:1}):url.includes('/artifacts/')?{ok:true,blob:async()=>new Blob(['photo'])}:json({state:'succeeded',inputs:[{input_id:'f1',ordinal:0,artifact_id:'a1',sha256:'s1'},{input_id:'f2',ordinal:1,artifact_id:'a2',sha256:'s2'}],objects:[{input_id:'f2',class_name:'truck',box:[.1,.1,.6,.6],invocation_id:'i'}]})))
+ const user=userEvent.setup();page()
+ const open=await screen.findByRole('button',{name:'Открыть фото'})
+ await user.type(screen.getByLabelText('Комментарий'),'Проверю назначение')
+ await user.click(open)
+ await user.click(within(screen.getByRole('dialog')).getByRole('button',{name:'Следующий кадр'}))
+ expect(within(screen.getByRole('dialog')).getByRole('status').textContent).toContain('Кадр 2 из 2')
+ await user.click(within(screen.getByRole('dialog')).getByLabelText('Рамки объектов'))
+ expect(screen.getByRole('dialog').querySelector('.object-box')).toBeNull()
+ await user.click(within(screen.getByRole('dialog')).getByRole('button',{name:'Закрыть'}))
+ expect(screen.getByLabelText('Комментарий')).toHaveProperty('value','Проверю назначение')
+ expect(document.activeElement).toBe(open)
+ expect(screen.getByText('Поддерживающий кадр · 2 из 2')).toBeTruthy()
+})
+
+it.each([
+ ['expected_equipment_missing','Сверьте технику с текущей работой'],
+ ['equipment_not_planned','Уточните назначение техники'],
+ ['stage_plan_mismatch','Сверьте фактическую работу'],
+ ['completion_unconfirmed','Уточните завершение'],
+ ['insufficient_observations','Добавьте минимум три пригодных кадра'],
+])('explains %s and its next action in Russian without a photograph',async(kind,action)=>{
+ vi.stubGlobal('fetch',vi.fn(async()=>json({signals:[signal('signal-1',kind)],new_count:1})))
+ page()
+ expect(await screen.findByText(new RegExp(action))).toBeTruthy()
+ expect(screen.getByText('Связанных фотографий нет. Основание — сохранённая ревизия плана ниже.')).toBeTruthy()
+})
+
+it.each([false,true])('distinguishes pending and failed photo reads while retaining valid preview=%s',async(hasPreview)=>{
+ Object.defineProperty(URL,'createObjectURL',{configurable:true,value:vi.fn(()=> 'blob:photo')})
+ Object.defineProperty(URL,'revokeObjectURL',{configurable:true,value:vi.fn()})
+ let reject!:()=>void
+ const pending=new Promise((_resolve,rejectRead)=>{reject=()=>rejectRead(new Error('offline'))})
+ const record=signal('photo','equipment_not_planned',{run_id:'run-1',...(hasPreview?{preview:{input_id:'f1',ordinal:0,artifact_id:'a1'}}:{})})
+ const fetchMock=vi.fn(async(url:string)=>url==='/api/signals'?json({signals:[record],new_count:1}):url.includes('/artifacts/')?{ok:true,blob:async()=>new Blob(['photo'])}:pending)
+ vi.stubGlobal('fetch',fetchMock);page()
+ expect(await screen.findByText('Загружаем фотографии анализа…')).toBeTruthy()
+ expect(screen.queryByText(/Связанных фотографий нет/)).toBeNull()
+ if(hasPreview)expect(screen.getByRole('button',{name:'Открыть фото'})).toBeTruthy()
+ reject()
+ const retry=await screen.findByRole('button',{name:'Повторить загрузку фотографий'})
+ expect(screen.queryByText(/Связанных фотографий нет/)).toBeNull()
+ if(hasPreview)expect(screen.getByRole('button',{name:'Открыть фото'})).toBeTruthy()
+ await userEvent.setup().click(retry)
+ await waitFor(()=>expect(fetchMock.mock.calls.filter(([url])=>url==='/api/runs/run-1')).toHaveLength(2))
+})
+
+it('uses completed projection metadata and discloses saved equipment policies',async()=>{
+ Object.defineProperty(URL,'createObjectURL',{configurable:true,value:vi.fn(()=> 'blob:photo')})
+ Object.defineProperty(URL,'revokeObjectURL',{configurable:true,value:vi.fn()})
+ HTMLDialogElement.prototype.showModal=function(){this.setAttribute('open','')}
+ HTMLDialogElement.prototype.close=function(){this.removeAttribute('open');this.dispatchEvent(new Event('close'))}
+ const record=signal('photo','equipment_not_planned',{run_id:'run-1',plan_revision_number:1,work_entry_id:'entry-1',basis:{class_name:'truck'}})
+ const fetchMock=vi.fn(async(url:string)=>url==='/api/signals'?json({signals:[record],new_count:1}):url.endsWith('/native')?{ok:true,text:async()=>'{"observer":"saved"}'}:url.includes('/artifacts/')?{ok:true,blob:async()=>new Blob(['photo'])}:url.includes('/plan?')?json({revision_id:'revision-1',revision_number:1,entries:[{id:'entry-1',state:'active',stage_key:'excavation',starts_at:'2026-09-26T10:00:00Z',ends_at:'2026-09-26T18:00:00Z',expected_equipment:['excavator'],allowed_equipment:['dump_truck'],excluded_equipment:['truck']}]}):json({state:'succeeded',context:{period:'raw period'},profile_snapshot:{adapter:{code:'saved-adapter'}},inputs:[{input_id:'f1',ordinal:0,artifact_id:'raw-artifact',sha256:'source-sha'}],observations:[{input_id:'f1',ordinal:0,class_name:'excavator',state:'detected',source_artifact_id:'raw-artifact'}],result_projection:{outcome:'check_requested',context:{period:'saved projection period'},series:{usable_input_ids:['f1']},frames:[{input_id:'f1',ordinal:2,class_name:'truck',state:'detected',source_artifact_id:'projected-artifact'}]},native_evidence_by_frame:[{input_id:'f1',artifact_id:'native',ordinal:2,sha256:'native-sha',invocation_id:'invocation',profile_id:'saved-profile',profile_revision:7}]}))
+ vi.stubGlobal('fetch',fetchMock);const user=userEvent.setup();page()
+ await user.click(await screen.findByRole('button',{name:'Открыть фото'}))
+ const viewer=screen.getByRole('dialog')
+ expect(within(viewer).getByText('Номер кадра: 3. Пригодность: пригоден.')).toBeTruthy()
+ expect(within(viewer).getByText('Наблюдения: Грузовик: Обнаружен.')).toBeTruthy()
+ expect(within(viewer).getByText('Период: saved projection period.')).toBeTruthy()
+ expect(within(viewer).getByText('saved-adapter')).toBeTruthy()
+ expect(within(viewer).getByText('saved-profile')).toBeTruthy()
+ expect(fetchMock.mock.calls.some(([url])=>url.endsWith('/projected-artifact'))).toBe(true)
+ await user.click(within(viewer).getByRole('button',{name:'Закрыть'}))
+ expect(screen.getByText(/явно не предусмотрено Грузовик/)).toBeTruthy()
+ expect(screen.getByText('Ожидается: Экскаватор')).toBeTruthy()
+ expect(screen.getByText('Допускается: Самосвал')).toBeTruthy()
+ expect(screen.getByText('Явно не предусмотрено: Грузовик')).toBeTruthy()
+})
