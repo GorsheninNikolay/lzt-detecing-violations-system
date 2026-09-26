@@ -20,6 +20,8 @@ sources:
 
 # Architecture Spine — Construction Monitoring Rapid MVP
 
+> Историческая архитектура: активный путь DINO/Qwen заменён. Текущая архитектура — [Architecture.md](../../../../Architecture.md). Идентификаторы решений и доказательства сохранены.
+
 ## Design Paradigm
 
 **Pipes and Filters with immutable evidence artifacts.** Domain filters exchange typed contracts and depend on ports, never on web, PostgreSQL, S3-compatible storage, or provider SDKs.

@@ -14,6 +14,7 @@ ADMISSION = Path(__file__).resolve().parents[1] / "backend" / "admission"
 
 
 def main() -> None:
+    raise SystemExit("profile_retired: historical Qwen evaluation is read-only")
     parser = argparse.ArgumentParser()
     parser.add_argument("--folder-id", required=True)
     parser.add_argument("--allow-cloud-upload", action="store_true")

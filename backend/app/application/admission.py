@@ -87,6 +87,7 @@ def _publish(store: PostgresStore, artifacts: ArtifactStore, run_id: uuid.UUID,
 
 def admit(manifest_path: Path, inventories: list[Path], snapshot_dir: Path,
           model_hashes_path: Path, watchdog_seconds: int) -> dict:
+    raise ValueError("profile_retired")
     if watchdog_seconds <= 0:
         raise ValueError("bootstrap_watchdog_invalid")
     manifest, fixtures = validate_manifest(manifest_path, inventories)
@@ -157,6 +158,7 @@ def admit(manifest_path: Path, inventories: list[Path], snapshot_dir: Path,
 
 def admit_cloud(manifest_path: Path, inventories: list[Path], evidence_path: Path,
                 watchdog_seconds: int) -> dict:
+    raise ValueError("profile_retired")
     if watchdog_seconds <= 0:
         raise ValueError("bootstrap_watchdog_invalid")
     manifest, fixtures = validate_manifest(manifest_path, inventories)
@@ -248,34 +250,4 @@ def admit_cloud(manifest_path: Path, inventories: list[Path], evidence_path: Pat
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser()
-    subcommands = parser.add_subparsers(dest="command", required=True)
-    prepare = subcommands.add_parser("prepare")
-    prepare.add_argument("--snapshot-dir", type=Path, required=True)
-    run = subcommands.add_parser("run")
-    run.add_argument("--exclusion-inventory", type=Path, action="append", required=True)
-    run.add_argument("--snapshot-dir", type=Path, required=True)
-    run.add_argument("--bootstrap-watchdog-seconds", type=int, default=600)
-    cloud = subcommands.add_parser("run-cloud")
-    cloud.add_argument("--exclusion-inventory", type=Path, action="append", required=True)
-    cloud.add_argument("--evidence", type=Path, required=True)
-    cloud.add_argument("--bootstrap-watchdog-seconds", type=int, default=600)
-    args = parser.parse_args()
-    if args.command == "prepare":
-        files = prepare_snapshot(args.snapshot_dir)
-        (ADMISSION / "model-files.json").write_text(json.dumps(files, indent=2) + "\n")
-        print(json.dumps({"prepared": True, "files": len(files)}))
-        return
-    try:
-        if args.command == "run-cloud":
-            result = admit_cloud(ADMISSION / "manifest.json", args.exclusion_inventory,
-                                 args.evidence, args.bootstrap_watchdog_seconds)
-        else:
-            os.environ["HF_HUB_OFFLINE"] = "1"
-            os.environ["TRANSFORMERS_OFFLINE"] = "1"
-            result = admit(ADMISSION / "manifest.json", args.exclusion_inventory, args.snapshot_dir,
-                ADMISSION / "model-files.json", args.bootstrap_watchdog_seconds)
-        print(json.dumps(result))
-    except Exception as exc:
-        code = str(exc) if str(exc) in SAFE_FAILURE_CODES else "admission_failed"
-        parser.exit(1, code + "\n")
+    raise SystemExit("profile_retired: use evidence-profile for DeepSeek configuration")

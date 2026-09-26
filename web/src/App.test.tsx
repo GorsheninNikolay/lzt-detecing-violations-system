@@ -1202,6 +1202,7 @@ describe('Zone plan and signals', () => {
     const time = screen.getByLabelText('Время съёмки') as HTMLInputElement
     fireEvent.change(time, { target: { value: '2026-09-25T12:30' } })
     expect(screen.getByLabelText('Участок наблюдения')).toHaveProperty('readOnly', true)
+    await consentToCloud()
     await user.click(screen.getByRole('button', { name: 'Запустить анализ' }))
     await waitFor(() => expect(fetchMock.mock.calls.some(([url, options]) => url === '/api/runs/single-image' && options?.method === 'POST')).toBe(true))
     const request = fetchMock.mock.calls.find(([url, options]) => url === '/api/runs/single-image' && options?.method === 'POST')
@@ -1219,6 +1220,7 @@ describe('Zone plan and signals', () => {
     await fillContext(user)
     await user.upload(screen.getByLabelText('Выбрать изображение'), image('frame.jpg'))
     await user.click(screen.getByRole('button', { name: 'Привязать к плану' }))
+    await consentToCloud()
     await user.click(screen.getByRole('button', { name: 'Запустить анализ' }))
     expect(await screen.findByText(/Выберите проект и участок с сохранённой ревизией плана/)).toBeTruthy()
     expect(fetchMock.mock.calls.some(([, options]) => options?.method === 'POST')).toBe(false)
@@ -1226,7 +1228,7 @@ describe('Zone plan and signals', () => {
     expect(screen.queryByLabelText('Проект плана')).toBeNull()
   })
 
-  it('explains the legacy rule limitation before sending a PNG', async () => {
+  it('submits PNG as observation-only despite historical rule metadata', async () => {
     history.replaceState({}, '', '/new')
     vi.stubGlobal('__ANALYSIS_CHOICES__', [{ id: 'excavation', label: 'Земляные работы', rule: {
       name: 'Вывоз грунта', revision: 'v1', expectation: 'Самосвал', provenance: 'demo', recommendation: 'Проверить',
@@ -1236,11 +1238,13 @@ describe('Zone plan and signals', () => {
     const user = userEvent.setup()
     render(<App />)
     await fillContext(user)
-    await user.click(screen.getByRole('radio', { name: 'Проверить правило этапа' }))
+    expect(screen.queryByRole('radio', { name: 'Проверить правило этапа' })).toBeNull()
     await user.upload(screen.getByLabelText('Выбрать изображение'), new File([png], 'frame.png', { type: 'image/png' }))
+    await consentToCloud()
     await user.click(screen.getByRole('button', { name: 'Запустить анализ' }))
-    expect((await screen.findAllByText(/Текущее правило принимает JPEG/)).length).toBeGreaterThan(0)
-    expect(fetchMock.mock.calls.some(([, options]) => options?.method === 'POST')).toBe(false)
+    await waitFor(() => expect(fetchMock.mock.calls.some(([, options]) => options?.method === 'POST')).toBe(true))
+    expect(JSON.parse(fetchMock.mock.calls.find(([, options]) => options?.method === 'POST')![1].body).intent).toBe('observation_only')
+    expect(screen.queryByText(/Текущее правило принимает JPEG/)).toBeNull()
   })
 })
 
@@ -1297,6 +1301,12 @@ describe('About project', () => {
 async function fillContext(user: ReturnType<typeof userEvent.setup>) {
   await user.type(screen.getByLabelText('Сценарий'), 'Земляные работы')
   await user.type(screen.getByLabelText('Участок наблюдения'), 'Северный участок')
+}
+
+async function consentToCloud() {
+  const consent = screen.getByLabelText(/Разрешаю отправить эти фотографии/) as HTMLInputElement
+  await waitFor(() => expect(consent.disabled).toBe(false))
+  if (!consent.checked) fireEvent.click(consent)
 }
 
 function quotaBackedRequests() {
@@ -1397,7 +1407,7 @@ describe('New Analysis', () => {
       expect((screen.getByLabelText('Сценарий') as HTMLInputElement).value).toBe(demo.scenario)
       expect((screen.getByLabelText('Участок наблюдения') as HTMLInputElement).value).toBe(demo.observationArea)
       expect((screen.getByLabelText('Дата и время наблюдения') as HTMLInputElement).value).toBe(demo.period)
-      expect((screen.getByRole('radio', { name: 'Проверить правило этапа' }) as HTMLInputElement).checked).toBe(true)
+      expect(screen.queryByRole('radio', { name: 'Проверить правило этапа' })).toBeNull()
       expect(screen.queryByText(demo.ruleRevision)).toBeNull()
       expect(screen.getByText(/В исходном примере время 12:00 условное/)).toBeTruthy()
       expect(screen.getByText(/порядок кадров соответствует архиву/)).toBeTruthy()
@@ -1405,10 +1415,11 @@ describe('New Analysis', () => {
       expect(screen.queryByText(/порядок кадров соответствует архиву/)).toBeNull()
       await user.click(screen.getByRole('button', { name: `Ниже: Screenshot_${demo.frames[1].sourceMember.match(/\d+/)![0]}.jpg, кадр 1` }))
       await user.type(screen.getByLabelText('Сценарий'), ' — уточнено')
+      await consentToCloud()
       await user.click(screen.getByRole('button', { name: 'Запустить анализ' }))
       await waitFor(() => expect(fetchMock.mock.calls.some(call => call[0] === '/api/runs/series')).toBe(true))
       const request = JSON.parse(fetchMock.mock.calls.find(call => call[0] === '/api/runs/series')![1]!.body as string)
-      expect(request).toMatchObject({ intent: 'rule_evaluation', stage: 'excavation', scenario: demo.scenario + ' — уточнено', observation_area: demo.observationArea })
+      expect(request).toMatchObject({ intent: 'observation_only', stage: 'excavation', scenario: demo.scenario + ' — уточнено', observation_area: demo.observationArea })
       expect(request.images_base64).toEqual(bytes.map(item => btoa(String.fromCharCode(...item))))
     })
   }
@@ -1486,14 +1497,14 @@ describe('New Analysis', () => {
     expect(stop).toHaveBeenCalled()
   })
 
-  it('refuses a changed rule and leaves an uncertain pending body untouched', async () => {
+  it('preserves an edited draft on unavailable demo and leaves an uncertain pending body untouched', async () => {
     const user = userEvent.setup()
     vi.stubGlobal('__ANALYSIS_CHOICES__', configuredChoices.stages)
     render(<App />)
     await user.type(screen.getByLabelText('Сценарий'), 'Мой сценарий')
     await user.click(screen.getByText('Включённые примеры'))
     await user.click(screen.getByRole('button', { name: demoCases.cases[0].label }))
-    expect(screen.getByRole('alert').textContent).toContain('текущая ревизия правила изменилась')
+    expect(await screen.findByText(/Не удалось загрузить и проверить все кадры примера/)).toBeTruthy()
     expect((screen.getByLabelText('Сценарий') as HTMLInputElement).value).toBe('Мой сценарий')
     cleanup()
     const saved = { endpoint: '/api/runs/series', body: '{"original":true}', key: 'original-key' }
@@ -1512,7 +1523,7 @@ describe('New Analysis', () => {
     render(<App />)
     await waitFor(() => expect((screen.getByRole('button', { name: 'Запустить анализ' }) as HTMLButtonElement).disabled).toBe(false))
     expect(fetchMock.mock.calls[0][0]).toBe('/api/analysis-choices')
-    expect((screen.getByRole('radio', { name: 'Только распознать технику' }) as HTMLInputElement).checked).toBe(true)
+    expect(screen.queryByRole('radio', { name: 'Только распознать технику' })).toBeNull()
     expect((screen.getByRole('button', { name: 'Запустить анализ' }) as HTMLButtonElement).disabled).toBe(false)
   })
 
@@ -1536,14 +1547,14 @@ describe('New Analysis', () => {
     const user = userEvent.setup()
     vi.stubGlobal('__ANALYSIS_CHOICES__', configuredChoices.stages)
     render(<App />)
-    await user.click(screen.getByRole('radio', { name: 'Только распознать технику' }))
+    expect(screen.queryByRole('radio', { name: 'Только распознать технику' })).toBeNull()
     await user.selectOptions(screen.getByLabelText('Этап'), 'other')
     await user.selectOptions(screen.getByLabelText('Этап'), 'excavation')
-    expect((screen.getByRole('radio', { name: 'Только распознать технику' }) as HTMLInputElement).checked).toBe(true)
-    expect((screen.getByRole('radio', { name: 'Проверить правило этапа' }) as HTMLInputElement).disabled).toBe(false)
+    expect(screen.queryByRole('radio', { name: 'Только распознать технику' })).toBeNull()
+    expect(screen.queryByRole('radio', { name: 'Проверить правило этапа' })).toBeNull()
   })
 
-  it('defaults to observation-only with an optional excavation rule and explains an unconfigured stage', async () => {
+  it('offers observation-only for every declared stage despite historical choice metadata', async () => {
     const user = userEvent.setup()
     vi.stubGlobal('__ANALYSIS_CHOICES__', [{ id: 'excavation', label: 'Земляные работы', rule: {
       name: 'Проверка вывоза грунта на этапе земляных работ',
@@ -1552,19 +1563,19 @@ describe('New Analysis', () => {
       provenance: 'demonstration rule', recommendation: 'Проверить организацию вывоза грунта на участке вручную.',
     } }, { id: 'other', label: 'Другой этап', rule: null }])
     render(<App />)
-    expect((screen.getByRole('radio', { name: 'Только распознать технику' }) as HTMLInputElement).checked).toBe(true)
+    expect(screen.queryByRole('radio', { name: 'Только распознать технику' })).toBeNull()
     expect(screen.queryByText('Проверка вывоза грунта на этапе земляных работ')).toBeNull()
     expect(screen.queryByText('rule-34a0c9535d378f7482cac065e0d474e7b33a4fb545beee1922b962a837b9d97d')).toBeNull()
     expect(screen.queryByText('Экскаватор работает постоянно, самосвалы появляются периодически.')).toBeNull()
     expect(screen.queryByText('demonstration rule')).toBeNull()
     expect(screen.getByText(/Участок: не указана/)).toBeTruthy()
     await user.selectOptions(screen.getByLabelText('Этап'), 'other')
-    expect((screen.getByRole('radio', { name: 'Только распознать технику' }) as HTMLInputElement).checked).toBe(true)
-    expect((screen.getByRole('radio', { name: 'Проверить правило этапа' }) as HTMLInputElement).disabled).toBe(true)
-    expect(screen.getByText('Для этого этапа правило не настроено в прототипе')).toBeTruthy()
+    expect(screen.queryByRole('radio', { name: 'Только распознать технику' })).toBeNull()
+    expect(screen.queryByRole('radio', { name: 'Проверить правило этапа' })).toBeNull()
+    expect(screen.getByText(/DeepSeek распознаёт технику и анализирует контекст/)).toBeTruthy()
   })
 
-  it('allows a short rule series and sends its exact selected intent', async () => {
+  it('uses observation-only for short uploads even when old choices contain a rule', async () => {
     const user = userEvent.setup()
     vi.stubGlobal('__ANALYSIS_CHOICES__', [{ id: 'excavation', label: 'Земляные работы', rule: {
       name: 'Проверка вывоза грунта', revision: 'v1', expectation: 'Техника', provenance: 'demonstration rule', recommendation: 'Проверить',
@@ -1574,11 +1585,26 @@ describe('New Analysis', () => {
     render(<App />)
     await fillContext(user)
     await user.upload(screen.getByLabelText('Выбрать изображение'), image('one.jpg'))
-    await user.click(screen.getByRole('radio', { name: 'Проверить правило этапа' }))
-    expect(screen.getByText(/нужны минимум три пригодных кадра/)).toBeTruthy()
+    await screen.findByText('one.jpg')
+    expect(screen.queryByRole('radio', { name: 'Проверить правило этапа' })).toBeNull()
+    expect(screen.queryByText(/нужны минимум три пригодных кадра/)).toBeNull()
+    await consentToCloud()
     await user.click(screen.getByRole('button', { name: 'Запустить анализ' }))
     await waitFor(() => expect(post).toHaveBeenCalled())
-    expect(JSON.parse(post.mock.calls[0][1].body)).toMatchObject({ intent: 'rule_evaluation', stage: 'excavation' })
+    expect(JSON.parse(post.mock.calls[0][1].body)).toMatchObject({ intent: 'observation_only', stage: 'excavation' })
+  })
+
+  it('requires explicit cloud consent before a valid upload can be submitted', async () => {
+    const user = userEvent.setup()
+    const post = vi.fn()
+    vi.stubGlobal('fetch', post)
+    render(<App />)
+    await fillContext(user)
+    await user.upload(screen.getByLabelText('Выбрать изображение'), image('one.jpg'))
+    expect((screen.getByLabelText(/Разрешаю отправить эти фотографии/) as HTMLInputElement).checked).toBe(false)
+    await user.click(screen.getByRole('button', { name: 'Запустить анализ' }))
+    expect(await screen.findByText(/Для анализа требуется согласие/)).toBeTruthy()
+    expect(post.mock.calls.filter(call => call[1]?.method === 'POST')).toHaveLength(0)
   })
 
   it('submits reordered distinct bytes and retains duplicate frames', async () => {
@@ -1595,6 +1621,7 @@ describe('New Analysis', () => {
     const rows = screen.getAllByRole('listitem').filter(row => row.classList.contains('frame'))
     expect(within(rows[0]).getByText('second.jpg')).toBeTruthy()
     expect(within(rows[1]).getByText('first.jpg')).toBeTruthy()
+    await consentToCloud()
     await user.click(screen.getByRole('button', { name: 'Запустить анализ' }))
     await screen.findByText('Анализ поставлен в очередь')
     expect(document.activeElement).toBe(screen.getByRole('heading', { name: 'Анализ поставлен в очередь' }))
@@ -1638,6 +1665,7 @@ describe('New Analysis', () => {
     await fillContext(user)
     await user.upload(screen.getByLabelText('Выбрать изображение'), new File([png], 'frame.png', { type: 'image/png' }))
     expect(await screen.findByText('frame.png')).toBeTruthy()
+    await consentToCloud()
     await user.click(screen.getByRole('button', { name: 'Запустить анализ' }))
     await waitFor(() => expect(post.mock.calls.some(([url, options]) => url === '/api/runs/single-image' && options?.method === 'POST')).toBe(true))
     const request = post.mock.calls.find(([url, options]) => url === '/api/runs/single-image' && options?.method === 'POST')
@@ -1654,6 +1682,7 @@ describe('New Analysis', () => {
     render(<App />)
     await fillContext(user)
     await user.upload(screen.getByLabelText('Выбрать изображение'), image('one.jpg'))
+    await consentToCloud()
     await user.click(screen.getByRole('button', { name: 'Запустить анализ' }))
     expect(await screen.findByText(/Ответ сервера не получен/)).toBeTruthy()
     expect(screen.getByLabelText('Сценарий')).toHaveProperty('value', 'Земляные работы')
@@ -1692,6 +1721,7 @@ describe('New Analysis', () => {
         if (delay === 10000) { deadlines.push(callback as () => void); return 0 as ReturnType<typeof setTimeout> }
         return realSetTimeout(callback, delay)
       })
+      await consentToCloud()
       fireEvent.click(screen.getByRole('button', { name: 'Запустить анализ' }))
       await waitFor(() => expect(post).toHaveBeenCalledTimes(1))
       const saved = sessionStorage.getItem('observation-pending')
@@ -1776,6 +1806,8 @@ describe('New Analysis', () => {
     render(<App />)
     await fillContext(user)
     await user.upload(screen.getByLabelText('Выбрать изображение'), image('one.jpg'))
+    await waitFor(() => expect(screen.getByLabelText(/Разрешаю отправить эти фотографии/)).toHaveProperty('disabled', false))
+    await consentToCloud()
     await user.click(screen.getByRole('button', { name: 'Запустить анализ' }))
     await waitFor(() => expect(storage.open).toHaveBeenCalledTimes(1))
     expect(post).not.toHaveBeenCalled()
@@ -1801,6 +1833,8 @@ describe('New Analysis', () => {
     expect(screen.getByLabelText('Сценарий').closest('fieldset')).toHaveProperty('disabled', false)
     await fillContext(user)
     await user.upload(screen.getByLabelText('Выбрать изображение'), image('two.jpg'))
+    await waitFor(() => expect(screen.getByLabelText(/Разрешаю отправить эти фотографии/)).toHaveProperty('disabled', false))
+    await consentToCloud()
     await user.click(screen.getByRole('button', { name: 'Запустить анализ' }))
     await waitFor(() => expect(storage.open).toHaveBeenCalledTimes(4))
     storage.completeWrite()
@@ -1820,6 +1854,8 @@ describe('New Analysis', () => {
     render(<App />)
     await fillContext(user)
     await user.upload(screen.getByLabelText('Выбрать изображение'), image('one.jpg'))
+    await waitFor(() => expect(screen.getByLabelText(/Разрешаю отправить эти фотографии/)).toHaveProperty('disabled', false))
+    await consentToCloud()
     await user.click(screen.getByRole('button', { name: 'Запустить анализ' }))
     await waitFor(() => expect(storage.open).toHaveBeenCalledTimes(1))
     storage.completeWrite()
@@ -1844,6 +1880,8 @@ describe('New Analysis', () => {
       render(<App />)
       await fillContext(user)
       await user.upload(screen.getByLabelText('Выбрать изображение'), filenames.map(name => image(name)))
+      await waitFor(() => expect(screen.getByLabelText(/Разрешаю отправить эти фотографии/)).toHaveProperty('disabled', false))
+      await consentToCloud()
       await user.click(screen.getByRole('button', { name: 'Запустить анализ' }))
       expect(await screen.findByText(/Отправка завершилась ошибкой.*новый ключ отправки/)).toBeTruthy()
       expect(post).toHaveBeenCalledTimes(1)
@@ -1853,6 +1891,8 @@ describe('New Analysis', () => {
       for (const filename of filenames) expect(screen.getByText(filename)).toBeTruthy()
       await user.clear(screen.getByLabelText('Сценарий'))
       await user.type(screen.getByLabelText('Сценарий'), 'Новый сценарий')
+      await waitFor(() => expect(screen.getByLabelText(/Разрешаю отправить эти фотографии/)).toHaveProperty('disabled', false))
+      await consentToCloud()
       await user.click(screen.getByRole('button', { name: 'Запустить анализ' }))
       expect(await screen.findByText(/Результат отправки пока неизвестен/)).toBeTruthy()
       expect(post).toHaveBeenCalledTimes(2)
@@ -1874,6 +1914,7 @@ describe('New Analysis', () => {
     render(<App />)
     await fillContext(user)
     await user.upload(screen.getByLabelText('Выбрать изображение'), image('one.jpg'))
+    await consentToCloud()
     await user.click(screen.getByRole('button', { name: 'Запустить анализ' }))
     expect(await screen.findByText(/Ответ сервера не получен/)).toBeTruthy()
     const saved = sessionStorage.getItem('observation-pending')
@@ -1943,11 +1984,50 @@ describe('New Analysis', () => {
     await fillContext(user)
     fireEvent.change(screen.getByLabelText('Выбрать изображение'), { target: { files: [image('slow.jpg')] } })
     await waitFor(() => expect(finishDecode).toBeTypeOf('function'))
+    expect(screen.getByLabelText(/Разрешаю отправить эти фотографии/)).toHaveProperty('disabled', true)
     fireEvent.submit(screen.getByRole('button', { name: 'Запустить анализ' }).closest('form')!)
     expect(post).not.toHaveBeenCalled()
-    finishDecode({ width: 2, height: 2, close: vi.fn() })
+    await act(async () => finishDecode({ width: 2, height: 2, close: vi.fn() }))
+    await screen.findByText('slow.jpg')
+    await waitFor(() => expect(screen.getByLabelText(/Разрешаю отправить эти фотографии/)).toHaveProperty('disabled', false))
+    expect(screen.getByLabelText(/Разрешаю отправить эти фотографии/)).toHaveProperty('checked', false)
+    expect(post).not.toHaveBeenCalled()
+    await user.click(screen.getByLabelText(/Разрешаю отправить эти фотографии/))
+    await user.click(screen.getByRole('button', { name: 'Запустить анализ' }))
     await waitFor(() => expect(post).toHaveBeenCalledTimes(1))
     expect(JSON.parse(post.mock.calls[0][1].body).image_base64).toBe(btoa(String.fromCharCode(...jpeg, 0)))
+  })
+
+  it('does not let consent for the old batch authorize a frame validated during submit', async () => {
+    const user = userEvent.setup()
+    let finishDecode!: (value: { width: number; height: number; close: () => void }) => void
+    vi.stubGlobal('createImageBitmap', vi.fn()
+      .mockResolvedValueOnce({ width: 2, height: 2, close: vi.fn() })
+      .mockImplementationOnce(() => new Promise(resolve => { finishDecode = resolve })))
+    const post = vi.fn().mockResolvedValue({ status: 202, json: async () => ({ code: 'submission_in_progress' }) })
+    vi.stubGlobal('fetch', post)
+    render(<App />)
+    await fillContext(user)
+    await user.upload(screen.getByLabelText('Выбрать изображение'), image('approved.jpg', 1))
+    await screen.findByText('approved.jpg')
+    await waitFor(() => expect(screen.getByLabelText(/Разрешаю отправить эти фотографии/)).toHaveProperty('disabled', false))
+    await user.click(screen.getByLabelText(/Разрешаю отправить эти фотографии/))
+    expect(screen.getByLabelText(/Разрешаю отправить эти фотографии/)).toHaveProperty('checked', true)
+    fireEvent.change(screen.getByLabelText('Выбрать изображение'), { target: { files: [image('new.jpg', 2)] } })
+    await waitFor(() => expect(finishDecode).toBeTypeOf('function'))
+    expect(screen.getByLabelText(/Разрешаю отправить эти фотографии/)).toHaveProperty('disabled', true)
+    fireEvent.submit(screen.getByRole('button', { name: 'Запустить анализ' }).closest('form')!)
+    await act(async () => finishDecode({ width: 2, height: 2, close: vi.fn() }))
+    await screen.findByText('new.jpg')
+    await waitFor(() => expect(screen.getByLabelText(/Разрешаю отправить эти фотографии/)).toHaveProperty('disabled', false))
+    expect(post).not.toHaveBeenCalled()
+    expect(sessionStorage.getItem('observation-pending')).toBeNull()
+    expect(screen.getByLabelText(/Разрешаю отправить эти фотографии/)).toHaveProperty('checked', false)
+    await user.click(screen.getByLabelText(/Разрешаю отправить эти фотографии/))
+    await user.click(screen.getByRole('button', { name: 'Запустить анализ' }))
+    await waitFor(() => expect(post).toHaveBeenCalledTimes(1))
+    expect(JSON.parse(post.mock.calls[0][1].body)).toMatchObject({ cloud_processing_consent: true,
+      images_base64: [btoa(String.fromCharCode(...jpeg, 1)), btoa(String.fromCharCode(...jpeg, 2))] })
   })
 
   it('treats a malformed definitive rejection as resolved and permits a new key', async () => {
@@ -1958,9 +2038,13 @@ describe('New Analysis', () => {
     render(<App />)
     await fillContext(user)
     await user.upload(screen.getByLabelText('Выбрать изображение'), image('one.jpg'))
+    await waitFor(() => expect(screen.getByLabelText(/Разрешаю отправить эти фотографии/)).toHaveProperty('disabled', false))
+    await consentToCloud()
     await user.click(screen.getByRole('button', { name: 'Запустить анализ' }))
     expect(await screen.findByText(/Сервер отклонил запрос/)).toBeTruthy()
     expect(sessionStorage.getItem('observation-pending')).toBeNull()
+    await waitFor(() => expect(screen.getByLabelText(/Разрешаю отправить эти фотографии/)).toHaveProperty('disabled', false))
+    await consentToCloud()
     await user.click(screen.getByRole('button', { name: 'Запустить анализ' }))
     expect(await screen.findByText(/Результат отправки пока неизвестен/)).toBeTruthy()
     expect(post).toHaveBeenCalledTimes(2)
@@ -2148,6 +2232,7 @@ describe('New Analysis', () => {
       await fillContext(user)
       await user.upload(screen.getByLabelText('Выбрать изображение'), image('one.jpg'))
       fireEvent.change(screen.getByLabelText('Дата и время наблюдения'), { target: { value: '2026-03-08T02:30' } })
+      await consentToCloud()
       await user.click(screen.getByRole('button', { name: 'Запустить анализ' }))
       expect((await screen.findAllByText(/Укажите существующие местные дату и время/)).length).toBeGreaterThan(0)
     } finally { vi.unstubAllEnvs() }

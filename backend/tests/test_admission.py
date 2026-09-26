@@ -25,7 +25,8 @@ from test_startup import database, integration
 
 ADMISSION = Path(__file__).resolve().parents[1] / "admission"
 BACKEND = ADMISSION.parent
-INVENTORIES = sorted((ADMISSION / "exclusions").glob("*.json"))
+INVENTORIES = [ADMISSION / "exclusions" / f"{tier}.json" for tier in
+               ("training", "validation", "development_acceptance", "held_out_evaluation")]
 
 
 def test_fixture_manifest_disjoint_and_closed_states(tmp_path):
@@ -74,7 +75,7 @@ def test_runtime_cli_rejects_manifest_overrides(monkeypatch, flag):
         "--exclusion-inventory", str(INVENTORIES[0]), flag, "/private/tmp/override.json"])
     with pytest.raises(SystemExit) as error:
         admission.main()
-    assert error.value.code == 2
+    assert str(error.value.code).startswith("profile_retired:")
 
 
 def test_failed_run_retains_reservation_and_rejects_draft(database):
@@ -289,7 +290,7 @@ def test_test_observer_cannot_bind_even_with_enabled_authorization(database):
             VALUES (:id, 1, 'enabled', 'test', :audit, false)"""), {"id": test_id, "audit": audit_hash})
     try:
         executor = ClaimLoop()
-        with pytest.raises(AdmissionStoreError, match="profile_unauthorized"):
+        with pytest.raises(AdmissionStoreError, match="profile_retired"):
             executor.bind_runtime(database, test_id)
         assert executor.runtime_binding is None
     finally:

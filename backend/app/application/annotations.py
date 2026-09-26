@@ -79,7 +79,7 @@ def source(connection, run_id, input_id):
 
 def original_objects(connection, run_id, input_id):
     return [dict(item) | {'id': str(item['id'])} for item in connection.execute(text('''
-        SELECT id,class_name,box FROM detected_objects WHERE run_id=:run AND input_id=:input
+        SELECT id,class_name,box,details FROM detected_objects WHERE run_id=:run AND input_id=:input
         ORDER BY ordinal'''), {'run': run_id, 'input': input_id}).mappings()]
 
 

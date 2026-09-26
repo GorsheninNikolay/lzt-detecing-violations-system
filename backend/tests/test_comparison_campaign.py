@@ -592,7 +592,7 @@ def test_duplicate_hashes_keep_distinct_fixture_cells(database, monkeypatch):
 
 def test_real_admission_gate_rejects_unauthorized_profile_without_cells(database):
     revision, local_id, cloud_id, _, _ = seed(database)
-    with pytest.raises(AdmissionStoreError, match="profile_admission_evidence_missing"):
+    with pytest.raises(AdmissionStoreError, match="profile_retired"):
         database.freeze_comparison_campaign(revision, local_id, cloud_id)
     with database.engine.connect() as connection:
         assert connection.execute(text("SELECT count(*) FROM comparison_cells c JOIN comparison_campaigns p ON p.id = c.campaign_id WHERE p.evaluation_revision_id = :id"),
@@ -621,7 +621,7 @@ def test_revoked_and_uncovered_cloud_scope_leave_no_campaign(database, monkeypat
         return original(connection, profile_id, expected_revision)
 
     monkeypatch.setattr(database, "_require_authorized", local_only)
-    with pytest.raises(AdmissionStoreError, match="profile_unauthorized"):
+    with pytest.raises(AdmissionStoreError, match="profile_retired"):
         database.freeze_comparison_campaign(revision, local_id, cloud_id)
     patch_admission(monkeypatch, database, local_id, cloud_id, local, cloud)
     cloud["allowed_input_sha256"].pop()

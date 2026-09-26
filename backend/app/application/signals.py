@@ -11,7 +11,8 @@ from sqlalchemy import text
 
 
 router = APIRouter()
-STAGES = {"excavation", "concreting", "roadwork"}
+from app.profiles.deepseek import STAGES as MODEL_STAGES
+STAGES = set(MODEL_STAGES) - {"unknown", "ambiguous"}
 STATES = {"new", "in_progress", "closed"}
 
 

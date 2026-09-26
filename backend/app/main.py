@@ -16,8 +16,7 @@ from app.application.submission import SubmissionError, submit, submit_series
 from app.domain.rule import ANALYSIS_CHOICES
 from app.domain.comparison_campaign import CampaignGateError
 from app.config import Config
-from app.profiles.grounding_dino import verify_snapshot
-from app.profiles.cloud_api import CloudObserver
+from app.profiles.deepseek import DeepSeek
 from app.application.site import router as site_router
 from app.application.signals import router as signals_router
 from app.application.engagement import router as engagement_router
@@ -73,24 +72,18 @@ async def lifespan(app: FastAPI):
         if runtime_profile:
             try:
                 claim_loop.bind_runtime(store, uuid.UUID(runtime_profile))
-            except (ValueError, AdmissionStoreError):
-                state.code = "profile_unauthorized"
+            except (ValueError, AdmissionStoreError) as exc:
+                state.code = "profile_retired" if str(exc) == "profile_retired" else "profile_unauthorized"
                 return
             try:
                 snapshot, _ = store.require_authorized(uuid.UUID(runtime_profile))
-                if snapshot.get("kind") == "cloud_api":
-                    CloudObserver(snapshot, config.cloud_api_key)
-                else:
-                    if not config.observer_snapshot_dir:
-                        state.code = "observer_snapshot_missing"
-                        return
-                    await asyncio.to_thread(verify_snapshot, Path(config.observer_snapshot_dir), snapshot["model_files"])
+                DeepSeek(snapshot, config.cloud_api_key)
             except Exception:
                 state.code = "observer_snapshot_invalid"
                 return
         state.code = "ready"
         state.ready.set()
-        claim_loop.start(state.ready, artifacts, config.observer_snapshot_dir)
+        claim_loop.start(state.ready, artifacts)
         def loop_finished(task: asyncio.Task) -> None:
             if state.ready.is_set():
                 state.ready.clear()
@@ -113,7 +106,7 @@ async def lifespan(app: FastAPI):
 
 
 def create_app() -> FastAPI:
-    app = FastAPI(lifespan=lifespan)
+    app = FastAPI(lifespan=lifespan, root_path=os.getenv("API_ROOT_PATH", ""), docs_url=None, redoc_url=None)
     app.state.readiness = Readiness()
     app.include_router(site_router)
     app.include_router(signals_router)
@@ -124,7 +117,7 @@ def create_app() -> FastAPI:
     @app.middleware("http")
     async def private_cache(request: Request, call_next):
         response = await call_next(request)
-        if request.url.path.startswith("/admin/"):
+        if request.url.path.removeprefix(request.scope.get("root_path", "")).startswith("/admin/"):
             response.headers["Cache-Control"] = "no-store"
             response.headers["X-Content-Type-Options"] = "nosniff"
         return response
@@ -146,7 +139,7 @@ def create_app() -> FastAPI:
     @app.post("/runs/single-image")
     @app.post("/runs/series")
     async def submit_single_image(request: Request) -> JSONResponse:
-        series = request.url.path == "/runs/series"
+        series = request.url.path.removeprefix(request.scope.get("root_path", "")) == "/runs/series"
         if not app.state.readiness.ready.is_set():
             return JSONResponse({"code": "service_not_ready"}, status_code=503)
         binding = app.state.claim_loop.runtime_binding
@@ -178,8 +171,9 @@ def create_app() -> FastAPI:
                       409 if code == "idempotency_key_conflict" else
                       503 if code in {"submission_publication_failed", "submission_interrupted"} else 400)
             return JSONResponse({"code": code}, status_code=status)
-        except AdmissionStoreError:
-            return JSONResponse({"code": "profile_unauthorized"}, status_code=503)
+        except AdmissionStoreError as exc:
+            retired = str(exc) == "profile_retired"
+            return JSONResponse({"code": "profile_retired" if retired else "profile_unauthorized"}, status_code=409 if retired else 503)
         except Exception:
             return JSONResponse({"code": "submission_unavailable"}, status_code=503)
 
@@ -231,10 +225,9 @@ def create_app() -> FastAPI:
             if run["state"] == "failed" and not run["retry_successor_id"] and binding and app.state.readiness.ready.is_set():
                 try:
                     snapshot, _ = await asyncio.to_thread(app.state.store.require_authorized, binding[0], binding[1])
-                    if snapshot.get("kind") == "cloud_api":
-                        CloudObserver(snapshot, Config.from_env().cloud_api_key)
-                    else:
-                        await asyncio.to_thread(verify_snapshot, Path(app.state.claim_loop.snapshot_dir), snapshot["model_files"])
+                    DeepSeek(snapshot, Config.from_env().cloud_api_key)
+                    if run.get("ai_evidence") or run.get("profile_snapshot", {}).get("kind") != "deepseek":
+                        raise ValueError("provider_call_not_replayable")
                     run["retry_eligible"] = True
                     run["retry_profile_id"] = str(binding[0])
                     run["retry_authorization_revision"] = binding[1]
@@ -288,10 +281,7 @@ def create_app() -> FastAPI:
             return JSONResponse({"code": "profile_unauthorized"}, status_code=503)
         try:
             snapshot, revision = await asyncio.to_thread(app.state.store.require_authorized, binding[0], binding[1])
-            if snapshot.get("kind") == "cloud_api":
-                CloudObserver(snapshot, Config.from_env().cloud_api_key)
-            else:
-                await asyncio.to_thread(verify_snapshot, Path(app.state.claim_loop.snapshot_dir), snapshot["model_files"])
+            DeepSeek(snapshot, Config.from_env().cloud_api_key)
             successor = await asyncio.to_thread(app.state.store.retry_ordinary, identifier, binding[0], revision,
                                                 snapshot, app.state.artifacts,
                                                 browser_id=request.headers.get("x-browser-id"))
@@ -299,7 +289,7 @@ def create_app() -> FastAPI:
         except AdmissionStoreError as exc:
             code = str(exc)
             return JSONResponse({"code": code}, status_code=404 if code == "run_not_found" else
-                                409 if code in {"retry_ineligible", "retry_source_unavailable"} else 503)
+                                409 if code in {"retry_ineligible", "retry_source_unavailable", "profile_retired", "provider_call_not_replayable", "cloud_consent_required"} else 503)
         except Exception:
             return JSONResponse({"code": "retry_unavailable"}, status_code=503)
 
@@ -325,6 +315,8 @@ def create_app() -> FastAPI:
                                 headers=headers)
         return Response(body, media_type=metadata["media_type"], headers=headers)
 
+    from app.api_docs import install
+    install(app)
     return app
 
 

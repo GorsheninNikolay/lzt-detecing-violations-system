@@ -221,7 +221,7 @@ def test_claim_loop_stop_drains_started_execution(monkeypatch):
             await release.wait()
 
         monkeypatch.setattr(loop, "_execute", execute)
-        loop.start(ready, object(), "unused")
+        loop.start(ready, object())
         try:
             await asyncio.wait_for(started.wait(), 5)
             stopping = asyncio.create_task(loop.stop())

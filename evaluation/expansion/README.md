@@ -1,3 +1,5 @@
+> Исторические данные. Подготовка через DINO выведена из исполнения; текущий путь описан в [README](../../README.md).
+
 # Eight-class annotation queue
 
 `draft-annotations.json` covers all 100 organizer PNGs. It records archive/image hashes, dimensions, the pinned Grounding DINO Tiny model identity, adapter hash, and **unreviewed machine candidates**. These are not labels, training targets, or evaluation results. The archive does not establish site, camera, capture time, or sequence groups. The queue deliberately has no train/validation/held-out split.

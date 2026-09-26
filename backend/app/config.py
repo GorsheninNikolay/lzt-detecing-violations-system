@@ -15,10 +15,7 @@ class Config:
     s3_access_key: str
     s3_secret_key: str
     s3_region: str = "us-east-1"
-    observer_snapshot_dir: str | None = None
     cloud_api_key: str | None = None
-    cloud_iam_token: str | None = None
-    cloud_api_key_id: str | None = None
 
     @staticmethod
     def database_url_from_env() -> str:
@@ -34,5 +31,4 @@ class Config:
         if any(not os.getenv(key) for key in keys):
             raise ConfigurationError("missing_artifact_configuration")
         return cls(database_url, *(os.environ[key] for key in keys), os.getenv("S3_REGION", "us-east-1"),
-                   os.getenv("OBSERVER_SNAPSHOT_DIR"), os.getenv("YANDEX_AI_STUDIO_API_KEY"),
-                   os.getenv("YANDEX_CLOUD_IAM_TOKEN"), os.getenv("YANDEX_AI_STUDIO_API_KEY_ID"))
+                   cloud_api_key=os.getenv("YANDEX_AI_STUDIO_API_KEY"))

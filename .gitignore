@@ -234,3 +234,6 @@ __marimo__/
 /.agents/
 /.opencode/
 /_bmad/
+/training/windows/runtime/
+/training/windows/models/
+/training/windows/datasets/

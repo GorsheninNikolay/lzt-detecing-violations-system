@@ -161,7 +161,7 @@ def test_unapproved_bytes_rejected_before_publication():
     class Unused:
         def __getattr__(self, name):
             raise AssertionError(f"unexpected side effect: {name}")
-    with pytest.raises(SubmissionError, match="cloud_image_not_authorized"):
+    with pytest.raises(SubmissionError, match="profile_retired"):
         submit(Unused(), Unused(), "key", body, uuid.uuid4(), 1,
                {"kind": "cloud_api", "allowed_input_sha256": ["0" * 64]})
 

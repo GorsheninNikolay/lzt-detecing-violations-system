@@ -1,3 +1,7 @@
+# Исторические эксперименты
+
+DINO/Qwen выведены из активного исполнения. Описанные ниже результаты и форматы сохранены для аудита; старые команды запуска и допуска не являются текущим способом работы. Актуальный путь: [DeepSeek service](../README.md).
+
 # Evaluation
 
 Held-out evaluation fixtures and reports belong here, separately from backend integration fixtures.

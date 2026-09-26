@@ -22,9 +22,11 @@ OUTPUT = ROOT / "evaluation/expansion/draft-annotations.json"
 
 
 def build(snapshot_dir: Path | None) -> dict:
+    if snapshot_dir is not None:
+        raise ValueError("profile_retired")
     archive_hash = hashlib.sha256(ARCHIVE.read_bytes()).hexdigest()
     hashes = json.loads((ROOT / "backend/admission/model-files.json").read_text())
-    observer = GroundingDinoCpuV2(snapshot_dir, hashes) if snapshot_dir else None
+    observer = None
     images = []
     with ZipFile(ARCHIVE) as archive:
         names = sorted((name for name in archive.namelist() if re.search(r"Screenshot_\d+\.png$", name)),

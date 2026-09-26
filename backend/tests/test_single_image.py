@@ -43,7 +43,7 @@ def png(color) -> bytes:
 
 
 def request_body(image: bytes, classes=None) -> dict:
-    body = {"intent": "observation_only", "scenario": "equipment_check", "observation_area": "north_gate",
+    body = {"cloud_processing_consent": True, "intent": "observation_only", "scenario": "equipment_check", "observation_area": "north_gate",
             "period": "2026-09-23T12:00:00+03:00", "image_base64": base64.b64encode(image).decode()}
     if classes is not None:
         body["requested_classes"] = classes
@@ -290,7 +290,7 @@ def test_mixed_format_submission_passes_each_media_type_to_publication():
         def read_verified(self, key, digest, size):
             pass
 
-    assert submission.submit_series(Store(), Artifacts(), "mixed", body, uuid.uuid4(), 1, {})[0] == "queued"
+    assert submission.submit_series(Store(), Artifacts(), "mixed", body, uuid.uuid4(), 1, {"kind":"deepseek"})[0] == "queued"
     assert published == list(zip(originals, ("image/jpeg", "image/png")))
 
 
@@ -299,17 +299,9 @@ def test_mixed_image_formats_preserve_originals_and_retry(isolated_admission_dat
     store = PostgresStore(isolated_admission_database)
     artifacts = ArtifactStore(Config(isolated_admission_database, config.s3_endpoint, config.s3_bucket,
                                      config.s3_access_key, config.s3_secret_key))
-    parent, profile = uuid.uuid4(), uuid.uuid4()
-    with store.engine.begin() as connection:
-        connection.execute(text("INSERT INTO observer_profiles (id, status, profile_hash, snapshot) VALUES (:id, 'draft', :hash, '{}'::jsonb)"),
-                           {"id": parent, "hash": uuid.uuid4().hex})
-        connection.execute(text("""INSERT INTO observer_profiles (id, parent_id, status, profile_hash, snapshot, audit_hash)
-            VALUES (:id, :parent, 'admitted', :hash, '{}'::jsonb, :audit)"""),
-            {"id": profile, "parent": parent, "hash": uuid.uuid4().hex, "audit": uuid.uuid4().hex})
-        connection.execute(text("""INSERT INTO profile_authorizations
-            (profile_id, revision, state, reason, audit_hash, interactive_retry_allowed)
-            SELECT :id, 1, 'enabled', 'test', audit_hash, false FROM observer_profiles WHERE id = :id"""),
-            {"id": profile})
+    from app.application.deepseek_runtime import provision
+    profile = provision(store, 'test-folder')
+    profile_snapshot, _ = store.require_authorized(profile)
     project, zone = uuid.uuid4(), uuid.uuid4()
     with store.engine.begin() as connection:
         connection.execute(text("INSERT INTO site_projects (id,name,timezone) VALUES (:id,'Retry workspace','UTC')"), {'id': project})
@@ -320,7 +312,7 @@ def test_mixed_image_formats_preserve_originals_and_retry(isolated_admission_dat
     body.update(project_id=str(project), zone_id=str(zone),
                 capture_times=['2026-09-26T12:00:00+03:00', '2026-09-26T12:01:00+03:00'])
     try:
-        _, run_id = submission.submit_series(store, artifacts, uuid.uuid4().hex, body, profile, 1, {})
+        _, run_id = submission.submit_series(store, artifacts, uuid.uuid4().hex, body, profile, 1, profile_snapshot)
         with store.engine.connect() as connection:
             rows = connection.execute(text("""SELECT a.key, a.sha256, a.size, a.media_type
                 FROM run_inputs i JOIN artifact_metadata a ON a.id = i.artifact_id
@@ -329,7 +321,7 @@ def test_mixed_image_formats_preserve_originals_and_retry(isolated_admission_dat
         assert [artifacts.read_verified(row.key, row.sha256, row.size) for row in rows] == originals
         with store.engine.begin() as connection:
             connection.execute(text("UPDATE analysis_runs SET state = 'failed' WHERE id = :run"), {"run": run_id})
-        retried = store.retry_ordinary(run_id, profile, 1, {}, artifacts)
+        retried = store.retry_ordinary(run_id, profile, 1, profile_snapshot, artifacts)
         with store.engine.connect() as connection:
             retry_types = connection.execute(text("""SELECT a.media_type FROM run_inputs i
                 JOIN artifact_metadata a ON a.id = i.artifact_id
@@ -377,7 +369,7 @@ def test_duplicate_waits_for_original_without_mutating_it(monkeypatch):
             raise AssertionError("duplicate cannot fail the owner")
 
     monkeypatch.setattr(submission.time, "sleep", lambda *_: None)
-    assert submission.submit(Store(), None, "same-key", request_body(jpeg((0, 0, 0))), uuid.uuid4(), 1, {}) == ("queued", run)
+    assert submission.submit(Store(), None, "same-key", request_body(jpeg((0, 0, 0))), uuid.uuid4(), 1, {"kind":"deepseek"}) == ("queued", run)
 
 
 def test_http_submission_and_guarded_execution(isolated_admission_database, integration, monkeypatch):
@@ -590,7 +582,8 @@ def test_admitted_profile_http_background_cpu(isolated_admission_database, integ
     if not snapshot_dir:
         pytest.fail("Set TEST_MODEL_SNAPSHOT_DIR to the pinned offline Grounding DINO snapshot")
     admission_dir = Path(__file__).resolve().parents[1] / "admission"
-    inventories = sorted((admission_dir / "exclusions").glob("*.json"))
+    inventories = [admission_dir / "exclusions" / f"{tier}.json" for tier in
+                   ("training", "validation", "development_acceptance", "held_out_evaluation")]
     admitted = admission.admit(admission_dir / "manifest.json", inventories, Path(snapshot_dir),
                                admission_dir / "model-files.json", 600)
     assert admitted["admitted_profile_id"]

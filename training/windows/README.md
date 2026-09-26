@@ -1,0 +1,42 @@
+# Два независимых YOLO-профиля на Windows
+
+В репозитории находятся исходники установщика и тренировочных скриптов. **Датасеты, manifest-index, манифесты, метаданные и pretrained-веса сюда не скопированы.** Для запуска нужен проверенный полный training bundle: разместите эти скрипты рядом с `manifest-index.json`, `manifests/kaggle.json`, `manifests/apoce.json`, каталогами изображений/разметки из манифестов и `models/yolo26s.pt`. Отдельные исходные архивы датасетов требуют предварительной сборки bundle; сами скрипты не скачивают и не изобретают разметку. `integrity.py` проверяет хеши и соответствие изображения/разметки до обучения.
+
+Среда: Windows 10/11, Python 3.11/3.12 **x64**, RTX 3060 **12 GB**, NVIDIA driver с CUDA 12.8. Это отдельное окружение от сервиса Python 3.13.15. Нужно от 35 GB свободного места плюс место для checkpoint. ZIP64 распаковывайте современным архиватором. Команды выполняются в обычном CMD, последовательно, в каталоге bundle:
+
+```bat
+setup_windows.cmd
+train_kaggle.cmd --mode smoke
+train_apoce.cmd --mode smoke
+train_kaggle.cmd --mode pilot
+train_apoce.cmd --mode pilot
+train_kaggle.cmd --mode full
+train_apoce.cmd --mode full
+```
+
+`setup_windows.cmd` создаёт `.venv`, ставит pinned torch/torchvision/ultralytics/Pillow/numpy и проверяет реальное CUDA-вычисление. При отсутствии CUDA прекращает работу. Первый запуск установки требует Интернет. Smoke: до 8 train/4 val кадров, 320 px, 1 эпоха, batch 2. Pilot: до 256 train/64 val, 15 эпох. Full: 640 px, до 100 эпох, patience 20, автоматический batch до 70% VRAM, AMP, workers 0, без cache. Это стартовые настройки, не результат оптимизации точности. Обучение здесь не выполнялось; работа Windows/CUDA на целевом компьютере не проверена.
+
+Kaggle и APOCE сохраняют независимые исходные классы (17 и 7 соответственно), группы и отображения. Их нельзя смешивать по похожим названиям: семантика кранов и катков требует ручной проверки. Они не расширяют автоматически каталог сервиса из восьми классов. Test-кадры не участвуют в обучении/подборе; held-out проекта исключается. Хеши защищают от случайного повреждения, но не от согласованной подмены bundle.
+
+Каждый запуск создаёт новый `runtime/runs/...`, записывает команду, параметры, хеши манифестов и выбранные пары. Результат — `weights/best.pt`, `weights/last.pt`, `result.json`. Возобновление: `train_kaggle.cmd --mode full --resume "runtime\runs\old\weights\last.pt"` с тем же профилем и режимом; старый каталог не перезаписывается.
+
+Передавайте для будущей серверной интеграции checkpoint, `result.json`, манифесты классов/версий и SHA-256 вместе с отчётом независимой оценки. Не переносите `.venv`, секреты и произвольные непроверенные checkpoint. Веса пока не подключены к приложению. Будущие equipment/scene профили требуют отдельных контрактов и явного сопоставления перед передачей детекций DeepSeek.
+
+Источники и права поставляются в metadata исходного bundle. Mirror metadata не подтверждает права на все съёмки. Условия Ultralytics и данных проверяются отдельно перед распространением/использованием. Технический smoke не является оценкой точности.
+
+Предварительная схема будущего сопоставления (не включена в runtime; до включения подтвердить семантику на примерах):
+
+| Исходный класс | Профиль | Кандидат каталога |
+| --- | --- | --- |
+| `Dump truck` / `dump-truck` | Kaggle / APOCE | `dump_truck` |
+| `Excavator` / `excavator` | Kaggle / APOCE | `excavator` |
+| `Roller` | Kaggle | `road_roller`, требуется разбор известных спорных меток |
+| `Crane manipulator` | Kaggle | `truck_mounted_crane`, требуется ручная проверка |
+| `Mixer` / `concrete-mixer` | Kaggle / APOCE | `concrete_mixer_truck` |
+| `Bulldozer` / `bulldozer` | Kaggle / APOCE | `bulldozer` |
+| `Truck` | Kaggle | `truck` |
+| `Autocran` | Kaggle | `mobile_crane`, подтвердить отличие от крана-манипулятора |
+| `Motor grader`, `Gazelle`, оба `Forklift`, оба `Bucket loader`, `Tanker`, `Cleaning equipment`, `Trailer` | Kaggle | свободное исходное имя и `catalog_class=null` |
+| `lifting-equipment`, `piling-machine`, `tower-crane` | APOCE | свободное исходное имя и `catalog_class=null`; не превращать автоматически в `mobile_crane` |
+
+Нормализованные координаты и идентичность кадра проверяются до передачи модели. Scene detector в этих двух наборах отсутствует; признаки сцены сейчас описывает DeepSeek.

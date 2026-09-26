@@ -230,25 +230,23 @@ def test_acceptance_before_visit_has_ownership_and_replays_never_reassign(servic
     client, store = service
     browser, other = str(uuid4()), str(uuid4())
     project = client.post('/projects',headers={'x-browser-id':browser},json={'name':'First action','timezone':'UTC'}).json()
-    parent, profile = uuid4(), uuid4()
-    with store.engine.begin() as connection:
-        connection.execute(text("INSERT INTO observer_profiles(id,status,profile_hash,snapshot) VALUES (:id,'draft',:hash,'{}')"),{'id':parent,'hash':uuid4().hex})
-        connection.execute(text("INSERT INTO observer_profiles(id,parent_id,status,profile_hash,snapshot,audit_hash) VALUES (:id,:parent,'admitted',:hash,'{}',:audit)"),{'id':profile,'parent':parent,'hash':uuid4().hex,'audit':uuid4().hex})
-        connection.execute(text("INSERT INTO profile_authorizations(profile_id,revision,state,reason,audit_hash,interactive_retry_allowed) SELECT :id,1,'enabled','test',audit_hash,false FROM observer_profiles WHERE id=:id"),{'id':profile})
+    from app.application.deepseek_runtime import provision
+    profile = provision(store, 'test-folder')
+    profile_snapshot, _ = store.require_authorized(profile)
     image = io.BytesIO(); Image.new('RGB',(8,8)).save(image,format='JPEG')
     encoded = base64.b64encode(image.getvalue()).decode()
-    body = {'intent':'observation_only','scenario':'ownership','observation_area':'Основной участок','period':'2026-09-26T12:00:00+03:00','project_id':project['id'],'zone_id':project['default_zone_id'],'capture_times':['2026-09-26T12:00:00+03:00'],'image_base64':encoded}
+    body = {'cloud_processing_consent':True,'intent':'observation_only','scenario':'ownership','observation_area':'Основной участок','period':'2026-09-26T12:00:00+03:00','project_id':project['id'],'zone_id':project['default_zone_id'],'capture_times':['2026-09-26T12:00:00+03:00'],'image_base64':encoded}
     key = str(uuid4())
     artifacts = client.app.state.artifacts
-    _, single = submission.submit(store,artifacts,key,body,profile,1,{},browser_id=browser)
-    assert submission.submit(store,artifacts,key,body,profile,1,{},browser_id=other)[1] == single
+    _, single = submission.submit(store,artifacts,key,body,profile,1,profile_snapshot,browser_id=browser)
+    assert submission.submit(store,artifacts,key,body,profile,1,profile_snapshot,browser_id=other)[1] == single
     with store.engine.begin() as connection:
         connection.execute(text("UPDATE analysis_runs SET state='failed' WHERE id=:id"),{'id':single})
-    successor = store.retry_ordinary(single,profile,1,{},artifacts,browser_id=browser)
-    assert store.retry_ordinary(single,profile,1,{},artifacts,browser_id=other) == successor
+    successor = store.retry_ordinary(single,profile,1,profile_snapshot,artifacts,browser_id=browser)
+    assert store.retry_ordinary(single,profile,1,profile_snapshot,artifacts,browser_id=other) == successor
     series_body = {**body,'images_base64':[encoded,encoded],'capture_times':body['capture_times']*2}
     del series_body['image_base64']
-    _, series = submission.submit_series(store,artifacts,str(uuid4()),series_body,profile,1,{},browser_id=other)
+    _, series = submission.submit_series(store,artifacts,str(uuid4()),series_body,profile,1,profile_snapshot,browser_id=other)
     with store.engine.begin() as connection:
         owners = dict(connection.execute(text("SELECT object_id,browser_id FROM activity_attribution WHERE kind='run' AND object_id=ANY(:ids)"),{'ids':[single,successor,series]}).all())
         assert str(owners[single]) == str(owners[successor]) == browser
@@ -266,7 +264,7 @@ def test_acceptance_before_visit_has_ownership_and_replays_never_reassign(servic
             cursor.execute('SELECT * FROM missing_attribution_fault_fixture')
     event.listen(store.engine, 'before_cursor_execute', fail_attribution)
     try:
-        _, accepted = submission.submit(store, artifacts, str(uuid4()), body, profile, 1, {}, browser_id=str(uuid4()))
+        _, accepted = submission.submit(store, artifacts, str(uuid4()), body, profile, 1, profile_snapshot, browser_id=str(uuid4()))
     finally:
         event.remove(store.engine, 'before_cursor_execute', fail_attribution)
     with store.engine.connect() as connection:

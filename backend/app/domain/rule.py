@@ -36,7 +36,7 @@ RULE_POLICY = revisioned_snapshot("policy", {
     "stability_threshold": None,
 })
 ANALYSIS_CHOICES = {"stages": [
-    {"id": "excavation", "label": "Земляные работы", "rule": RULE},
+    {"id": "excavation", "label": "Земляные работы", "rule": None},
     {"id": "other", "label": "Другой этап", "rule": None},
 ]}
 

@@ -13,3 +13,11 @@ client = boto3.client("s3", endpoint_url=config.s3_endpoint,
                       region_name=config.s3_region)
 if config.s3_bucket not in [bucket["Name"] for bucket in client.list_buckets()["Buckets"]]:
     client.create_bucket(Bucket=config.s3_bucket)
+
+from app.adapters.postgres import PostgresStore
+from app.application.site import ensure_catalog
+store = PostgresStore(config.database_url)
+try:
+    ensure_catalog(store.engine)
+finally:
+    store.close()

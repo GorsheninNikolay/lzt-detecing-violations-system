@@ -51,7 +51,7 @@ def test_stalled_duplicate_has_bounded_retry(monkeypatch):
     store = Store()
     with pytest.raises(submission.SubmissionError, match="submission_in_progress"):
         submission.submit_series(store, None, "stalled", body(jpeg((0, 0, 0)), jpeg((0, 0, 0))),
-                                 uuid.uuid4(), 1, {})
+                                 uuid.uuid4(), 1, {"kind":"deepseek"})
     assert store.calls == 2
 
 
@@ -256,7 +256,7 @@ def test_retry_branch_upgrade_preserves_lineage(integration, monkeypatch, branch
 
 
 def body(*images):
-    return {"intent": "observation_only", "scenario": "equipment_check",
+    return {"cloud_processing_consent": True, "intent": "observation_only", "scenario": "equipment_check",
             "observation_area": "north_gate", "period": "2026-09-23T12:00:00+03:00",
             "images_base64": [base64.b64encode(image).decode() for image in images]}
 

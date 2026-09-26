@@ -74,7 +74,7 @@ def test_included_demo_original_hashes_match_local_archive():
 
 
 def request(intent="rule_evaluation", stage="excavation"):
-    return {"intent": intent, "stage": stage, **CONTEXT}
+    return {"cloud_processing_consent": True, "intent": intent, "stage": stage, **CONTEXT}
 
 
 def test_policy_and_rule_revisions_identify_canonical_content():
@@ -223,7 +223,7 @@ def test_choices_are_served_as_authoritative_api_contract():
             response = await client.get("/analysis-choices")
         assert response.status_code == 200
         stages = response.json()["stages"]
-        assert stages[0]["id"] == "excavation" and stages[0]["rule"]["provenance"] == "demonstration rule"
+        assert stages[0]["id"] == "excavation" and stages[0]["rule"] is None
         assert stages[1]["rule"] is None
     import asyncio
     asyncio.run(check())
@@ -232,13 +232,14 @@ def test_choices_are_served_as_authoritative_api_contract():
 def test_direct_rule_request_for_other_stage_is_rejected_by_api():
     from io import BytesIO
     from PIL import Image
+    from app.profiles.deepseek import snapshot as deepseek_snapshot
 
     output = BytesIO()
     Image.new("RGB", (2, 2)).save(output, "JPEG")
     app = create_app()
     app.state.readiness.ready.set()
     app.state.claim_loop = SimpleNamespace(runtime_binding=(uuid.uuid4(), 1))
-    app.state.store = SimpleNamespace(require_authorized=lambda *_: ({}, 1))
+    app.state.store = SimpleNamespace(require_authorized=lambda *_: (deepseek_snapshot('test-folder'), 1))
     app.state.artifacts = None
 
     async def check():

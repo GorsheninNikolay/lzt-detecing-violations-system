@@ -32,7 +32,7 @@ def test_plan_revision_and_capture_time_are_part_of_submission_identity():
     image = Image.new("RGB", (2, 2))
     buffer = io.BytesIO()
     image.save(buffer, format="PNG")
-    body = {"intent": "observation_only", "scenario": "site", "observation_area": "north",
+    body = {"cloud_processing_consent": True, "intent": "observation_only", "scenario": "site", "observation_area": "north",
             "period": "2026-01-02T00:00:00+03:00",
             "image_base64": base64.b64encode(buffer.getvalue()).decode(),
             "project_id": str(uuid.uuid4()), "zone_id": str(uuid.uuid4()),
@@ -66,7 +66,7 @@ def test_new_scenarios_require_matching_active_operation_and_assessable_series(s
 def test_workspace_trio_is_independent_of_optional_plan_and_hash_bound():
     buffer = io.BytesIO()
     Image.new('RGB', (2, 2)).save(buffer, format='PNG')
-    body = {'intent': 'observation_only', 'scenario': 'site', 'observation_area': 'main',
+    body = {'cloud_processing_consent': True, 'intent': 'observation_only', 'scenario': 'site', 'observation_area': 'main',
             'period': '2026-09-26T12:00:00+03:00', 'image_base64': base64.b64encode(buffer.getvalue()).decode(),
             'project_id': str(uuid.uuid4()), 'zone_id': str(uuid.uuid4()),
             'capture_times': ['2026-09-26T12:00:00+03:00']}
@@ -87,13 +87,13 @@ def test_foreign_workspace_is_rejected_before_publication():
     from unittest.mock import Mock
     buffer = io.BytesIO()
     Image.new('RGB', (2, 2)).save(buffer, format='PNG')
-    body = {'intent': 'observation_only', 'scenario': 'site', 'observation_area': 'main',
+    body = {'cloud_processing_consent': True, 'intent': 'observation_only', 'scenario': 'site', 'observation_area': 'main',
             'period': '2026-09-26T12:00:00+03:00', 'image_base64': base64.b64encode(buffer.getvalue()).decode(),
             'project_id': str(uuid.uuid4()), 'zone_id': str(uuid.uuid4()),
             'capture_times': ['2026-09-26T12:00:00+03:00']}
     store, artifacts = Mock(), Mock()
     store.validate_plan_binding.side_effect = AdmissionStoreError('invalid_plan_binding')
     with pytest.raises(SubmissionError, match='invalid_plan_binding'):
-        submit(store, artifacts, 'workspace-invalid', body, uuid.uuid4(), 1, {})
+        submit(store, artifacts, 'workspace-invalid', body, uuid.uuid4(), 1, {'kind':'deepseek'})
     store.begin_submission.assert_not_called()
     assert artifacts.mock_calls == []

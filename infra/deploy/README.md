@@ -1,17 +1,9 @@
-# Server deployment
+# Локальная Compose-сборка
 
-The deployment uses a dedicated Compose project, persistent PostgreSQL and MinIO volumes, and one public HTTP port. PostgreSQL, MinIO, and the API are internal to the Compose network. The web container proxies `/api/*` to the API. The public API exposes run evidence and can trigger paid cloud inference without authentication.
+Актуальный порядок установки, окружение, профиль и ограничения: [корневой README](../../README.md). Compose содержит PostgreSQL, приватный MinIO, одноразовый init, backend и web/nginx. Наружу опубликован только web-порт. `init` применяет миграции, создаёт бакет и подготавливает каталог XLSX.
 
-Build the web client locally with `cd web && npm ci && npm run build`. Transfer `backend/`, `evaluation/`, `infra/deploy/`, `web/dist/`, and `.dockerignore` to the server without virtual environments or `node_modules`. At the server's deployment root, create a private `.env` (`chmod 600`) containing `DEPLOY_PORT`, `POSTGRES_PASSWORD`, and `MINIO_ROOT_PASSWORD`. Use distinct random passwords with only URL-safe characters.
+Сначала соберите frontend: `npm --prefix web ci && npm --prefix web run build`. Затем из корня: `docker compose -f infra/deploy/compose.yaml build` и `docker compose -f infra/deploy/compose.yaml up -d`. Нужны `POSTGRES_PASSWORD`, `MINIO_ROOT_PASSWORD`, `DEPLOY_PORT`. Реальные секреты передаются через окружение. Для анализа нужны отдельные `YANDEX_AI_STUDIO_API_KEY`, `YANDEX_CLOUD_FOLDER_ID`, `OBSERVER_PROFILE_ID`; создание профиля — `evidence-profile`, без платного probe.
 
-From that root, run:
+`/api/` проксируется с удалением префикса и `X-Forwarded-Prefix: /api`. Документация: `/api/redoc`, `/api/docs`, `/api/openapi.json`. Прямые URL backend работают без префикса. S3 не публикуется; анонимное чтение запрещено. Не удаляйте persistent volumes. DINO/Qwen admission и local-model runtime выведены из активного пути.
 
-```sh
-docker compose --env-file .env -f infra/deploy/compose.yaml build backend init web
-docker compose --env-file .env -f infra/deploy/compose.yaml up -d --no-build
-curl -fsS http://127.0.0.1:8096/api/health/ready
-```
-
-Open `http://158.160.42.119:8096` directly.
-
-The Linux backend image includes the Yandex Cloud observer path and excludes the macOS-only Grounding DINO runtime. An admitted cloud profile additionally requires `YANDEX_AI_STUDIO_API_KEY`, `YANDEX_AI_STUDIO_API_KEY_ID`, and `OBSERVER_PROFILE_ID` in the private `.env`. The backend obtains its refreshable IAM token from Yandex Compute Cloud VM metadata. The VM service account must be authorized to inspect its account and scoped API key, read the linked billing account, and invoke AI Studio. Cloud admission must succeed before setting `OBSERVER_PROFILE_ID`; merely starting the API does not authorize analysis. The admitted profile's image allowlist still applies to submissions.
+Исключение HTTPS для loopback относится к прямому backend. В стандартном Compose nginx обращается из контейнерной сети: вход администратора по HTTP возвращает `403 https_required`, даже если web открыт через localhost. Для административного интерфейса через прокси нужен HTTPS и явно настроенное доверие к своему TLS-прокси; доверие ко всем входящим forwarded-заголовкам не включено.

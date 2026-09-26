@@ -2,8 +2,8 @@ import { useEffect, useRef, useState } from 'react'
 export type Input = { input_id: string; ordinal: number; sha256: string; artifact_id: string | null }
 export type Observation = { input_id: string; ordinal: number; class_name: string; state: string; reason?: string | null; source_artifact_id: string | null; input_sha256?: string; invocation_id?: string | null }
 export type NativeEvidence = { artifact_id: string; input_id: string; ordinal: number; sha256: string; invocation_id: string; profile_id: string; profile_revision: number; preprocessing_revision?: string | null }
-export type DetectedObject = { id?: string; input_id: string; class_name: string; score: number; box: [number, number, number, number]; image_size: [number, number]; invocation_id: string }
-export type ProfileSnapshot = { observation_contract?: string; adapter?: { code?: string } }
+export type DetectedObject = { id?: string; input_id: string; class_name: string; score: number | null; box: [number, number, number, number] | null; details?: { type_ru: string; type_en: string; evidence: string; status: string; missing_localization_reason?: string | null }; image_size: [number, number]; invocation_id: string }
+export type ProfileSnapshot = { kind?: string; observation_contract?: string; adapter?: { code?: string } }
 export type ResultFrame = { input_id: string; ordinal: number; artifact_id: string | null; sha256: string | null; usable: boolean | null; observations: Observation[] }
 const CLASS_LABELS: Record<string, string> = { excavator: 'Экскаватор', dump_truck: 'Самосвал', road_roller: 'Каток', truck_mounted_crane: 'Кран-манипулятор', concrete_mixer_truck: 'Автобетоносмеситель', bulldozer: 'Бульдозер', truck: 'Грузовик', mobile_crane: 'Автокран' }
 const OBSERVATION_STATES: Record<string, string> = { detected: 'Обнаружен', not_detected_in_frame: 'Не обнаружен в кадре', insufficient_data: 'Недостаточно данных', not_analyzed: 'Не анализировалось' }
@@ -38,6 +38,7 @@ function useArtifact(runId: string, artifactId: string | null, thumbnail = false
 export function SourceImage({ runId, artifactId, label, description, objects = [], showBoxes = false, selectedObject, onSelectObject, thumbnail = false }: { runId: string; artifactId: string | null; label: string; description: string; objects?: DetectedObject[]; showBoxes?: boolean; selectedObject?: number | null; onSelectObject?: (index: number) => void; thumbnail?: boolean }) {
   const artifact = useArtifact(runId, artifactId, thumbnail)
   return <div className="source-image">{!artifactId ? <p className="error">Исходное изображение недоступно для этого кадра.</p> : artifact.url ? <div className="annotated-image"><img src={artifact.url} onError={artifact.imageFailed} alt={`Исходное изображение: ${label}. ${description}`} />{showBoxes && objects.map((object, index) => {
+    if (!object.box) return null
     const [x1, y1, x2, y2] = object.box
     if (!(x1 >= 0 && y1 >= 0 && x2 <= 1 && y2 <= 1 && x2 > x1 && y2 > y1 && [x1, y1, x2, y2].every(Number.isFinite))) return null
     const Overlay = onSelectObject ? 'button' : 'div'

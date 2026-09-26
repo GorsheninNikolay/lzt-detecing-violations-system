@@ -18,7 +18,7 @@ from app.domain.comparison_campaign import CampaignGateError, build_manifest
 from app.domain.evaluation_report import POLICY_REVISION, build_report
 from app.domain.provider_comparison import project_comparison
 from app.profiles import cloud_api, grounding_dino, grounding_dino_v2
-from app.profiles.grounding_dino import canonical_bytes, digest
+from app.shared.cloud import canonical_bytes, digest
 from app.adapters.artifacts import ArtifactGateError, ArtifactStore
 from app.domain.rule import RULE, RULE_POLICY, evaluate_rule
 from app.domain.site_analysis import compare_equipment
@@ -756,6 +756,7 @@ class PostgresStore:
             raise RecoveryGateError("recovery_gate_failed") from None
 
     def create_admission_runs(self, snapshot: dict, manifest: dict, fixtures: list[tuple[dict, bytes]], watchdog_seconds: int) -> tuple[uuid.UUID, list[uuid.UUID]]:
+        raise AdmissionStoreError("profile_retired")
         if watchdog_seconds <= 0:
             raise AdmissionStoreError("bootstrap_watchdog_invalid")
         profile_hash = digest(canonical_bytes(snapshot))
@@ -946,6 +947,7 @@ class PostgresStore:
                 connection.execute(text("UPDATE analysis_stages SET state = 'skipped', reason = 'dependency_failed' WHERE run_id = :run AND state = 'pending'"), {"run": run_id})
 
     def authorize_successor(self, profile_id: uuid.UUID, run_ids: list[uuid.UUID]) -> uuid.UUID:
+        raise AdmissionStoreError("profile_retired")
         if not run_ids:
             raise AdmissionStoreError("admission_incomplete")
         with self.engine.begin() as connection:
@@ -1040,46 +1042,15 @@ class PostgresStore:
             a.state, a.revision, a.audit_hash AS authorization_audit
             FROM observer_profiles p JOIN profile_authorizations a ON a.profile_id = p.id
             WHERE p.id = :id FOR UPDATE OF p, a"""), {"id": profile_id}).one_or_none()
+        if row and row.snapshot.get("kind") != "deepseek":
+            raise AdmissionStoreError("profile_retired")
         if not row or row.status != "admitted" or not row.audit_hash or row.state != "enabled" or row.authorization_audit != row.audit_hash:
             raise AdmissionStoreError("profile_unauthorized")
         if expected_revision is not None and row.revision != expected_revision:
             raise AdmissionStoreError("authorization_revision_changed")
-        cloud = row.snapshot.get("kind") == "cloud_api"
-        extended = row.snapshot.get("observation_contract") == "equipment-boxes-v2"
-        if row.snapshot.get("adapter", {}).get("code") != (
-                "yandex_ai_studio" if cloud else "grounding_dino_v2" if extended else "grounding_dino"):
-            raise AdmissionStoreError("profile_unauthorized")
-        run_ids = row.snapshot.get("audit_run_ids", [])
-        if (not row.parent_id or not isinstance(run_ids, list) or not run_ids
-                or not all(isinstance(value, str) for value in run_ids) or len(set(run_ids)) != len(run_ids)
-                or digest(canonical_bytes(row.snapshot)) != row.profile_hash
-                or digest(canonical_bytes(row.snapshot.get("audit_report"))) != row.audit_hash):
-            raise AdmissionStoreError("profile_admission_evidence_missing")
-        evidenced = connection.execute(text("""SELECT count(*) FROM analysis_runs r
-            JOIN observer_invocations i ON i.run_id = r.id
-            JOIN result_projections p ON p.run_id = r.id
-            WHERE r.id = ANY(:ids) AND r.profile_id = :parent AND r.purpose = 'profile_admission'
-              AND r.state = 'succeeded' AND i.state = 'completed' AND i.actual_device = :device
-              AND i.returned_model_identity = :identity
-              AND p.outcome = 'observations_only'"""), {"ids": [uuid.UUID(value) for value in run_ids],
-                "parent": row.parent_id, "device": "remote_unreported" if cloud else "cpu",
-                "identity": row.snapshot["returned_model_identity"]}).scalar_one()
-        if evidenced != len(run_ids):
-            raise AdmissionStoreError("profile_admission_evidence_missing")
-        adapter_hash = (grounding_dino_v2.bundle_hash() if extended else
-                        digest(Path((cloud_api if cloud else grounding_dino).__file__).read_bytes()))
-        lock_hash = digest((Path(__file__).resolve().parents[2] / "uv.lock").read_bytes())
-        if row.snapshot.get("adapter", {}).get("bundle_sha256") != adapter_hash or row.snapshot.get("runtime", {}).get("uv_lock_sha256") != lock_hash:
+        from app.profiles.deepseek import snapshot
+        if row.snapshot != snapshot(row.snapshot.get("folder_id")) or digest(canonical_bytes(row.snapshot)) != row.profile_hash:
             raise AdmissionStoreError("profile_runtime_mismatch")
-        if cloud:
-            canary_hashes = [item.sha256 for item in connection.execute(text(
-                "SELECT sha256 FROM run_inputs WHERE run_id = ANY(:ids)"),
-                {"ids": [uuid.UUID(value) for value in run_ids]}).all()]
-            try:
-                cloud_api.validate_owner_evidence(row.snapshot.get("owner_evidence"),
-                    canary_hashes, row.snapshot["allowed_input_sha256"])
-            except cloud_api.CloudObserverError:
-                raise AdmissionStoreError("profile_owner_evidence_expired") from None
         return row.snapshot, row.revision
 
 
@@ -1148,8 +1119,13 @@ class PostgresStore:
                                  context: dict, requested_classes: list[str],
                                  manifest: list[tuple[uuid.UUID, str, int]],
                                  intent: str = "observation_only", stage: str | None = None, browser_id: str | None = None) -> uuid.UUID:
+        if snapshot.get("kind") != "deepseek":
+            raise AdmissionStoreError("profile_retired")
+        if context.get("cloud_processing_consent") is not True:
+            raise AdmissionStoreError("cloud_consent_required")
         run_id = uuid.uuid4()
         with self.engine.begin() as connection:
+            self._require_authorized(connection, profile_id, revision)
             request = connection.execute(text("""SELECT * FROM submission_requests
                 WHERE idempotency_key = :key FOR UPDATE"""), {"key": key}).one()
             if request.state != "publishing":
@@ -1162,7 +1138,7 @@ class PostgresStore:
                 {"id": profile_id}).one_or_none()
             if (not authorization or authorization.status != "admitted" or authorization.state != "enabled"
                     or authorization.revision != revision
-                    or (snapshot.get("kind") == "cloud_api" and authorization.snapshot != snapshot)):
+                    or authorization.snapshot != snapshot):
                 raise AdmissionStoreError("profile_unauthorized")
             if snapshot.get("kind") == "cloud_api" and any(
                     item[1] not in snapshot.get("allowed_input_sha256", []) for item in manifest):
@@ -1266,6 +1242,7 @@ class PostgresStore:
     def reserve_ordinary(self, run_id: uuid.UUID, owner: str, revision: int, image_hash: str,
                          call_provider: bool = True, input_id: uuid.UUID | None = None,
                          campaign: bool = False) -> uuid.UUID | None:
+        raise AdmissionStoreError("profile_retired")
         invocation = uuid.uuid4()
         with self.engine.begin() as connection:
             row = connection.execute(text("""SELECT r.state, r.lease_owner, r.lease_expires_at > clock_timestamp() AS live,
@@ -1539,14 +1516,17 @@ class PostgresStore:
 
     def fail_unauthorized_queued(self) -> None:
         with self.engine.begin() as connection:
-            rows = connection.execute(text("""SELECT r.id FROM analysis_runs r
+            rows = connection.execute(text("""SELECT r.id,
+                CASE WHEN r.profile_snapshot->>'kind' IS DISTINCT FROM 'deepseek'
+                     THEN 'profile_retired' ELSE 'profile_unauthorized' END AS code FROM analysis_runs r
                 LEFT JOIN profile_authorizations a ON a.profile_id = r.profile_id
                 WHERE r.purpose = 'ordinary' AND r.state = 'queued'
-                  AND (a.state IS DISTINCT FROM 'enabled' OR a.revision IS DISTINCT FROM r.authorization_revision)
-                FOR UPDATE OF r SKIP LOCKED""")).scalars().all()
-            for run_id in rows:
-                connection.execute(text("UPDATE analysis_runs SET state = 'failed', error_code = 'profile_unauthorized' WHERE id = :run"), {"run": run_id})
-                connection.execute(text("UPDATE analysis_stages SET state = 'failed', reason = 'profile_unauthorized' WHERE run_id = :run AND ordinal = 0"), {"run": run_id})
+                  AND (r.profile_snapshot->>'kind' IS DISTINCT FROM 'deepseek'
+                       OR a.state IS DISTINCT FROM 'enabled' OR a.revision IS DISTINCT FROM r.authorization_revision)
+                FOR UPDATE OF r SKIP LOCKED""")).all()
+            for run_id, code in rows:
+                connection.execute(text("UPDATE analysis_runs SET state = 'failed', error_code = :code WHERE id = :run"), {"run": run_id,"code":code})
+                connection.execute(text("UPDATE analysis_stages SET state = 'failed', reason = :code WHERE run_id = :run AND ordinal = 0"), {"run": run_id,"code":code})
                 connection.execute(text("UPDATE analysis_stages SET state = 'skipped', reason = 'dependency_failed' WHERE run_id = :run AND ordinal > 0"), {"run": run_id})
 
     def read_ordinary(self, run_id: uuid.UUID) -> dict | None:
@@ -1579,7 +1559,7 @@ class PostgresStore:
                 FROM observer_invocations i JOIN artifact_metadata a ON a.id = i.native_artifact_id
                 JOIN run_inputs r ON r.input_id = i.input_id
                 WHERE i.run_id = :id ORDER BY r.ordinal"""), {"id": run_id}).mappings().all()
-            objects = connection.execute(text("""SELECT id,input_id,invocation_id,class_name,score,box,image_size
+            objects = connection.execute(text("""SELECT id,input_id,invocation_id,class_name,score,box,image_size,details
                 FROM detected_objects WHERE run_id=:id ORDER BY input_id,ordinal"""),
                 {"id": run_id}).mappings().all()
             features = connection.execute(text("""SELECT input_id,invocation_id,feature_name,score
@@ -1593,7 +1573,16 @@ class PostgresStore:
                 WHERE b.run_id=:id ORDER BY e.starts_at,e.id"""), {"id": run_id}).mappings().all()
             confirmation = connection.execute(text("""SELECT stage,comment,created_at FROM stage_confirmations
                 WHERE run_id=:id"""), {"id": run_id}).mappings().one_or_none()
-            return {"run_id": str(row.id), "purpose": purpose, "state": row.state, "error_code": row.error_code,
+            ai_calls = connection.execute(text("""SELECT c.id,c.kind,c.input_id,c.context,v.result
+                FROM deepseek_calls c LEFT JOIN deepseek_results v ON v.call_id=c.id
+                WHERE c.run_id=:id ORDER BY c.created_at,c.id"""), {"id": run_id}).mappings().all()
+            assessment = next((c["result"] for c in ai_calls if c["kind"] == "assessment" and c["result"]), None)
+            return {"ai_assessment": assessment["value"] if assessment and row.state == "succeeded" else None,
+                    "ai_evidence": [{**dict(c), "id": str(c["id"]),
+                                     "input_id": str(c["input_id"]) if c["input_id"] else None,
+                                     "state": ("completed" if c["result"].get("valid", True) else "invalid") if c["result"] else "uncertain"} for c in ai_calls],
+                    "cloud_processing_consent": (row.request_context or {}).get("cloud_processing_consent", False),
+                    "run_id": str(row.id), "purpose": purpose, "state": row.state, "error_code": row.error_code,
                     "created_at": row.created_at.isoformat() if row.created_at else None,
                     "context": row.request_context, "requested_classes": row.requested_classes,
                     "project_id": (row.request_context or {}).get("project_id"),
@@ -1722,6 +1711,12 @@ class PostgresStore:
             preliminary = connection.execute(source_query, {"id": source_id}).mappings().one_or_none()
             if preliminary is None:
                 raise AdmissionStoreError("run_not_found")
+            if preliminary["profile_snapshot"].get("kind") != "deepseek" or snapshot.get("kind") != "deepseek":
+                raise AdmissionStoreError("profile_retired")
+            if preliminary["request_context"].get("cloud_processing_consent") is not True:
+                raise AdmissionStoreError("cloud_consent_required")
+            if connection.execute(text("SELECT 1 FROM deepseek_calls WHERE run_id=:id LIMIT 1"), {"id": source_id}).first():
+                raise AdmissionStoreError("provider_call_not_replayable")
             if preliminary["state"] != "failed":
                 raise AdmissionStoreError("retry_ineligible")
             if preliminary["analysis_intent"] == "rule_evaluation" and snapshot.get("observation_contract") == "equipment-boxes-v2":

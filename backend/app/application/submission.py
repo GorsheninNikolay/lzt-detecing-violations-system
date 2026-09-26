@@ -8,6 +8,7 @@ import json
 import time
 import uuid
 from datetime import datetime
+from pathlib import Path
 
 from PIL import Image, UnidentifiedImageError
 
@@ -49,9 +50,12 @@ def validate_images(body: dict, series: bool) -> tuple[list[bytes], dict, list[s
         raise SubmissionError("rule_not_applicable")
     if "stage" in body and body["stage"] not in ("excavation", "other"):
         raise SubmissionError("invalid_stage")
+    if body.get("cloud_processing_consent") is not True:
+        raise SubmissionError("cloud_consent_required")
     context = {key: body.get(key) for key in ("scenario", "observation_area", "period")}
     if not all(isinstance(value, str) and 0 < len(value.strip()) <= 256 for value in context.values()):
         raise SubmissionError("invalid_observation_context")
+    context["cloud_processing_consent"] = True
     if "stage_id" in body:
         context["stage_id"] = body["stage_id"]
     try:
@@ -103,6 +107,13 @@ def validate_images(body: dict, series: bool) -> tuple[list[bytes], dict, list[s
                 decoded.load()
         except (binascii.Error, ValueError, UnidentifiedImageError, OSError):
             raise SubmissionError("invalid_image_file") from None
+        protected = Path(__file__).resolve().parents[2] / "admission"
+        inventories = [protected / "manifest.json", *sorted((protected / "exclusions").glob("*.json"))]
+        image_hash = hashlib.sha256(image).hexdigest()
+        for inventory in inventories:
+            data = json.loads(inventory.read_text())
+            if any(item.get("image", {}).get("sha256") == image_hash for item in data.get("fixtures", [])):
+                raise SubmissionError("fixture_upload_not_authorized")
         images.append(image)
     if body["intent"] == "rule_evaluation" and any(image_media_type(image) != "image/jpeg" for image in images):
         raise SubmissionError("rule_not_applicable")
@@ -120,7 +131,11 @@ def submit(store: PostgresStore, artifacts: ArtifactStore, key: str, body: dict,
            profile_id: uuid.UUID, revision: int, snapshot: dict, browser_id: str | None = None) -> tuple[str, uuid.UUID | None]:
     if not isinstance(key, str) or not 0 < len(key) <= 128 or any(ord(char) < 33 or ord(char) > 126 for char in key):
         raise SubmissionError("invalid_idempotency_key")
+    if snapshot.get("kind") != "deepseek":
+        raise SubmissionError("profile_retired")
     image, context, requested, request_hash = validate_request(body)
+    if body["intent"] != "observation_only":
+        raise SubmissionError("rule_not_applicable")
     if body["intent"] == "rule_evaluation" and snapshot.get("observation_contract") == "equipment-boxes-v2":
         raise SubmissionError("rule_not_applicable")
     if "project_id" in context:
@@ -169,7 +184,11 @@ def submit_series(store: PostgresStore, artifacts: ArtifactStore, key: str, body
                   profile_id: uuid.UUID, revision: int, snapshot: dict, browser_id: str | None = None) -> tuple[str, uuid.UUID | None]:
     if not isinstance(key, str) or not 0 < len(key) <= 128 or any(ord(char) < 33 or ord(char) > 126 for char in key):
         raise SubmissionError("invalid_idempotency_key")
+    if snapshot.get("kind") != "deepseek":
+        raise SubmissionError("profile_retired")
     images, context, requested, request_hash = validate_images(body, True)
+    if body["intent"] != "observation_only":
+        raise SubmissionError("rule_not_applicable")
     if body["intent"] == "rule_evaluation" and snapshot.get("observation_contract") == "equipment-boxes-v2":
         raise SubmissionError("rule_not_applicable")
     if "project_id" in context:

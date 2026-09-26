@@ -61,7 +61,7 @@ def main() -> None:
             elif args.command == "execute-campaign":
                 config = Config.from_env()
                 result = asyncio.run(execute_comparison_campaign(store, ArtifactStore(config),
-                    args.campaign, args.archive, config.observer_snapshot_dir))
+                    args.campaign, args.archive))
                 exit_code = 0
             elif args.command == "campaign-accounting":
                 result = store.read_comparison_campaign(args.campaign)["accounting"]
