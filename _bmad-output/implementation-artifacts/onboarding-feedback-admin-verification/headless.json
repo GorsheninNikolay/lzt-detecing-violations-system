@@ -1,0 +1,180 @@
+{
+  "checks": [
+    {
+      "name": "desktop: first safe visit opens wizard",
+      "passed": true
+    },
+    {
+      "name": "desktop: skip persists on reload",
+      "passed": true
+    },
+    {
+      "name": "desktop: anchored step 2 stays in viewport",
+      "passed": true
+    },
+    {
+      "name": "desktop: anchored step 2 avoids spotlight",
+      "passed": true
+    },
+    {
+      "name": "desktop: anchored step 3 stays in viewport",
+      "passed": true
+    },
+    {
+      "name": "desktop: anchored step 3 avoids spotlight",
+      "passed": true
+    },
+    {
+      "name": "desktop: anchored step 4 stays in viewport",
+      "passed": true
+    },
+    {
+      "name": "desktop: anchored step 4 avoids spotlight",
+      "passed": true
+    },
+    {
+      "name": "desktop: anchored step 5 stays in viewport",
+      "passed": true
+    },
+    {
+      "name": "desktop: anchored step 5 avoids spotlight",
+      "passed": true
+    },
+    {
+      "name": "desktop: back reaches step four",
+      "passed": true
+    },
+    {
+      "name": "desktop: Escape restores focus",
+      "passed": true
+    },
+    {
+      "name": "desktop: reload preserves feedback text and picture",
+      "passed": true
+    },
+    {
+      "name": "desktop: browser identity shared by tabs",
+      "passed": true
+    },
+    {
+      "name": "desktop: second tab has independent draft",
+      "passed": true
+    },
+    {
+      "name": "desktop: lost-response retry preserves exact body and key",
+      "passed": true
+    },
+    {
+      "name": "desktop: optional context omitted",
+      "passed": true
+    },
+    {
+      "name": "desktop: public layout has no horizontal overflow",
+      "passed": true
+    },
+    {
+      "name": "desktop: admin excludes public onboarding",
+      "passed": true
+    },
+    {
+      "name": "desktop: admin layout has no horizontal overflow",
+      "passed": true
+    },
+    {
+      "name": "desktop: private stored feedback image loads",
+      "passed": true
+    },
+    {
+      "name": "desktop: no uncaught browser errors",
+      "passed": true
+    },
+    {
+      "name": "mobile: first safe visit opens wizard",
+      "passed": true
+    },
+    {
+      "name": "mobile: skip persists on reload",
+      "passed": true
+    },
+    {
+      "name": "mobile: anchored step 2 stays in viewport",
+      "passed": true
+    },
+    {
+      "name": "mobile: anchored step 2 avoids spotlight",
+      "passed": true
+    },
+    {
+      "name": "mobile: anchored step 3 stays in viewport",
+      "passed": true
+    },
+    {
+      "name": "mobile: anchored step 3 avoids spotlight",
+      "passed": true
+    },
+    {
+      "name": "mobile: anchored step 4 stays in viewport",
+      "passed": true
+    },
+    {
+      "name": "mobile: anchored step 4 avoids spotlight",
+      "passed": true
+    },
+    {
+      "name": "mobile: anchored step 5 stays in viewport",
+      "passed": true
+    },
+    {
+      "name": "mobile: anchored step 5 avoids spotlight",
+      "passed": true
+    },
+    {
+      "name": "mobile: back reaches step four",
+      "passed": true
+    },
+    {
+      "name": "mobile: Escape restores focus",
+      "passed": true
+    },
+    {
+      "name": "mobile: reload preserves feedback text and picture",
+      "passed": true
+    },
+    {
+      "name": "mobile: browser identity shared by tabs",
+      "passed": true
+    },
+    {
+      "name": "mobile: second tab has independent draft",
+      "passed": true
+    },
+    {
+      "name": "mobile: lost-response retry preserves exact body and key",
+      "passed": true
+    },
+    {
+      "name": "mobile: optional context omitted",
+      "passed": true
+    },
+    {
+      "name": "mobile: public layout has no horizontal overflow",
+      "passed": true
+    },
+    {
+      "name": "mobile: admin excludes public onboarding",
+      "passed": true
+    },
+    {
+      "name": "mobile: admin layout has no horizontal overflow",
+      "passed": true
+    },
+    {
+      "name": "mobile: private stored feedback image loads",
+      "passed": true
+    },
+    {
+      "name": "mobile: no uncaught browser errors",
+      "passed": true
+    }
+  ]
+}

@@ -5,5 +5,6 @@ import '@radix-ui/themes/styles.css'
 import './styles.css'
 import './premium.css'
 import App from './App'
+import Admin from './Admin'
 
-createRoot(document.getElementById('root')!).render(<React.StrictMode><Theme appearance="dark" accentColor="purple"><App /></Theme></React.StrictMode>)
+createRoot(document.getElementById('root')!).render(<React.StrictMode><Theme appearance="dark" accentColor="purple">{location.pathname === '/admin' || location.pathname.startsWith('/admin/') ? <Admin /> : <App />}</Theme></React.StrictMode>)

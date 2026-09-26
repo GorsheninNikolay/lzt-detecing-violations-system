@@ -1,3 +1,5 @@
+vi.mock('./engagement', () => ({ startActivity: () => () => {}, track: async () => {}, attributionHeaders: () => ({}) }))
+beforeEach(() => localStorage.setItem('construction-onboarding', 'completed'))
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -388,4 +390,90 @@ it('retains delayed IndexedDB recovery without replacing a newer dirty plan', as
   expect(screen.getByLabelText('Состояние')).toHaveProperty('value', 'active')
   expect(screen.getByRole('link', { name: 'Вернуться к отправке' }).getAttribute('href')).toBe(`/projects/${a}/new`)
   expect(sessionStorage.getItem('observation-pending-id')).toBe(saved.key)
+})
+
+it('does not navigate a late training creation over a newly typed project draft', async () => {
+  history.replaceState({}, '', '/')
+  vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} })
+  let finish!: (response: ReturnType<typeof json>) => void
+  vi.stubGlobal('fetch', vi.fn(async (url: string, options?: RequestInit) => url === '/api/projects' && options?.method === 'POST' ? await new Promise(resolve => { finish = resolve }) : reads(url)))
+  render(<App />)
+  await screen.findByLabelText('Название проекта')
+  fireEvent.click(screen.getByRole('button', {name:'Как пользоваться'}))
+  fireEvent.click(screen.getByRole('button', {name:'Попробовать на примере'}))
+  await waitFor(() => expect(finish).toBeTypeOf('function'))
+  fireEvent.change(screen.getByLabelText('Название проекта'), {target:{value:'Keep my draft'}})
+  await act(async () => { finish(json(projects[0],201)) })
+  expect(location.pathname).toBe('/')
+  expect(screen.getByLabelText('Название проекта')).toHaveProperty('value','Keep my draft')
+  expect(screen.getByRole('button',{name:'Попробовать на примере'})).toHaveProperty('disabled',true)
+})
+
+it('cancels late training creation on navigation and releases preparation busy state', async () => {
+  history.replaceState({}, '', '/')
+  vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} })
+  let finish!: (response: ReturnType<typeof json>) => void
+  vi.stubGlobal('fetch', vi.fn(async (url: string, options?: RequestInit) => url === '/api/projects' && options?.method === 'POST' ? await new Promise(resolve => { finish = resolve }) : reads(url)))
+  render(<App />); await screen.findByLabelText('Название проекта')
+  fireEvent.click(screen.getByRole('button',{name:'Как пользоваться'}))
+  fireEvent.click(screen.getByRole('button',{name:'Попробовать на примере'}))
+  await waitFor(() => expect(finish).toBeTypeOf('function'))
+  fireEvent.click(screen.getByRole('link',{name:'Архив анализов без проекта'}))
+  await act(async () => { finish(json(projects[0],201)) })
+  expect(location.pathname).toBe('/archive')
+  await waitFor(() => expect(screen.getByRole('button',{name:'Попробовать на примере'})).toHaveProperty('disabled',false))
+})
+
+it('binds training readiness to the staged sample and clears it when removed or starting another analysis', async () => {
+  history.replaceState({}, '', '/')
+  vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} })
+  const frame = demoCases.cases[0].frames[1]
+  vi.spyOn(crypto.subtle,'digest').mockResolvedValue(Uint8Array.from(frame.sha256.match(/../g)!, byte => parseInt(byte,16)).buffer)
+  vi.stubGlobal('fetch', vi.fn(async (url: string, options?: RequestInit) => url.startsWith('/demo/') ? {ok:true,blob:async()=>file()} : url === '/api/projects' && options?.method === 'POST' ? json(projects[0],201) : reads(url)))
+  render(<App />); await screen.findByLabelText('Название проекта')
+  fireEvent.click(screen.getByRole('button',{name:'Как пользоваться'}))
+  fireEvent.click(screen.getByRole('button',{name:'Попробовать на примере'}))
+  await screen.findByText('Screenshot_89.jpg')
+  await screen.findByText(/Учебный проект и проверенная фотография готовы/)
+  fireEvent.click(screen.getByRole('button',{name:/Удалить: Screenshot_89.jpg/}))
+  expect(screen.queryByText(/Учебный проект и проверенная фотография готовы/)).toBeNull()
+  expect(screen.queryByText(/Учебный пример: проверенная фотография/)).toBeNull()
+})
+
+it('binds the tutorial result only to its accepted sample run and clears it for a new analysis', async () => {
+  history.replaceState({}, '', '/')
+  vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} })
+  const frame = demoCases.cases[0].frames[1]
+  vi.spyOn(crypto.subtle,'digest').mockResolvedValue(Uint8Array.from(frame.sha256.match(/../g)!, byte => parseInt(byte,16)).buffer)
+  vi.stubGlobal('fetch', vi.fn(async (url: string, options?: RequestInit) => url.startsWith('/demo/') ? {ok:true,blob:async()=>file()} : options?.method === 'POST' ? url === '/api/projects' ? json(projects[0],201) : json({run_id:run},202) : reads(url)))
+  render(<App />); await screen.findByLabelText('Название проекта')
+  fireEvent.click(screen.getByRole('button',{name:'Как пользоваться'}))
+  fireEvent.click(screen.getByRole('button',{name:'Попробовать на примере'}))
+  await screen.findByText(/Учебный проект и проверенная фотография готовы/)
+  fireEvent.click(screen.getByRole('button',{name:'Запустить анализ'}))
+  await screen.findByText(/Это ваш реальный учебный анализ/)
+  expect(location.pathname).toBe(`/projects/${a}/runs/${run}`)
+  fireEvent.click(screen.getByRole('link',{name:'Загрузить фото'}))
+  await waitFor(()=>expect(location.pathname).toBe(`/projects/${a}/new`))
+  expect(screen.queryByText(/Это ваш реальный учебный анализ/)).toBeNull()
+  expect(screen.queryByText(/Учебный проект и проверенная фотография готовы/)).toBeNull()
+})
+
+it('cancels sample preparation on navigation without installing the late photo or keeping the action busy', async () => {
+  history.replaceState({}, '', '/')
+  vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} })
+  vi.spyOn(window,'confirm').mockReturnValue(true)
+  const frame = demoCases.cases[0].frames[1]
+  vi.spyOn(crypto.subtle,'digest').mockResolvedValue(Uint8Array.from(frame.sha256.match(/../g)!, byte => parseInt(byte,16)).buffer)
+  let finish!: (value: unknown)=>void
+  vi.stubGlobal('fetch', vi.fn(async (url: string, options?: RequestInit) => url.startsWith('/demo/') ? await new Promise(resolve=>{finish=resolve}) : url === '/api/projects' && options?.method === 'POST' ? json(projects[0],201) : reads(url)))
+  render(<App />); await screen.findByLabelText('Название проекта')
+  fireEvent.click(screen.getByRole('button',{name:'Как пользоваться'}))
+  fireEvent.click(screen.getByRole('button',{name:'Попробовать на примере'}))
+  await waitFor(()=>expect(finish).toBeTypeOf('function'))
+  fireEvent.change(screen.getByLabelText('Выбрать проект'),{target:{value:b}})
+  await act(async()=>{finish({ok:true,blob:async()=>file()})})
+  expect(location.pathname).toBe(`/projects/${b}`)
+  expect(screen.queryByText('Screenshot_89.jpg')).toBeNull()
+  await waitFor(()=>expect(screen.getByRole('button',{name:'Попробовать на примере'})).toHaveProperty('disabled',false))
 })

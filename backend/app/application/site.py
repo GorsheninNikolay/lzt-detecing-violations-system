@@ -14,6 +14,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
+from app.application.activity import attribute
 
 
 router = APIRouter()
@@ -171,14 +172,31 @@ def create_project(request: Request, body: dict):
             ZoneInfo(tz)
         except (ZoneInfoNotFoundError, ValueError):
             raise SiteError("invalid_timezone") from None
+        raw_key = request.headers.get("idempotency-key")
+        try:
+            request_key = UUID(raw_key) if raw_key else None
+        except ValueError:
+            raise SiteError("invalid_idempotency_key") from None
+        body_hash = sha256(json.dumps(body, sort_keys=True).encode()).hexdigest()
         project_id = uuid4()
         zone_id = uuid4()
         with engine.begin() as connection:
+            if request_key:
+                connection.execute(text("SELECT pg_advisory_xact_lock(:lock)"), {"lock": request_key.int % (2**63)})
+                previous = connection.execute(text("SELECT body_sha256,response FROM project_requests WHERE request_key=:key"), {"key": request_key}).first()
+                if previous:
+                    if previous.body_sha256 != body_hash:
+                        raise SiteError("idempotency_key_conflict", 409)
+                    return previous.response
             connection.execute(text("INSERT INTO site_projects (id,name,timezone) VALUES (:id,:name,:timezone)"),
                                {"id": project_id, "name": name.strip(), "timezone": tz})
             connection.execute(text("INSERT INTO site_zones (id,project_id,name) VALUES (:id,:project,'Основной участок')"),
                                {"id": zone_id, "project": project_id})
-        return {"id": str(project_id), "name": name.strip(), "timezone": tz, "default_zone_id": str(zone_id)}
+            result = {"id": str(project_id), "name": name.strip(), "timezone": tz, "default_zone_id": str(zone_id)}
+            attribute(connection, request.headers.get("x-browser-id"), "project", project_id)
+            if request_key:
+                connection.execute(text("INSERT INTO project_requests(request_key,body_sha256,response) VALUES (:key,:hash,CAST(:response AS jsonb))"), {"key":request_key,"hash":body_hash,"response":json.dumps(result)})
+        return result
     except SiteError as error:
         return _response(error)
 

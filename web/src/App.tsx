@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState, type FormEvent, type RefObject } from 'react'
 import demoCases from './demoCases.json'
 import AppHeader from './AppHeader'
+import PublicSupport from './PublicSupport'
+import { attributionHeaders } from './engagement'
 import FramePreview from './FramePreview'
 import NewAnalysisPage, { UploadZone } from './NewAnalysisPage'
 import ReadinessPage from './ReadinessPage'
@@ -493,14 +495,14 @@ function About({ heading, returnPath, onReturn }: { heading: RefObject<HTMLHeadi
   </section>
 }
 
-async function siteRequest<T>(path: string, method = 'GET', body?: object, signal?: AbortSignal): Promise<T> {
+async function siteRequest<T>(path: string, method = 'GET', body?: object, signal?: AbortSignal, requestKey?: string): Promise<T> {
   const controller = new AbortController()
   const abort = () => controller.abort()
   signal?.addEventListener('abort', abort, { once: true })
   if (signal?.aborted) controller.abort()
   let timeout: ReturnType<typeof setTimeout> | undefined
   const read = async () => {
-    const response = await fetch(`/api${path}`, { method, signal: controller.signal, ...(body ? { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) } : {}) })
+    const response = await fetch(`/api${path}`, { method, signal: controller.signal, ...(body ? { headers: { 'Content-Type': 'application/json', ...attributionHeaders(), ...(path === '/projects' && method === 'POST' ? { 'Idempotency-Key': requestKey ?? crypto.randomUUID() } : {}) }, body: JSON.stringify(body) } : {}) })
     if (!response.ok) throw new Error((await response.json().catch(() => ({})) as { code?: string }).code ?? 'request_failed')
     return response.json() as Promise<T>
   }
@@ -592,12 +594,14 @@ function StageConfirmation({ run, runId }: { run: RunSnapshot; runId: string }) 
   return <section className="panel stage-confirmation" aria-labelledby="hypotheses-heading"><h2 id="hypotheses-heading">Гипотеза модели об этапе</h2>{hypotheses.length ? <ul>{hypotheses.map(item => <li key={item.stage}>{STAGE_NAMES[item.stage] ?? item.stage}: {CLASS_LABELS[item.equipment] ?? item.equipment}, признаки сцены {item.scene_features.join(', ')}</li>)}</ul> : <p>{run.profile_snapshot?.observation_contract === "equipment-boxes-v2" ? "По этим кадрам этап определить не удалось: нужны техника и подтверждающий признак сцены в одном кадре." : "Этот профиль распознаёт присутствие техники, но не признаки сцены. Гипотеза этапа для него недоступна."}</p>}{confirmed ? <p>Человек подтвердил этап «{STAGE_NAMES[confirmed.stage] ?? confirmed.stage}». {confirmed.comment}</p> : <><h3>Подтверждение человеком</h3><p>Подтвердите или исправьте этап. Подтверждение не меняет план автоматически.</p><div className="field"><label htmlFor="confirmed-stage">Этап</label><select id="confirmed-stage" value={stage} onChange={event => setStage(event.target.value)}><option value="">Выберите этап</option>{Object.entries(STAGE_NAMES).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></div><div className="field"><label htmlFor="stage-comment">Комментарий</label><textarea id="stage-comment" maxLength={2000} value={comment} onChange={event => setComment(event.target.value)} /></div><button type="button" className="secondary" disabled={!stage || busy} onClick={() => { setBusy(true); setError(''); void siteRequest<{ stage: string; comment: string }>(`/runs/${runId}/confirm-stage`, 'POST', { stage, comment }).then(setConfirmed).catch(() => setError('Не удалось сохранить подтверждение этапа.')).finally(() => setBusy(false)) }}>Подтвердить этап</button>{error && <p className="error" role="alert">{error}</p>}</>}</section>
 }
 
-function ProjectList({ heading, projects, loaded, navigate, onCreated }: { heading: RefObject<HTMLHeadingElement | null>; projects: Project[]; loaded: boolean; navigate: (path: string) => void; onCreated: (project: Project) => void }) {
+function ProjectList({ heading, projects, loaded, navigate, onCreated, onDraft }: { heading: RefObject<HTMLHeadingElement | null>; projects: Project[]; loaded: boolean; navigate: (path: string) => void; onCreated: (project: Project) => void; onDraft: (dirty: boolean) => void }) {
   const [name, setName] = useState('')
   const [timezone, setTimezone] = useState(Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
-  return <section aria-labelledby="projects-heading"><div className="page-intro"><h1 id="projects-heading" ref={heading} tabIndex={-1}>Проекты</h1><p>Создайте проект, загрузите фотографии и рассмотрите результат. План можно добавить позже.</p><p>Общий список доступен всем посетителям без регистрации.</p></div><form className="panel project-create" onSubmit={event => { event.preventDefault(); setBusy(true); setError(''); void siteRequest<Project>('/projects', 'POST', { name: name.trim(), timezone }).then(onCreated).catch(() => setError('Не удалось создать проект. Проверьте название и повторите попытку.')).finally(() => setBusy(false)) }}><label className="field" htmlFor="project-name">Название проекта<input id="project-name" required maxLength={200} value={name} onChange={event => setName(event.target.value)} /></label><details><summary>Дополнительные настройки</summary><label className="field" htmlFor="project-timezone">Часовой пояс<input id="project-timezone" required value={timezone} onChange={event => setTimezone(event.target.value)} /></label></details><button className="primary" disabled={busy || !name.trim()}>{busy ? 'Создаём…' : 'Создать проект'}</button>{error && <p className="error" role="alert">{error}</p>}</form>{!loaded ? <p role="status">Загружаем проекты…</p> : projects.length ? <ul className="project-list">{projects.map(project => <li className="panel" key={project.id}><h2><a href={`/projects/${project.id}`} onClick={event => { event.preventDefault(); navigate(`/projects/${project.id}`) }}>{project.name}</a></h2><p>{project.timezone}</p></li>)}</ul> : <p className="panel">Проектов пока нет. Начните с названия — основной участок создастся автоматически.</p>}<p><a href="/archive" onClick={event => { event.preventDefault(); navigate('/archive') }}>Архив анализов без проекта</a></p></section>
+  useEffect(() => { onDraft(!!name.trim() || busy); return () => onDraft(false) }, [name, busy, onDraft])
+  const pendingCreation = useRef<{ body: string; key: string } | null>(null)
+  return <section aria-labelledby="projects-heading"><div className="page-intro"><h1 id="projects-heading" ref={heading} tabIndex={-1}>Проекты</h1><p>Создайте проект, загрузите фотографии и рассмотрите результат. План можно добавить позже.</p><p>Общий список доступен всем посетителям без регистрации.</p></div><form className="panel project-create" onSubmit={event => { event.preventDefault(); setBusy(true); setError(''); const body = { name: name.trim(), timezone }; const serialized = JSON.stringify(body); if (pendingCreation.current?.body !== serialized) pendingCreation.current = { body: serialized, key: crypto.randomUUID() }; void siteRequest<Project>('/projects', 'POST', body, undefined, pendingCreation.current.key).then(onCreated).catch(() => setError('Не удалось создать проект. Проверьте название и повторите попытку.')).finally(() => setBusy(false)) }}><label className="field" htmlFor="project-name">Название проекта<input id="project-name" required maxLength={200} value={name} onChange={event => setName(event.target.value)} /></label><details><summary>Дополнительные настройки</summary><label className="field" htmlFor="project-timezone">Часовой пояс<input id="project-timezone" required value={timezone} onChange={event => setTimezone(event.target.value)} /></label></details><button className="primary" disabled={busy || !name.trim()}>{busy ? 'Создаём…' : 'Создать проект'}</button>{error && <p className="error" role="alert">{error}</p>}</form>{!loaded ? <p role="status">Загружаем проекты…</p> : projects.length ? <ul className="project-list">{projects.map(project => <li className="panel" key={project.id}><h2><a href={`/projects/${project.id}`} onClick={event => { event.preventDefault(); navigate(`/projects/${project.id}`) }}>{project.name}</a></h2><p>{project.timezone}</p></li>)}</ul> : <p className="panel">Проектов пока нет. Начните с названия — основной участок создастся автоматически.</p>}<p><a href="/archive" onClick={event => { event.preventDefault(); navigate('/archive') }}>Архив анализов без проекта</a></p></section>
 }
 
 function ProjectOverview({ projectId, projectName, heading, navigate }: { projectId: string; projectName?: string; heading: RefObject<HTMLHeadingElement | null>; navigate: (path: string) => void }) {
@@ -625,6 +629,7 @@ export default function App() {
   const [projectsAttempt, setProjectsAttempt] = useState(0)
   const [projectsLoaded, setProjectsLoaded] = useState(false)
   const [planDirty, setPlanDirty] = useState(false)
+  const [projectDraft, setProjectDraft] = useState(false)
   const [uploadDirty, setUploadDirty] = useState(false)
   const currentPath = useRef(location.pathname)
   const navigationGeneration = useRef(0)
@@ -659,6 +664,21 @@ export default function App() {
   const [frames, setFrames] = useState<Frame[]>([])
   const [demoLoading, setDemoLoading] = useState(false)
   const [demoError, setDemoError] = useState('')
+  const [trainingProject, setTrainingProject] = useState('')
+  const [trainingBusy, setTrainingBusy] = useState(false)
+  const [trainingFrameId, setTrainingFrameId] = useState('')
+  const trainingFrame = useRef('')
+  const [trainingRunId, setTrainingRunId] = useState('')
+  const trainingRun = useRef('')
+  const trainingGeneration = useRef(0)
+  const trainingRequest = useRef<AbortController | null>(null)
+  const trainingLoading = useRef(false)
+  const trainingEdits = useRef(0)
+  const currentProjectDraft = useRef(projectDraft)
+  currentProjectDraft.current = projectDraft
+  const trainingReady = !!trainingFrameId && frames.length === 1 && frames[0].id === trainingFrameId
+  const trainingOwner = useRef('')
+  const [trainingError, setTrainingError] = useState('')
   const [selectedDemo, setSelectedDemo] = useState<DemoCase | null>(null)
   const demoGeneration = useRef(0)
   const demoLoadingRef = useRef(false)
@@ -741,6 +761,7 @@ export default function App() {
       }
       historyPosition.current = position
       navigationGeneration.current++
+      cancelTraining()
       cancelUpload()
       updateFrames([]); setRemoved(null); setCaptureTimes({}); setPlanDirty(false); setUploadDirty(false)
       closeCamera(); currentPath.current = location.pathname
@@ -958,7 +979,7 @@ export default function App() {
     setRetrying(true)
     setRetryError('')
     try {
-      const response = await fetch(`/api/runs/${route}/retry`, { method: 'POST' })
+      const response = await fetch(`/api/runs/${route}/retry`, { method: 'POST', headers: attributionHeaders() })
       const data = await response.json() as { run_id?: string; code?: string }
       if (routeRef.current !== sourceRoute || !mounted.current) return
       if (!response.ok || !data.run_id) {
@@ -995,12 +1016,15 @@ export default function App() {
     validationQueue.current = Promise.resolve()
   }
 
-  function navigate(path: string, accepted = false, useWorkspace = true) {
+  function navigate(path: string, accepted = false, useWorkspace = true, preparingTraining = false) {
     if (useWorkspace) path = scoped(path)
     if (path === location.pathname) return
     if (!accepted && draftDirty.current && !window.confirm('Покинуть несохранённый черновик? Отправленный запрос останется доступен для восстановления.')) return
     navigationGeneration.current++
-    if (route === 'new') { cancelUpload(); updateFrames([]); setRemoved(null); setCaptureTimes({}); setErrors({}); setUploadDirty(false) }
+    if (!preparingTraining) cancelTraining()
+    const keepTrainingRun = accepted && !!trainingRun.current && path.endsWith(`/runs/${trainingRun.current}`)
+    if (!keepTrainingRun) { trainingRun.current = ''; setTrainingRunId('') }
+    if (route === 'new') { cancelUpload(); updateFrames([], keepTrainingRun); setRemoved(null); setCaptureTimes({}); setErrors({}); setUploadDirty(false) }
     setPlanDirty(false)
     currentPath.current = path
     setProjectId(path.match(/^\/projects\/([0-9a-f-]{36})/i)?.[1] ?? '')
@@ -1029,19 +1053,78 @@ export default function App() {
     setRoute(routeRef.current)
   }
 
-  function newAnalysis() { navigate(projectId ? '/new' : '/') }
+  function cancelTraining() {
+    trainingGeneration.current++
+    trainingRequest.current?.abort()
+    trainingRequest.current = null
+    setTrainingProject(''); setTrainingBusy(false)
+  }
 
-  function updateFrames(next: Frame[]) {
+  useEffect(() => {
+    const edited = (event: Event) => { if ((event.target as HTMLElement).closest('#main')) trainingEdits.current++ }
+    document.addEventListener('input', edited)
+    return () => { document.removeEventListener('input', edited); trainingRequest.current?.abort(); trainingGeneration.current++ }
+  }, [])
+  useEffect(() => {
+    if (!trainingBusy) return
+    const timer = setTimeout(() => { cancelTraining(); if (trainingLoading.current) { cancelUpload(); trainingLoading.current = false }; setTrainingError('Подготовка примера не завершилась. Текущая работа сохранена; повторите попытку.') }, 20000)
+    return () => clearTimeout(timer)
+  }, [trainingBusy])
+
+  async function startTraining() {
+    if (draftDirty.current || currentProjectDraft.current || pending || recovering || trainingBusy) return
+    const generation = ++trainingGeneration.current
+    const navigation = navigationGeneration.current
+    const edits = trainingEdits.current
+    const controller = new AbortController()
+    trainingRequest.current = controller
+    setTrainingBusy(true); setTrainingError('')
+    let preparing = false
+    try {
+      let saved = sessionStorage.getItem('onboarding-training-request')
+      if (!saved) {
+        saved = JSON.stringify({ key: crypto.randomUUID(), body: { name: 'Учебный проект · знакомство с системой', timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC' } })
+        sessionStorage.setItem('onboarding-training-request', saved)
+      }
+      const request = JSON.parse(saved) as { key: string; body: { name: string; timezone: string } }
+      const created = await siteRequest<Project>('/projects', 'POST', request.body, controller.signal, request.key)
+      if (!mounted.current || controller.signal.aborted || generation !== trainingGeneration.current || navigation !== navigationGeneration.current || edits !== trainingEdits.current || draftDirty.current || currentProjectDraft.current) throw new Error('training_canceled')
+      setProjects(current => current.some(item => item.id === created.id) ? current : [...current, created])
+      trainingOwner.current = created.id
+      navigate(`/projects/${created.id}/new`, false, true, true)
+      setTrainingProject(created.id)
+      preparing = true
+    } catch {
+      if (generation === trainingGeneration.current) setTrainingError('Не удалось подготовить учебный проект. Повтор использует тот же ключ; текущая работа сохранена.')
+      throw new Error('training_unavailable')
+    } finally {
+      if (generation === trainingGeneration.current && !preparing) setTrainingBusy(false)
+    }
+  }
+
+  useEffect(() => {
+    if (!trainingProject || projectId !== trainingProject || route !== 'new' || !analysisZoneId || recovering || choicesLoading) return
+    const generation = trainingGeneration.current
+    setTrainingProject('')
+    trainingLoading.current = true
+    void loadDemo('truck', true).finally(() => { trainingLoading.current = false; if (generation === trainingGeneration.current) setTrainingBusy(false) })
+  }, [trainingProject, projectId, route, analysisZoneId, recovering, choicesLoading])
+
+  function newAnalysis() { navigate(projectId ? '/new' : '/'); if (!projectId) requestAnimationFrame(() => document.getElementById('project-name')?.focus()) }
+
+  function updateFrames(next: Frame[], keepTrainingRun = false) {
+    trainingFrame.current = ''; setTrainingFrameId('')
+    if (!keepTrainingRun) { trainingRun.current = ''; setTrainingRunId('') }
     framesRef.current = next
     setFrames(next)
     setSelectedDemo(null)
   }
 
-  async function loadDemo(caseId: string) {
+  async function loadDemo(caseId: string, training = false) {
     const selected = demoCases.cases.find(item => item.id === caseId)
     if (!selected || pending || sending || recovering || busy.current || demoLoadingRef.current) return
     const rule = choices.find(item => item.id === selected.stage)?.rule
-    if (!rule || rule.revision !== selected.ruleRevision) {
+    if (!training && (!rule || rule.revision !== selected.ruleRevision)) {
       setDemoError('Демонстрационный пример недоступен: текущая ревизия правила изменилась или правило не загружено.')
       return
     }
@@ -1053,7 +1136,7 @@ export default function App() {
     let timeout: ReturnType<typeof setTimeout> | undefined
     try {
       await validationQueue.current
-      const loaded = await Promise.race([Promise.all(selected.frames.map(async frame => {
+      const loaded = await Promise.race([Promise.all((training ? [selected.frames[1]] : selected.frames).map(async frame => {
         const response = await fetch(frame.path, { signal: controller.signal })
         if (!response.ok) throw new Error('asset_unavailable')
         const file = new File([await response.blob()], frame.path.split('/').pop()!, { type: 'image/jpeg' })
@@ -1069,15 +1152,16 @@ export default function App() {
       closeCamera()
       updateFrames(loaded)
       setStage(selected.stage)
-      setIntent(selected.intent)
-      observationPreferred.current = false
-      setScenario(selected.scenario)
-      setArea(selected.observationArea)
+      setIntent(training ? 'observation_only' : selected.intent)
+      observationPreferred.current = training
+      setScenario(training ? 'Учебный пример: техника на стройплощадке' : selected.scenario)
+      if (!training) setArea(selected.observationArea)
       setPeriod(selected.period)
-      setSelectedDemo(selected)
+      setSelectedDemo(training ? null : selected)
+      if (training) { trainingFrame.current = loaded[0].id; setTrainingFrameId(loaded[0].id) }
       setRemoved(null)
       setErrors({})
-      setNotice(`Загружен демонстрационный пример: ${selected.label}. Три кадра можно изменить перед отправкой.`)
+      setNotice(training ? 'Учебная фотография загружена. Время демонстрационное; запуск анализа требует отдельного нажатия.' : `Загружен демонстрационный пример: ${selected.label}. Три кадра можно изменить перед отправкой.`)
     } catch {
       if (mounted.current && generation === demoGeneration.current) setDemoError('Не удалось загрузить и проверить все кадры примера. Текущая форма сохранена; повторите выбор.')
     } finally {
@@ -1220,7 +1304,7 @@ export default function App() {
       const { response, data } = await Promise.race([
         (async () => {
           const response = await fetch(request.endpoint.replace(/^\/runs\//, '/api/runs/'), {
-            method: 'POST', headers: { 'Content-Type': 'application/json', 'Idempotency-Key': request.key }, body: request.body,
+            method: 'POST', headers: { 'Content-Type': 'application/json', 'Idempotency-Key': request.key, ...attributionHeaders() }, body: request.body,
             signal: controller.signal,
           })
           if (response.status >= 400 && response.status < 500) {
@@ -1247,6 +1331,7 @@ export default function App() {
         await clearPending()
         setPending(null)
         if (navigation !== navigationGeneration.current) return
+        if (trainingFrame.current && framesRef.current.length === 1 && framesRef.current[0].id === trainingFrame.current && JSON.parse(request.body).project_id === trainingOwner.current) { trainingRun.current = data.run_id; setTrainingRunId(data.run_id) }
         navigate(JSON.parse(request.body).project_id ? `/projects/${JSON.parse(request.body).project_id}/runs/${data.run_id}` : `/runs/${data.run_id}`, true)
       } else if (response.status === 503 && (data?.code === 'submission_publication_failed' || data?.code === 'submission_interrupted')) {
         await clearPending()
@@ -1311,10 +1396,12 @@ export default function App() {
   return <div className="app-shell">
     <a className="skip-link" href="#main">К основному содержимому</a>
     <AppHeader projectId={projectId} projects={projects} projectName={project?.name} route={route} historyPath={historyPath.current} navigate={navigate} onNewAnalysis={newAnalysis} />
+    <PublicSupport safe={!recovering && !pending && !draftDirty.current && !projectDraft} projectId={projectId} analysisId={route && /^[0-9a-f-]{36}$/i.test(route) ? route : undefined} start={newAnalysis} training={{ start: startTraining, busy: trainingBusy, ready: trainingReady && projectId === trainingOwner.current, allowed: !draftDirty.current && !projectDraft && !pending && !recovering, error: trainingError || (trainingReady ? '' : demoError), runId: projectId === trainingOwner.current && route === trainingRunId ? trainingRunId : undefined }} />
     <main id="main" className="page">
+      {trainingReady && projectId === trainingOwner.current && route === 'new' && <p className="attention">Учебный пример: проверенная фотография из демонстрационного набора. Дата и время съёмки демонстрационные; их можно уточнить. Анализ запускается только кнопкой «Запустить анализ».</p>}
       {pending && route !== 'new' && <p className="attention">Сохранённая отправка требует восстановления. <a href={pendingProject ? `/projects/${pendingProject}/new` : '/new'} onClick={event => { event.preventDefault(); navigate(pendingProject ? `/projects/${pendingProject}/new` : '/new', false, false) }}>Вернуться к отправке</a></p>}
       {projectsError && <div className="error" role="alert">{projectsError} <button type="button" onClick={() => setProjectsAttempt(value => value + 1)}>Повторить загрузку проектов</button></div>}
-      {projectId && projectsLoaded && !project ? <section className="panel"><h1 ref={pageHeading} tabIndex={-1}>Проект не найден</h1><a href="/" onClick={event => { event.preventDefault(); navigate('/') }}>Все проекты</a></section> : route === 'projects' ? <ProjectList heading={pageHeading} projects={projects} loaded={projectsLoaded} navigate={navigate} onCreated={created => { setProjects(current => [...current, created]); navigate(`/projects/${created.id}`) }} /> : route === 'overview' ? <ProjectOverview key={projectId} projectId={projectId} projectName={project?.name} heading={pageHeading} navigate={navigate} /> : route === 'plan' ? <SiteWorkspace key={projectId} projectId={projectId} heading={pageHeading} onDirty={setPlanDirty} /> : route === 'signals' ? <SignalsPage key={projectId} projectId={projectId} heading={pageHeading} onOpenRun={id => navigate(`/runs/${id}`)} /> : route === 'history' ? <section className="history" aria-labelledby="history-heading" aria-busy={historyLoading || historyPageLoading}>
+      {projectId && projectsLoaded && !project ? <section className="panel"><h1 ref={pageHeading} tabIndex={-1}>Проект не найден</h1><a href="/" onClick={event => { event.preventDefault(); navigate('/') }}>Все проекты</a></section> : route === 'projects' ? <ProjectList onDraft={setProjectDraft} heading={pageHeading} projects={projects} loaded={projectsLoaded} navigate={navigate} onCreated={created => { setProjects(current => [...current, created]); navigate(`/projects/${created.id}`) }} /> : route === 'overview' ? <ProjectOverview key={projectId} projectId={projectId} projectName={project?.name} heading={pageHeading} navigate={navigate} /> : route === 'plan' ? <SiteWorkspace key={projectId} projectId={projectId} heading={pageHeading} onDirty={setPlanDirty} /> : route === 'signals' ? <SignalsPage key={projectId} projectId={projectId} heading={pageHeading} onOpenRun={id => navigate(`/runs/${id}`)} /> : route === 'history' ? <section className="history" aria-labelledby="history-heading" aria-busy={historyLoading || historyPageLoading}>
         <div className="page-intro"><p className="eyebrow">История</p><h1 ref={pageHeading} tabIndex={-1} id="history-heading">{projectId ? "Анализы проекта" : "Архив без проекта"}</h1>{historyTotal !== null && <p>Всего анализов: {historyTotal}.</p>}<p>Сохранённые анализы и их исходные данные.</p></div>
         {historyError && <div className="panel attention" role="alert">{historyError} <button type="button" className="secondary" onClick={() => setHistoryAttempt(value => value + 1)}>Повторить загрузку</button></div>}
         {historyLoading && !historyLoaded && <p role="status">Загружаем историю…</p>}

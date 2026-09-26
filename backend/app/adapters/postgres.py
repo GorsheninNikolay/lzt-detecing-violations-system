@@ -1,3 +1,4 @@
+from app.application.activity import attribute
 from alembic.runtime.migration import MigrationContext
 from alembic.script import ScriptDirectory
 from sqlalchemy import create_engine, text
@@ -1137,16 +1138,16 @@ class PostgresStore:
 
     def commit_submission(self, key: str, profile_id: uuid.UUID, revision: int, snapshot: dict,
                           context: dict, requested_classes: list[str], image_hash: str, image_size: int,
-                          intent: str = "observation_only", stage: str | None = None) -> uuid.UUID:
+                          intent: str = "observation_only", stage: str | None = None, browser_id: str | None = None) -> uuid.UUID:
         with self.engine.connect() as connection:
             intent_id = connection.execute(text("SELECT intent_id FROM submission_requests WHERE idempotency_key = :key"), {"key": key}).scalar_one()
         return self.commit_series_submission(key, profile_id, revision, snapshot, context, requested_classes,
-                                             [(intent_id, image_hash, image_size)], intent, stage)
+                                             [(intent_id, image_hash, image_size)], intent, stage, browser_id)
 
     def commit_series_submission(self, key: str, profile_id: uuid.UUID, revision: int, snapshot: dict,
                                  context: dict, requested_classes: list[str],
                                  manifest: list[tuple[uuid.UUID, str, int]],
-                                 intent: str = "observation_only", stage: str | None = None) -> uuid.UUID:
+                                 intent: str = "observation_only", stage: str | None = None, browser_id: str | None = None) -> uuid.UUID:
         run_id = uuid.uuid4()
         with self.engine.begin() as connection:
             request = connection.execute(text("""SELECT * FROM submission_requests
@@ -1199,6 +1200,7 @@ class PostgresStore:
                                          snapshot.get("observation_contract") == "equipment-boxes-v2" else
                                          {"portable_classes": list(CLASSES), "revision": "presence-only-v1"}),
                  "classes": json.dumps(requested_classes)})
+            attribute(connection, browser_id, "run", run_id)
             if "plan_revision_id" in context:
                 connection.execute(text("""INSERT INTO run_plan_bindings
                     (run_id,zone_id,revision_id,frame_times)
@@ -1709,7 +1711,7 @@ class PostgresStore:
         ]}
 
     def retry_ordinary(self, source_id: uuid.UUID, profile_id: uuid.UUID, revision: int,
-                       snapshot: dict, artifacts: ArtifactStore) -> uuid.UUID:
+                       snapshot: dict, artifacts: ArtifactStore, browser_id: str | None = None) -> uuid.UUID:
         source_query = text("""SELECT * FROM analysis_runs WHERE id = :id AND purpose = 'ordinary'""")
         inputs_query = text("""SELECT i.ordinal, i.input_id, i.sha256, i.size, i.context,
             a.id AS artifact_id, a.key, a.media_type, a.sha256 AS artifact_sha256,
@@ -1781,6 +1783,7 @@ class PostgresStore:
                  "intent": source["analysis_intent"] or "observation_only", "stage": source["stage_key"],
                  "taxonomy": json.dumps(source["taxonomy_snapshot"]), "classes": json.dumps(source["requested_classes"]),
                  "source": source_id})
+            attribute(connection, browser_id, "run", run_id)
             for item in inputs:
                 artifact_id = uuid.uuid4()
                 connection.execute(text("""INSERT INTO artifact_metadata

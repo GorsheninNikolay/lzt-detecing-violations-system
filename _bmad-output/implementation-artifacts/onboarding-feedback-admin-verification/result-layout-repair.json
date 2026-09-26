@@ -1,0 +1,81 @@
+{
+  "scope": "Corrected final measurement: paragraph versus actual article row, not inline strong versus its narrow paragraph",
+  "checks": [
+    {
+      "device": "desktop",
+      "passed": true,
+      "measured": [
+        {
+          "paragraph": 487.15625,
+          "row": 487.15625
+        },
+        {
+          "paragraph": 487.15625,
+          "row": 487.15625
+        },
+        {
+          "paragraph": 487.15625,
+          "row": 487.15625
+        },
+        {
+          "paragraph": 487.15625,
+          "row": 487.15625
+        },
+        {
+          "paragraph": 487.15625,
+          "row": 487.15625
+        },
+        {
+          "paragraph": 487.15625,
+          "row": 487.15625
+        },
+        {
+          "paragraph": 487.15625,
+          "row": 487.15625
+        },
+        {
+          "paragraph": 487.15625,
+          "row": 487.15625
+        }
+      ]
+    },
+    {
+      "device": "mobile",
+      "passed": true,
+      "measured": [
+        {
+          "paragraph": 324,
+          "row": 324
+        },
+        {
+          "paragraph": 324,
+          "row": 324
+        },
+        {
+          "paragraph": 324,
+          "row": 324
+        },
+        {
+          "paragraph": 324,
+          "row": 324
+        },
+        {
+          "paragraph": 324,
+          "row": 324
+        },
+        {
+          "paragraph": 324,
+          "row": 324
+        },
+        {
+          "paragraph": 324,
+          "row": 324
+        },
+        {
+          "paragraph": 324,
+          "row": 324
+        }
+      ]
+    }
+  ]
+}

@@ -221,7 +221,7 @@ The exact user-facing product name is `Контроль строительств
 
 The chosen composition combines the stage-oriented overview from [Direction C](.working/directions-entry-surface.html) with the causal analysis route from Direction B in the same artifact. The selected full-night treatment is recorded in [the hackathon theme comparison](.working/hackathon-theme-options.html). Earlier light themes in [.working/color-themes-entry.html](.working/color-themes-entry.html) are superseded.
 
-The full-color [17 мгновений ИИ logo](imports/team-17-mgnoveniy-ii-logo.png) appears only in spacious attribution areas on the Stages Overview and About Project surfaces. Compact laptop and phone headers use the exact text `17 мгновений ИИ` instead of shrinking, cropping, recoloring, or reconstructing the detailed logo. It is team attribution, never a status mark.
+Historically, the full-color [17 мгновений ИИ logo](imports/team-17-mgnoveniy-ii-logo.png) appeared only in spacious attribution areas on the Stages Overview and About Project surfaces, with text-only compact headers. The 2026-09-26 public-support extension below explicitly supersedes that placement restriction with the complete header mark and retained text attribution. The logo remains team attribution, never a status mark; do not crop, recolor, or reconstruct it.
 
 The interface inherits Radix Themes component structure, keyboard behavior, and baseline accessibility. This file defines the full-night brand layer and product-specific evidence components. It does not restyle every Radix primitive.
 
@@ -311,3 +311,13 @@ State and overlay references: [Recovery States](mockups/key-recovery-states.html
 | Keep the full team mark legible in attribution areas | Crop, recolor, animate, or use the logo as a loading indicator |
 | Show measured backend stage state and factual summaries | Animate invented percentages or present recorded progress as live |
 | Keep technical detail available through disclosure | Put policy snapshots, provider payloads, and checksums in the primary reading path |
+
+## Public support and private owner surface (2026-09-26)
+
+This extension supersedes the earlier compact-logo exclusion: reuse the complete unedited `team-logo.png` in the header with clear space and in favicon/apple-touch links. The project selector keeps accessible `Выбрать проект` without a redundant visible `Проект` label. Persistent text support actions remain visible below the header on narrow screens.
+
+The introduction uses a five-step anchored tooltip with a spotlight around the exact real control and a dimmed remainder. It follows scroll and responsive geometry, stays inside the viewport without covering its target, and supports Back/Next/Skip, Escape and focus restoration. The highlighted control remains usable. Phones use a compact tooltip above or below the target. Missing project-specific controls produce explicit prerequisite guidance pointing to the actual project control. Feedback uses a separate native dialog, labeled fields, local image previews/removal, visible optional context, durable pending/error states and the exact success copy. Keep Onest, plum surfaces and existing violet/semantic tokens. The private admin has two tabs, eight requested statistic cards, labeled daily charts with visible numeric values, project rows and a feedback list/detail view. Mobile stacks charts and detail; cards use two columns. No public admin link is rendered.
+
+The hands-on branch shows `Попробовать на примере`, its separate-project effect and any prerequisite/error inline. It stages a verified educational photograph without automatic inference, then spotlights the real submit control and persisted result. Existing working drafts are protected.
+
+The tour extends the existing transient-layer vocabulary: a surface tooltip with an essential boundary, a focus-colored spotlight and a dark scrim around the usable target. It does not replace the page with a centered wizard. Feedback alone uses the native modal treatment, becoming a full-viewport form at 700px and below. Keep these surface-specific layouts separate; neither introduces a new palette or global type/radius scale. The password-change form sits in a disclosure on the private owner surface and uses the existing labeled-field and inline-error patterns.

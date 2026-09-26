@@ -122,3 +122,21 @@ Submit 2–8 JPEG/PNG images to `POST /runs/series` with the same context and `I
 `GET /runs/{run_id}` returns `inputs` in zero-based order, each with a stable `input_id`, checksum, size, and source artifact ID. `observations` include that input ID and ordinal, class state, reason where needed, source artifact ID, and completed invocation ID for provider-derived states. `native_evidence_by_frame` attributes retained native evidence to its frame. Equal image bytes may share an S3 object, but retain separate input and observation references. The series projection appears only after every frame has a closed class set. A later technical failure leaves the run failed with earlier evidence visible and no projection. Results describe individual frames only; no area-wide absence is inferred.
 
 Project workspace implementation evidence is recorded in `_bmad-output/implementation-artifacts/project-workspaces-verification/`. Apply migration `0016_project_history` to an isolated test database for verification; local checks do not imply deployment or wider model admission.
+
+## Visitor support and private administration
+
+Apply migrations through `0020_signal_activity` to the intended isolated local database before starting the updated API. The public header includes a five-step anchored introduction with an explicit isolated training-project/sample-photo path and durable illustrated feedback. `/admin` is intentionally unlinked and authenticates separately; public projects remain shared.
+
+Provision or reset the owner password privately from `backend` after setting `DATABASE_URL` for that database:
+
+```sh
+.venv/bin/python -m app.application.admin_password
+```
+
+The command uses hidden `getpass` input twice, accepts at least eight characters, stores only a salted scrypt hash in PostgreSQL and revokes previous sessions. No default password exists. Login is `gorshenin-nik`; authenticated password change requires the current password and ends every session. Never place a password in command arguments, source files or frontend configuration.
+
+Start locally with the existing environment and `.venv/bin/uvicorn app.main:create_app --factory --host 127.0.0.1 --port 8000`, then `npm --prefix web run dev`. Open `http://127.0.0.1:5173/` or `/admin`. Outside actual localhost, HTTPS is required; a trusted reverse proxy must preserve the original Host/Origin and securely supply the external scheme. Never expose the bucket publicly or blindly trust forwarded headers from arbitrary peers.
+
+Analytics begin at migration. Visitors mean browsers, not identified people. Periods use Moscow days; run cards count ordinary runs created in that period and their current authoritative states. All-time includes historical ordinary runs without inventing missing dates or ownership. Session/event and ownership storage are separate from immutable analysis context. Feedback writes use a separate private `feedback/` prefix; unknown responses reuse the same body/key. Partial storage failures cannot publish an incomplete feedback row.
+
+Local verification and headless screenshots are recorded in `_bmad-output/implementation-artifacts/onboarding-feedback-admin-verification/`. Tests use separate `TEST_DATABASE_URL` and `TEST_S3_BUCKET` values; never point them at an application or preview database.

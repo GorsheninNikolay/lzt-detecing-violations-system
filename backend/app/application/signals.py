@@ -97,7 +97,7 @@ def update_signal(signal_id: uuid.UUID, request: Request, body: dict):
     if state not in STATES or not isinstance(comment, str) or len(comment) > 2000:
         return JSONResponse({"code": "invalid_signal_update"}, status_code=400)
     with request.app.state.store.engine.begin() as connection:
-        row = connection.execute(text("""UPDATE site_signals SET state=:state,comment=:comment
+        row = connection.execute(text("""UPDATE site_signals SET state=:state,comment=:comment,updated_at=clock_timestamp()
             WHERE id=:id RETURNING id,state,comment"""),
             {"id": signal_id, "state": state, "comment": comment}).first()
     return ({"id": str(row.id), "state": row.state, "comment": row.comment} if row else

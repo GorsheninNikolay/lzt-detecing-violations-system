@@ -117,7 +117,7 @@ def validate_images(body: dict, series: bool) -> tuple[list[bytes], dict, list[s
 
 
 def submit(store: PostgresStore, artifacts: ArtifactStore, key: str, body: dict,
-           profile_id: uuid.UUID, revision: int, snapshot: dict) -> tuple[str, uuid.UUID | None]:
+           profile_id: uuid.UUID, revision: int, snapshot: dict, browser_id: str | None = None) -> tuple[str, uuid.UUID | None]:
     if not isinstance(key, str) or not 0 < len(key) <= 128 or any(ord(char) < 33 or ord(char) > 126 for char in key):
         raise SubmissionError("invalid_idempotency_key")
     image, context, requested, request_hash = validate_request(body)
@@ -155,6 +155,7 @@ def submit(store: PostgresStore, artifacts: ArtifactStore, key: str, body: dict,
         store.publication_object_published(intent_id)
         artifacts.read_verified(f"sha256/{image_hash}", image_hash, size)
         run_id = store.commit_submission(key, profile_id, revision, snapshot, context, requested, image_hash, size,
+            **({"browser_id": browser_id} if browser_id else {}),
             **({"intent": body["intent"], "stage": body.get("stage", body.get("stage_id"))}
                if "stage" in body or "stage_id" in body else {}))
         return "queued", run_id
@@ -165,7 +166,7 @@ def submit(store: PostgresStore, artifacts: ArtifactStore, key: str, body: dict,
 
 
 def submit_series(store: PostgresStore, artifacts: ArtifactStore, key: str, body: dict,
-                  profile_id: uuid.UUID, revision: int, snapshot: dict) -> tuple[str, uuid.UUID | None]:
+                  profile_id: uuid.UUID, revision: int, snapshot: dict, browser_id: str | None = None) -> tuple[str, uuid.UUID | None]:
     if not isinstance(key, str) or not 0 < len(key) <= 128 or any(ord(char) < 33 or ord(char) > 126 for char in key):
         raise SubmissionError("invalid_idempotency_key")
     images, context, requested, request_hash = validate_images(body, True)
@@ -206,6 +207,7 @@ def submit_series(store: PostgresStore, artifacts: ArtifactStore, key: str, body
             manifest.append((intent_id, image_hash, size))
         return "queued", store.commit_series_submission(
             key, profile_id, revision, snapshot, context, requested, manifest,
+            **({"browser_id": browser_id} if browser_id else {}),
             **({"intent": body["intent"], "stage": body.get("stage", body.get("stage_id"))}
                if "stage" in body or "stage_id" in body else {}))
     except Exception as exc:

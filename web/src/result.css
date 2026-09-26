@@ -57,6 +57,7 @@
 .result-basis .observation-row h5,
 .result-basis .observation-row p { margin: 0; font-size: .875rem; line-height: 1.45; }
 .result-basis .observation-row h5 { color: #c9bdd1; font-weight: 600; }
+.result-basis .observation-row p:last-child { grid-column: 1 / -1; }
 .result-basis .observation-row strong { font-weight: 650; }
 .result-basis .check-request {
   margin-top: 22px;

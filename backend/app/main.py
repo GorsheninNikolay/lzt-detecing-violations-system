@@ -20,6 +20,7 @@ from app.profiles.grounding_dino import verify_snapshot
 from app.profiles.cloud_api import CloudObserver
 from app.application.site import router as site_router
 from app.application.signals import router as signals_router
+from app.application.engagement import router as engagement_router
 
 
 MAX_HTTP_BODY_BYTES = 25_100_000
@@ -116,6 +117,15 @@ def create_app() -> FastAPI:
     app.state.readiness = Readiness()
     app.include_router(site_router)
     app.include_router(signals_router)
+    app.include_router(engagement_router)
+
+    @app.middleware("http")
+    async def private_cache(request: Request, call_next):
+        response = await call_next(request)
+        if request.url.path.startswith("/admin/"):
+            response.headers["Cache-Control"] = "no-store"
+            response.headers["X-Content-Type-Options"] = "nosniff"
+        return response
 
     @app.get("/health/live")
     def live() -> dict[str, bool]:
@@ -154,7 +164,8 @@ def create_app() -> FastAPI:
             snapshot, revision = await asyncio.to_thread(app.state.store.require_authorized, binding[0], binding[1])
             status, run_id = await asyncio.to_thread(submit_series if series else submit,
                 app.state.store, app.state.artifacts,
-                key, body, binding[0], revision, snapshot)
+                key, body, binding[0], revision, snapshot,
+                **({"browser_id": request.headers["x-browser-id"]} if "x-browser-id" in request.headers else {}))
             if run_id:
                 current = await asyncio.to_thread(app.state.store.read_ordinary, run_id)
                 return JSONResponse({"run_id": str(run_id), "state": current["state"]}, status_code=202)
@@ -256,7 +267,7 @@ def create_app() -> FastAPI:
             raise
 
     @app.post("/runs/{run_id}/retry")
-    async def retry_run(run_id: str) -> JSONResponse:
+    async def retry_run(run_id: str, request: Request) -> JSONResponse:
         try:
             identifier = uuid.UUID(run_id)
         except ValueError:
@@ -280,7 +291,8 @@ def create_app() -> FastAPI:
             else:
                 await asyncio.to_thread(verify_snapshot, Path(app.state.claim_loop.snapshot_dir), snapshot["model_files"])
             successor = await asyncio.to_thread(app.state.store.retry_ordinary, identifier, binding[0], revision,
-                                                snapshot, app.state.artifacts)
+                                                snapshot, app.state.artifacts,
+                                                browser_id=request.headers.get("x-browser-id"))
             return JSONResponse({"run_id": str(successor)}, status_code=202)
         except AdmissionStoreError as exc:
             code = str(exc)
