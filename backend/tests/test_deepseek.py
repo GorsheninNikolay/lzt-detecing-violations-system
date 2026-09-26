@@ -247,6 +247,81 @@ def test_renewal_failure_during_provider_prevents_later_calls(deepseek_service, 
     assert result['result_projection'] is None
 
 
+def test_expired_lease_fences_completion_during_recovery(deepseek_service, monkeypatch):
+    import threading
+    import time
+    from concurrent.futures import ThreadPoolExecutor
+    from sqlalchemy import event
+    from app.adapters.postgres import RecoveryGateError
+
+    store, _, _, _, revision, runner = deepseek_service
+    work = queue_work(deepseek_service)
+    pending = []
+    with monkeypatch.context() as patch:
+        patch.setattr(runtime, 'complete', lambda *args: pending.append(args))
+        asyncio.run(runner._execute(work, revision))
+    assert len(pending) == 1
+    with store.engine.begin() as db:
+        db.execute(text("UPDATE analysis_runs SET lease_expires_at=clock_timestamp()+interval '2 seconds' WHERE id=:id"),
+                   {'id': work['id']})
+
+    locked, release = threading.Event(), threading.Event()
+    lock_error_states = []
+
+    def hold_completion_after_lock(_conn, _cursor, statement, _params, _context, _many):
+        if 'FOR UPDATE OF r,a' in statement:
+            locked.set()
+            assert release.wait(10), 'completion lock was not released'
+
+    def capture_recovery_error(context):
+        if context.statement and 'FOR UPDATE NOWAIT' in context.statement:
+            lock_error_states.append(getattr(context.original_exception, 'sqlstate', None))
+
+    event.listen(store.engine, 'after_cursor_execute', hold_completion_after_lock)
+    event.listen(store.engine, 'handle_error', capture_recovery_error)
+    try:
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            completion = pool.submit(runtime.complete, *pending[0])
+            try:
+                assert locked.wait(5), 'completion did not acquire the run lock'
+                with store.engine.connect() as db:
+                    assert db.execute(text('SELECT lease_expires_at>clock_timestamp() FROM analysis_runs WHERE id=:id'),
+                                      {'id': work['id']}).scalar_one()
+                deadline = time.monotonic() + 5
+                while True:
+                    with store.engine.connect() as db:
+                        expired = db.execute(text('SELECT lease_expires_at<=clock_timestamp() FROM analysis_runs WHERE id=:id'),
+                                             {'id': work['id']}).scalar_one()
+                    if expired:
+                        break
+                    assert time.monotonic() < deadline, 'lease did not expire'
+                    time.sleep(0.02)
+                with pytest.raises(RecoveryGateError, match='recovery_gate_failed'):
+                    store.recover()
+                assert lock_error_states == ['55P03']
+            finally:
+                release.set()
+            with pytest.raises(ValueError, match='ordinary_lease_rejected'):
+                completion.result(timeout=10)
+    finally:
+        release.set()
+        event.remove(store.engine, 'after_cursor_execute', hold_completion_after_lock)
+        event.remove(store.engine, 'handle_error', capture_recovery_error)
+
+    with pytest.raises(AdmissionStoreError, match='ordinary_lease_rejected'):
+        store.renew_ordinary(work['id'], work['owner'], revision, 30)
+    assert store.recover() == 1
+    result = store.read_ordinary(work['id'])
+    assert result['state'] == 'failed' and result['error_code'] == 'executor_interrupted'
+    assert result['result_projection'] is None and result['objects'] == []
+    assert len(result['ai_evidence']) == 2
+    assert all(call['result'] is not None for call in result['ai_evidence'])
+    with store.engine.connect() as db:
+        for table in ('result_projections', 'detected_objects', 'observations', 'observer_invocations'):
+            assert db.execute(text(f'SELECT count(*) FROM {table} WHERE run_id=:id'),
+                              {'id': work['id']}).scalar_one() == 0
+
+
 def test_history_is_same_zone_strictly_earlier_and_limited(deepseek_service):
     from fastapi import FastAPI
     from fastapi.testclient import TestClient

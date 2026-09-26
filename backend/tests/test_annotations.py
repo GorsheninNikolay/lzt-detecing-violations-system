@@ -1,10 +1,8 @@
 import io
 import json
-import os
 import secrets
 import zipfile
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import replace
 from uuid import uuid4
 
 import pytest
@@ -12,15 +10,12 @@ from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
 from PIL import Image, ImageDraw
 from sqlalchemy import text
-from sqlalchemy.engine import make_url
 from sqlalchemy.exc import DatabaseError
 
-from app.adapters.artifacts import ArtifactStore
-from app.adapters.postgres import PostgresStore
 from app.application import annotations
 from app.application.admin_password import hash_password
 from app.application.engagement import router as engagement_router
-from app.config import Config
+from test_startup import database, integration
 
 
 def test_geometry_and_rotation_identity():
@@ -35,12 +30,8 @@ def test_geometry_and_rotation_identity():
 
 
 @pytest.fixture
-def service():
-    test_url = os.environ['TEST_DATABASE_URL']
-    assert make_url(test_url).database != make_url(os.environ['DATABASE_URL']).database
-    assert os.environ['TEST_S3_BUCKET'] != os.environ['S3_BUCKET']
-    store = PostgresStore(test_url)
-    artifacts = ArtifactStore(replace(Config.from_env(), database_url=test_url, s3_bucket=os.environ['TEST_S3_BUCKET']))
+def service(integration):
+    _, store, artifacts = integration
     app = FastAPI()
     app.state.store, app.state.artifacts = store, artifacts
     app.include_router(annotations.router)
@@ -54,7 +45,6 @@ def service():
         assert response.status_code == 200
         headers = {'origin':'https://testserver','x-csrf-token':response.json()['csrf']}
         yield client, store, artifacts, headers
-    store.close()
 
 
 def seed(store, artifacts, payload=None):

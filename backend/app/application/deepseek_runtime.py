@@ -214,7 +214,13 @@ def complete(store, work, frame_results, assessment, frozen):
         db.execute(text("UPDATE analysis_stages SET state='succeeded',reason=NULL WHERE run_id=:run"), {'run': work['id']})
         if not frozen['plan']:
             db.execute(text("UPDATE analysis_stages SET state='skipped',reason='not_applicable' WHERE run_id=:run AND ordinal=4"), {'run': work['id']})
-        db.execute(text("UPDATE analysis_runs SET state='succeeded',lease_owner=NULL,lease_expires_at=NULL WHERE id=:run"), {'run': work['id']})
+        completed = db.execute(text('''UPDATE analysis_runs
+            SET state='succeeded',lease_owner=NULL,lease_expires_at=NULL
+            WHERE id=:run AND state='running' AND lease_owner=:owner
+              AND lease_expires_at>clock_timestamp()'''),
+            {'run': work['id'], 'owner': work['owner']})
+        if completed.rowcount != 1:
+            raise ValueError('ordinary_lease_rejected')
 
 
 async def execute(runner, work, revision):

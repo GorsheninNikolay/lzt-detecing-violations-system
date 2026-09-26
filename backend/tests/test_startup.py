@@ -14,10 +14,12 @@ from urllib.parse import urlsplit
 
 import pytest
 from httpx import ASGITransport, AsyncClient
+from alembic import command
+from alembic.config import Config as AlembicConfig
 from alembic.runtime.migration import MigrationContext
 from alembic.script import ScriptDirectory
 from botocore.exceptions import ClientError
-from sqlalchemy import text
+from sqlalchemy import create_engine, text
 from sqlalchemy.engine import make_url
 
 from app.adapters.artifacts import ArtifactGateError, ArtifactStore
@@ -287,8 +289,29 @@ def database():
     if actual != ScriptDirectory(MIGRATIONS).get_current_head():
         store.close()
         pytest.fail("Migrate the isolated test database with DATABASE_URL=$TEST_DATABASE_URL uv run alembic upgrade head")
-    yield store
     store.close()
+    database_name = f"integration_test_{uuid.uuid4().hex}"
+    isolated_url = make_url(url).set(database=database_name).render_as_string(hide_password=False)
+    admin = create_engine(url, isolation_level="AUTOCOMMIT")
+    isolated = None
+    try:
+        with admin.connect() as connection:
+            connection.exec_driver_sql(f'CREATE DATABASE "{database_name}"')
+            connection.exec_driver_sql(f'ALTER DATABASE "{database_name}" SET timezone TO \'UTC\'')
+        migrations = AlembicConfig(str(Path(MIGRATIONS).parent / "alembic.ini"))
+        migrations.set_main_option("script_location", MIGRATIONS)
+        migrations.set_main_option("path_separator", "os")
+        with pytest.MonkeyPatch.context() as patch:
+            patch.setenv("DATABASE_URL", isolated_url)
+            command.upgrade(migrations, "head")
+        isolated = PostgresStore(isolated_url)
+        yield isolated
+    finally:
+        if isolated is not None:
+            isolated.close()
+        with admin.connect() as connection:
+            connection.exec_driver_sql(f'DROP DATABASE IF EXISTS "{database_name}" WITH (FORCE)')
+        admin.dispose()
 
 
 @pytest.fixture(scope="module")
@@ -302,15 +325,18 @@ def integration(database):
         pytest.fail("Set TEST_S3_BUCKET and S3_ENDPOINT/S3_ACCESS_KEY/S3_SECRET_KEY for integration tests")
     if bucket == os.getenv("S3_BUCKET"):
         pytest.fail("TEST_S3_BUCKET must differ from the application S3_BUCKET")
-    config = Config(url, endpoint, bucket, access, secret)
+    bucket = f"integration-test-{uuid.uuid4().hex}"
+    config = Config(database.engine.url.render_as_string(hide_password=False), endpoint, bucket, access, secret)
     artifacts = ArtifactStore(config)
+    artifacts.client.create_bucket(Bucket=bucket)
     try:
-        artifacts.client.head_bucket(Bucket=bucket)
-    except ClientError as exc:
-        if exc.response["ResponseMetadata"]["HTTPStatusCode"] != 404:
-            raise
-        artifacts.client.create_bucket(Bucket=bucket)
-    yield config, database, artifacts
+        yield config, database, artifacts
+    finally:
+        for page in artifacts.client.get_paginator("list_objects_v2").paginate(Bucket=bucket):
+            if page.get("Contents"):
+                artifacts.client.delete_objects(Bucket=bucket, Delete={
+                    "Objects": [{"Key": item["Key"]} for item in page["Contents"]]})
+        artifacts.client.delete_bucket(Bucket=bucket)
 
 
 def test_adapter_io_timeouts(integration):

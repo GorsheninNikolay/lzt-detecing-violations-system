@@ -157,7 +157,7 @@ def test_valid_freeze_evidence_and_missing_archive_stays_closed(tmp_path):
     assert decision["status"] == "accepted" and len(decision["manifest"]["frames"]) == 11
     assert len(decision["inventory_evidence"]) == 7
     actual = inspect_evaluation_set(ROOT / "evaluation/held-out-v1.json", tmp_path / "missing.zip",
-        sorted((ROOT / "backend/admission/exclusions").glob("*.json")),
+        [ROOT / "backend/admission/exclusions" / f"{name}.json" for name in INVENTORY_NAMES],
         ROOT / "evaluation/contract-inventory.json",
         ROOT / "backend/admission/manifest.json", ROOT / "evaluation/historical-comparison-v1.json")
     assert actual["status"] == "rejected"
@@ -167,7 +167,7 @@ def test_valid_freeze_evidence_and_missing_archive_stays_closed(tmp_path):
 @pytest.mark.skipif(not os.getenv("EVALUATION_ARCHIVE_PATH"), reason="Set EVALUATION_ARCHIVE_PATH for real archive acceptance")
 def test_checked_in_manifest_accepts_verified_archive():
     decision = inspect_evaluation_set(ROOT / "evaluation/held-out-v1.json", Path(os.environ["EVALUATION_ARCHIVE_PATH"]),
-        sorted((ROOT / "backend/admission/exclusions").glob("*.json")),
+        [ROOT / "backend/admission/exclusions" / f"{name}.json" for name in INVENTORY_NAMES],
         ROOT / "evaluation/contract-inventory.json", ROOT / "backend/admission/manifest.json",
         ROOT / "evaluation/historical-comparison-v1.json")
     assert decision["status"] == "accepted", decision["errors"]
