@@ -117,6 +117,8 @@ def create_app() -> FastAPI:
     app.state.readiness = Readiness()
     app.include_router(site_router)
     app.include_router(signals_router)
+    from app.application.annotations import router as annotations_router
+    app.include_router(annotations_router)
     app.include_router(engagement_router)
 
     @app.middleware("http")

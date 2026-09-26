@@ -54,7 +54,7 @@ it('submits photos without a plan with immutable workspace and frame times', asy
   await screen.findByText('Плана пока нет. Можно анализировать фотографии и добавить план позже.')
   await waitFor(() => expect(screen.getByLabelText('Участок')).toHaveProperty('value', zone))
   await user.upload(screen.getByLabelText('Выбрать изображение'), file())
-  fireEvent.change(screen.getByLabelText('Время съёмки'), { target: { value: '2026-09-26T12:30' } })
+  fireEvent.change(await screen.findByLabelText('Время съёмки'), { target: { value: '2026-09-26T12:30' } })
   await user.click(screen.getByRole('button', { name: 'Запустить анализ' }))
   await waitFor(() => expect(location.pathname).toBe(`/projects/${a}/runs/${run}`))
   const request = fetcher.mock.calls.find(([, options]) => options?.method === 'POST')!
@@ -476,4 +476,15 @@ it('cancels sample preparation on navigation without installing the late photo o
   expect(location.pathname).toBe(`/projects/${b}`)
   expect(screen.queryByText('Screenshot_89.jpg')).toBeNull()
   await waitFor(()=>expect(screen.getByRole('button',{name:'Попробовать на примере'})).toHaveProperty('disabled',false))
+})
+
+it('opens and focuses project creation from the header when existing projects collapse the disclosure',async()=>{
+ history.replaceState({},'', '/')
+ const user=userEvent.setup();render(<App/> )
+ await screen.findByRole('link',{name:'Первый объект'})
+ const field=screen.getByLabelText('Название проекта')
+ expect(field.closest('details')?.open).toBe(false)
+ await user.click(screen.getByRole('link',{name:'Создать проект'}))
+ await waitFor(()=>expect(field.closest('details')?.open).toBe(true))
+ await waitFor(()=>expect(document.activeElement).toBe(field))
 })

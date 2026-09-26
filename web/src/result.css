@@ -187,3 +187,13 @@
   .result-visual .source-thumbnail .source-image,
   .result-visual .source-thumbnail img { height: 80px; }
 }
+
+.result-layout{display:flex;flex-direction:column;gap:1.5rem}.result-visual{width:100%;min-width:0}.result-basis{width:100%}.result-feature-image img{max-height:72vh;object-fit:contain}.object-list{display:flex;flex-wrap:wrap;gap:1rem;padding:0;list-style:none}.object-list li{min-width:180px;flex:1}.object-list button[aria-pressed=true]{background:#513456;color:#fff}.object-box{padding:0;min-width:0;min-height:0;cursor:pointer;background:transparent}.object-box.selected{outline:3px solid #fff;border-color:#513456}.object-box span{background:#352337;color:white;min-width:24px}.analysis-scene{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(250px,1fr);gap:2rem;align-items:center}.analysis-photo{position:relative;isolation:isolate;overflow:clip}.analysis-sweep{display:none;position:absolute;inset:0;background:linear-gradient(transparent 40%,#d7b6dc60 49%,#f7e9fa99 50%,transparent 53%);pointer-events:none}.is-running .analysis-sweep{display:block;animation:analysis-sweep 3s ease-in-out infinite}.analysis-state li{margin-block:.5rem}.result{animation:result-arrive .35s ease-out}.source-thumbnail img{max-height:160px}.form-grid{align-items:start}
+@keyframes analysis-sweep{from{transform:translateY(-100%)}to{transform:translateY(100%)}}@keyframes result-arrive{from{filter:blur(2px)}to{filter:blur(0)}}
+@media(min-width:1024px){.result-visual{display:grid;grid-template-columns:minmax(0,2fr) minmax(230px,1fr);gap:1rem}.result-visual-heading,.result-frame-caption,.source-thumbnails,.result-visual>details{grid-column:1/-1}.result-feature-image{grid-column:1}.result-visual>.object-list{grid-column:2;grid-row:2;display:block}.object-list li{margin-bottom:1rem}}
+@media(max-width:768px){.analysis-scene{grid-template-columns:minmax(0,1fr)}.admin-feedback.has-detail>div{display:none}.admin-feedback.has-detail{grid-template-columns:minmax(0,1fr)}.result-summary{padding:22px 16px}.result-layout{gap:1rem}}
+@media(prefers-reduced-motion:reduce){.analysis-sweep{display:none!important}.result{animation:none}}
+
+.object-box{pointer-events:auto}.result{overflow:visible}.result-layout{min-width:0}.result-feature-image{min-width:0}.result-frame-caption{flex-wrap:wrap}.result-basis summary{min-height:44px}.result-visual>.object-list{min-width:0}
+
+html[data-analysis-motion="off"] .result{animation:none}

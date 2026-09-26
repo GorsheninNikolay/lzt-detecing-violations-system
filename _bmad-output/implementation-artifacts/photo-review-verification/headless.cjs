@@ -1,0 +1,54 @@
+const { chromium } = require('/opt/homebrew/lib/node_modules/omniroute/node_modules/playwright');
+const fs=require('node:fs'), path=require('node:path');
+const out=process.argv[2]||'initial';
+const run='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', project='bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', zone='cccccccc-cccc-4ccc-8ccc-cccccccccccc';
+const uid=n=>`00000000-0000-4000-8000-${String(n).padStart(12,'0')}`;
+const photo=fs.readFileSync(path.resolve('web/public/demo/Screenshot_87.jpg'));
+const inputs=Array.from({length:8},(_,i)=>({input_id:uid(i+10),ordinal:i,sha256:'a'.repeat(64),artifact_id:uid(i+20)}));
+const objects=inputs.flatMap((input,i)=>[0,1].map(n=>({id:uid(100+i*2+n),input_id:input.input_id,class_name:'excavator',score:.83,box:n?[.55,.2,.9,.7]:[.1,.3,.45,.8],image_size:[1920,1080],invocation_id:uid(90)})));
+const stages=['input_registration','frame_usability','equipment_observation','series_aggregation','rule_evaluation','result_projection'];
+const observations=inputs.map(input=>({...input,class_name:'excavator',state:'detected',source_artifact_id:input.artifact_id}));
+const completed={run_id:run,project_id:project,purpose:'ordinary',state:'succeeded',stages:stages.map(name=>({name,state:name==='rule_evaluation'?'skipped':'succeeded',reason:name==='rule_evaluation'?'not_applicable':null})),inputs,objects,observations,context:{project_id:project,zone_id:zone,period:'2026-09-26T10:00:00Z',capture_times:inputs.map(()=>'2026-09-26T10:00:00Z')},result_projection:{outcome:'observations_only',frames:observations}};
+const proposal={id:uid(200),run_id:run,input_id:inputs[0].input_id,input_sha256:inputs[0].sha256,artifact_id:inputs[0].artifact_id,original_objects:objects.slice(0,2),objects:objects.slice(0,2),revision:1,status:'pending',version_id:uid(201),whole_frame_verified:false,reason:''};
+(async()=>{
+const browser=await chromium.launch({headless:true,executablePath:'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'});
+const checks=[];const check=(name,value,extra)=>checks.push({name,passed:!!value,...extra});
+try{
+for(const width of [320,390,480,768,1024,1440]){
+ const context=await browser.newContext({viewport:{width,height:900}});await context.addInitScript(()=>localStorage.setItem('construction-onboarding','completed'));
+ let state=completed;const errors=[];const page=await context.newPage();page.on('pageerror',error=>errors.push(error.message));page.on('dialog',dialog=>dialog.accept());
+ await context.route('**/api/**',route=>{
+ const url=new URL(route.request().url()),p=url.pathname.replace('/api','');
+ if(p.includes('/artifacts/'))return route.fulfill({contentType:'image/jpeg',body:photo});
+ let body=p===`/runs/${run}`?state:p==='/projects'?{projects:[{id:project,name:'Строительство многофункционального комплекса — очень длинное название проекта для проверки переноса',timezone:'Europe/Moscow'}]}:p.includes('/zones')&&!p.endsWith('/plan')?{zones:[{id:zone,name:'Основной участок с длинным названием',is_default:true}]}:p.endsWith('/plan')?{revision_number:0,entries:[]}:p==='/catalog/works'?{works:[{id:uid(80),title:'Работа с длинным названием',source_row:1,code:'1'}]}:p.startsWith('/runs?')||p==='/runs'?{runs:[{id:run,run_id:run,state:'succeeded',outcome:'observations_only',created_at:'2026-09-26T10:00:00Z'}],total:1}:p==='/signals'?{signals:[],new_count:0}:p==='/admin/overview'?{collection_started_at:'2026-09-26T10:00:00Z',cards:{},daily:[],projects:[],funnel:{visited:0,created_project:0,succeeded:0},wizard:{}}:p==='/admin/session'?{csrf:'csrf'}:p==='/admin/annotations'?{annotations:[proposal],next_offset:null}:p==='/admin/feedback'?{feedback:[{id:uid(300),category:'idea',message:'Проверка обратной связи',created_at:'2026-09-26T10:00:00Z',read_at:null}],next_offset:null}:p.endsWith('/open')?{id:uid(300),category:'idea',message:'Длинное предложение для проверки обратной связи',created_at:'2026-09-26T10:00:00Z',context:{pathname:'/'},attachments:[]}:p==='/analysis-options'?{choices:[]}:{ok:true};
+ return route.fulfill({contentType:'application/json',body:JSON.stringify(body)});
+ });
+ async function overflow(label){const data=await page.evaluate(()=>({width:innerWidth,scroll:document.documentElement.scrollWidth,offenders:[...document.querySelectorAll('main *')].filter(e=>e.getBoundingClientRect().right>innerWidth+2&&e.getClientRects().length).slice(0,8).map(e=>`${e.tagName}.${e.className}`)}));check(`${width} ${label} no overflow`,data.scroll<=data.width+1,data);}
+ await page.goto(`http://127.0.0.1:15174/projects/${project}/runs/${run}`);await page.getByRole('heading',{name:'Только наблюдения',exact:true}).waitFor();await page.locator('.result-feature-image img').waitFor();
+ await page.locator('.skip-link').focus();check(`${width} skip link above header`,await page.locator('.skip-link').evaluate(e=>getComputedStyle(e).position==='fixed'&&Number(getComputedStyle(e).zIndex)>30&&e.getBoundingClientRect().top>=0));
+ await overflow('result');check(`${width} photo before explanation`,await page.evaluate(()=>!!(document.querySelector('.result-visual').compareDocumentPosition(document.querySelector('.result-basis'))&Node.DOCUMENT_POSITION_FOLLOWING)));
+ check(`${width} protocol disclosed`,!await page.locator('.pipeline-details').evaluate(e=>e.open));
+ await page.locator('.result-feature-image .object-box').first().click();check(`${width} image selects list`,await page.locator('.object-list button').first().getAttribute('aria-pressed')==='true');
+ await page.locator('.object-list button').nth(1).click();check(`${width} list selects image`,await page.locator('.result-feature-image .object-box').nth(1).getAttribute('aria-pressed')==='true');
+ await page.evaluate(()=>{document.activeElement?.blur();window.scrollTo(0,0)});await page.screenshot({animations:'disabled',path:path.join(__dirname,`${out}-${width}-result.png`),fullPage:true});
+ await page.getByText('Исправить разметку',{exact:true}).click();await page.locator('.annotation-editor').waitFor();await overflow('editor');check(`${width} class selector touch target`,await page.locator('.annotation-editor select').first().evaluate(e=>e.getBoundingClientRect().height>=44));
+ if(width>768){const box=page.locator('.annotation-editor .annotation-box').first();await box.focus();await page.keyboard.press('ArrowRight');check(`${width} keyboard moves geometry`,Number(await page.getByLabel('Слева',{exact:true}).first().inputValue())===.11);const bounds=await box.boundingBox();await page.mouse.move(bounds.x+bounds.width/2,bounds.y+bounds.height/2);await page.mouse.down();await page.mouse.move(bounds.x+bounds.width/2+20,bounds.y+bounds.height/2+10);await page.mouse.up();check(`${width} pointer moves geometry`,Number(await page.getByLabel('Слева',{exact:true}).first().inputValue())>.11)}
+ else check(`${width} phone hides geometry`,!await page.getByRole('button',{name:'Добавить объект'}).isVisible());
+ await page.getByRole('button',{name:'Вернуться к результату'}).click();check(`${width} editor returns focus`,await page.getByText('Исправить разметку',{exact:true}).evaluate(e=>e===document.activeElement));
+ if(width===1440){await page.evaluate(()=>document.documentElement.style.zoom='2');await overflow('result 200 percent zoom');await page.evaluate(()=>document.documentElement.style.zoom='');}
+ await page.goto(`http://127.0.0.1:15174/projects/${project}/new`);await page.getByLabel('Выбрать изображение').waitFor();await page.getByLabel('Выбрать изображение').setInputFiles(Array.from({length:8},(_,i)=>({name:`Очень-длинное-имя-фотографии-строительного-участка-${i}.jpg`,mimeType:'image/jpeg',buffer:photo})));await page.locator('.frame').nth(7).waitFor();await overflow('eight uploads');await page.evaluate(()=>{document.activeElement?.blur();window.scrollTo(0,0)});await page.screenshot({animations:'disabled',path:path.join(__dirname,`${out}-${width}-upload.png`),fullPage:true});
+ await page.goto(`http://127.0.0.1:15174/projects/${project}/plan`);await page.getByRole('button',{name:'Добавить работу'}).waitFor();await page.getByRole('button',{name:'Добавить работу'}).click();await overflow('plan');check(`${width} plan checkbox groups`,await page.locator('.equipment-checkboxes').count()===3);
+ state={...completed,state:'running',result_projection:null,stages:stages.map((name,i)=>({name,state:i<2?'succeeded':i===2?'running':'pending'}))};await page.goto(`http://127.0.0.1:15174/projects/${project}/runs/${run}`);await page.locator('.analysis-scene.is-running').waitFor();await overflow('running');
+ await context.setOffline(true);await page.waitForFunction(()=>!document.querySelector('.analysis-scene.is-running'));check(`${width} disconnect stops sweep`,await page.locator('.analysis-scene.is-running').count()===0);
+ await context.setOffline(false);await page.emulateMedia({reducedMotion:'reduce'});check(`${width} reduced motion sweep hidden`,await page.locator('.analysis-sweep').evaluate(e=>getComputedStyle(e).display==='none'));
+ await page.getByLabel('Движение во время анализа').uncheck();check(`${width} user disables motion`,await page.locator('.analysis-scene.is-running').count()===0);
+ await page.goto('http://127.0.0.1:15174/admin');await page.getByRole('button',{name:'Разметка',exact:true}).click();await page.getByRole('button',{name:/Кадр .*Версия 1/}).click();await page.getByRole('heading',{name:'Проверка кадра · версия 1'}).waitFor();await overflow('admin annotation');
+ if(width===390||width===1440){await page.evaluate(()=>{document.activeElement?.blur();window.scrollTo(0,0)});await page.screenshot({animations:'disabled',path:path.join(__dirname,`${out}-${width}-admin.png`),fullPage:true});}
+ await page.getByRole('button',{name:'Вернуться к очереди'}).click();await page.waitForFunction(id=>document.activeElement?.id===id,`proposal-${proposal.id}`);check(`${width} queue restores focus`,await page.getByRole('button',{name:/Кадр .*Версия 1/}).evaluate(e=>e===document.activeElement));
+ await page.getByRole('button',{name:'Обратная связь',exact:true}).click();await page.locator('.feedback-row').click();await overflow('feedback');await page.getByRole('button',{name:'Вернуться к отзывам'}).click();await page.waitForFunction(()=>document.activeElement?.classList.contains('feedback-row'));check(`${width} feedback restores focus`,await page.locator('.feedback-row').evaluate(e=>e===document.activeElement));
+ if(width===768||width===1440){await page.evaluate(()=>document.documentElement.style.zoom='2');await overflow('200 percent zoom');}
+ check(`${width} no uncaught errors`,errors.length===0,{errors});await context.close();
+}
+}finally{await browser.close();fs.writeFileSync(path.join(__dirname,`${out}-checks.json`),JSON.stringify({scope:'Headless Chromium deterministic API fixtures; not deployment or physical device evidence',checks},null,2));}
+console.log(JSON.stringify({checks:checks.length,failed:checks.filter(c=>!c.passed)},null,2));
+})().catch(error=>{console.error(error);process.exit(1)});

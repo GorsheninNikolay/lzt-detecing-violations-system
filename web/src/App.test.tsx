@@ -716,13 +716,14 @@ describe('Observation result', () => {
     await waitFor(() => expect(view.container.querySelectorAll('.result-feature-image .object-box')).toHaveLength(2))
     expect((view.container.querySelector('.object-box') as HTMLElement).style.left).toBe('10%')
     expect(parseFloat((view.container.querySelector('.object-box') as HTMLElement).style.width)).toBeCloseTo(30)
-    expect(screen.getByText('Экскаватор — 91%')).toBeTruthy()
-    expect(screen.getByText('Экскаватор — 83%')).toBeTruthy()
+    expect(screen.getByText(/91% — оценка модели/)).toBeTruthy()
+    expect(screen.getByText(/83% — оценка модели/)).toBeTruthy()
     await user.click(screen.getByRole('button', { name: 'Открыть кадр 1' }))
-    expect(within(screen.getByRole('dialog')).getAllByText('Экскаватор', { selector: '.object-box span' })).toHaveLength(2)
+    expect(screen.getByRole('dialog').querySelectorAll('.object-box')).toHaveLength(2)
+    expect(within(screen.getByRole('dialog')).queryAllByRole('button', { name: /Объект [12]: Экскаватор/ })).toHaveLength(0)
     await user.click(screen.getByLabelText('Показывать рамки объектов'))
     expect(view.container.querySelectorAll('.object-box')).toHaveLength(0)
-    expect(screen.getByText('Экскаватор — 91%')).toBeTruthy()
+    expect(screen.getByText(/91% — оценка модели/)).toBeTruthy()
   })
 
   it('selects the saved supporting frame and keeps technical IDs in details', async () => {
@@ -964,7 +965,7 @@ describe('Observation result', () => {
     expect(screen.getByText('Источник правила: demonstration rule.')).toBeTruthy()
     expect(screen.getByText('Необнаружение в кадре не доказывает отсутствие на площадке.')).toBeTruthy()
     const headings = [...document.querySelectorAll('.result h3')].map(item => item.textContent)
-    expect(headings).toEqual(['Основание вывода', 'Исходные кадры'])
+    expect(headings).toEqual(['Исходные кадры', 'Основание вывода'])
   })
 
   it('falls back to projected and run areas when series area is missing', async () => {
@@ -1150,7 +1151,7 @@ describe('Zone plan and signals', () => {
     await user.click(await screen.findByRole('button', { name: 'Добавить работу' }))
     await user.selectOptions(screen.getByLabelText('Состояние'), 'active')
     await user.selectOptions(screen.getByLabelText('Сценарий анализа'), 'excavation')
-    await user.selectOptions(screen.getByLabelText('Ожидаемая техника'), 'excavator')
+    await user.click(within(screen.getByRole('group', { name: 'Ожидаемая техника · работа 1' })).getByRole('checkbox', { name: 'Экскаватор' }))
     await user.click(screen.getByRole('button', { name: 'Сохранить новую ревизию' }))
     await screen.findByText('Сохранена ревизия 1.')
     const request = fetchMock.mock.calls.find(([url, options]) => url === `/api/zones/${zoneId}/plan` && options?.method === 'PUT')
@@ -2005,7 +2006,7 @@ describe('New Analysis', () => {
     navigationButton.focus()
     await act(async () => { await vi.advanceTimersByTimeAsync(3000) })
     expect(within(list).getAllByRole('listitem')[0].textContent).toContain('Завершено')
-    expect(within(list).getByText('2026-09-23T08:00:00Z').getAttribute('datetime')).toBe('2026-09-23T08:00:00Z')
+    expect(list.querySelector('time')?.getAttribute('datetime')).toBe('2026-09-23T08:00:00Z')
     expect(document.activeElement).toBe(navigationButton)
     expect(screen.getByRole('status').textContent).toContain('Проверка пригодности кадров: Выполняется.')
     const announcement = screen.getByRole('status').textContent

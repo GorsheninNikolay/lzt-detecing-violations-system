@@ -1,0 +1,838 @@
+{
+  "scope": "Headless Chromium deterministic API fixtures; not deployment or physical device evidence",
+  "checks": [
+    {
+      "name": "320 skip link above header",
+      "passed": true
+    },
+    {
+      "name": "320 result no overflow",
+      "passed": true,
+      "width": 320,
+      "scroll": 320,
+      "offenders": [
+        "ARTICLE.source-thumbnail",
+        "DIV.source-image",
+        "DIV.annotated-image",
+        "IMG.",
+        "H4.",
+        "BUTTON.secondary",
+        "ARTICLE.source-thumbnail",
+        "DIV.source-image"
+      ]
+    },
+    {
+      "name": "320 photo before explanation",
+      "passed": true
+    },
+    {
+      "name": "320 protocol disclosed",
+      "passed": true
+    },
+    {
+      "name": "320 image selects list",
+      "passed": true
+    },
+    {
+      "name": "320 list selects image",
+      "passed": true
+    },
+    {
+      "name": "320 editor no overflow",
+      "passed": true,
+      "width": 320,
+      "scroll": 320,
+      "offenders": [
+        "ARTICLE.source-thumbnail",
+        "DIV.source-image",
+        "DIV.annotated-image",
+        "IMG.",
+        "H4.",
+        "BUTTON.secondary",
+        "ARTICLE.source-thumbnail",
+        "DIV.source-image"
+      ]
+    },
+    {
+      "name": "320 class selector touch target",
+      "passed": true
+    },
+    {
+      "name": "320 phone hides geometry",
+      "passed": true
+    },
+    {
+      "name": "320 editor returns focus",
+      "passed": true
+    },
+    {
+      "name": "320 eight uploads no overflow",
+      "passed": true,
+      "width": 320,
+      "scroll": 320,
+      "offenders": []
+    },
+    {
+      "name": "320 plan no overflow",
+      "passed": true,
+      "width": 320,
+      "scroll": 320,
+      "offenders": []
+    },
+    {
+      "name": "320 plan checkbox groups",
+      "passed": true
+    },
+    {
+      "name": "320 running no overflow",
+      "passed": true,
+      "width": 320,
+      "scroll": 320,
+      "offenders": [
+        "ARTICLE.source-thumbnail",
+        "DIV.source-image",
+        "DIV.annotated-image",
+        "IMG.",
+        "H4.",
+        "BUTTON.secondary",
+        "ARTICLE.source-thumbnail",
+        "DIV.source-image"
+      ]
+    },
+    {
+      "name": "320 disconnect stops sweep",
+      "passed": true
+    },
+    {
+      "name": "320 reduced motion sweep hidden",
+      "passed": true
+    },
+    {
+      "name": "320 user disables motion",
+      "passed": true
+    },
+    {
+      "name": "320 admin annotation no overflow",
+      "passed": true,
+      "width": 320,
+      "scroll": 320,
+      "offenders": []
+    },
+    {
+      "name": "320 queue restores focus",
+      "passed": true
+    },
+    {
+      "name": "320 feedback no overflow",
+      "passed": true,
+      "width": 320,
+      "scroll": 320,
+      "offenders": []
+    },
+    {
+      "name": "320 feedback restores focus",
+      "passed": true
+    },
+    {
+      "name": "320 no uncaught errors",
+      "passed": true,
+      "errors": []
+    },
+    {
+      "name": "390 skip link above header",
+      "passed": true
+    },
+    {
+      "name": "390 result no overflow",
+      "passed": true,
+      "width": 390,
+      "scroll": 390,
+      "offenders": [
+        "ARTICLE.source-thumbnail",
+        "DIV.source-image",
+        "DIV.annotated-image",
+        "IMG.",
+        "H4.",
+        "BUTTON.secondary",
+        "ARTICLE.source-thumbnail",
+        "DIV.source-image"
+      ]
+    },
+    {
+      "name": "390 photo before explanation",
+      "passed": true
+    },
+    {
+      "name": "390 protocol disclosed",
+      "passed": true
+    },
+    {
+      "name": "390 image selects list",
+      "passed": true
+    },
+    {
+      "name": "390 list selects image",
+      "passed": true
+    },
+    {
+      "name": "390 editor no overflow",
+      "passed": true,
+      "width": 390,
+      "scroll": 390,
+      "offenders": [
+        "ARTICLE.source-thumbnail",
+        "DIV.source-image",
+        "DIV.annotated-image",
+        "IMG.",
+        "H4.",
+        "BUTTON.secondary",
+        "ARTICLE.source-thumbnail",
+        "DIV.source-image"
+      ]
+    },
+    {
+      "name": "390 class selector touch target",
+      "passed": true
+    },
+    {
+      "name": "390 phone hides geometry",
+      "passed": true
+    },
+    {
+      "name": "390 editor returns focus",
+      "passed": true
+    },
+    {
+      "name": "390 eight uploads no overflow",
+      "passed": true,
+      "width": 390,
+      "scroll": 390,
+      "offenders": []
+    },
+    {
+      "name": "390 plan no overflow",
+      "passed": true,
+      "width": 390,
+      "scroll": 390,
+      "offenders": []
+    },
+    {
+      "name": "390 plan checkbox groups",
+      "passed": true
+    },
+    {
+      "name": "390 running no overflow",
+      "passed": true,
+      "width": 390,
+      "scroll": 390,
+      "offenders": [
+        "ARTICLE.source-thumbnail",
+        "DIV.source-image",
+        "P.muted",
+        "H4.",
+        "BUTTON.secondary",
+        "ARTICLE.source-thumbnail",
+        "DIV.source-image",
+        "P.muted"
+      ]
+    },
+    {
+      "name": "390 disconnect stops sweep",
+      "passed": true
+    },
+    {
+      "name": "390 reduced motion sweep hidden",
+      "passed": true
+    },
+    {
+      "name": "390 user disables motion",
+      "passed": true
+    },
+    {
+      "name": "390 admin annotation no overflow",
+      "passed": true,
+      "width": 390,
+      "scroll": 390,
+      "offenders": []
+    },
+    {
+      "name": "390 queue restores focus",
+      "passed": true
+    },
+    {
+      "name": "390 feedback no overflow",
+      "passed": true,
+      "width": 390,
+      "scroll": 390,
+      "offenders": []
+    },
+    {
+      "name": "390 feedback restores focus",
+      "passed": true
+    },
+    {
+      "name": "390 no uncaught errors",
+      "passed": true,
+      "errors": []
+    },
+    {
+      "name": "480 skip link above header",
+      "passed": true
+    },
+    {
+      "name": "480 result no overflow",
+      "passed": true,
+      "width": 480,
+      "scroll": 480,
+      "offenders": [
+        "ARTICLE.source-thumbnail",
+        "DIV.source-image",
+        "DIV.annotated-image",
+        "IMG.",
+        "H4.",
+        "BUTTON.secondary",
+        "ARTICLE.source-thumbnail",
+        "DIV.source-image"
+      ]
+    },
+    {
+      "name": "480 photo before explanation",
+      "passed": true
+    },
+    {
+      "name": "480 protocol disclosed",
+      "passed": true
+    },
+    {
+      "name": "480 image selects list",
+      "passed": true
+    },
+    {
+      "name": "480 list selects image",
+      "passed": true
+    },
+    {
+      "name": "480 editor no overflow",
+      "passed": true,
+      "width": 480,
+      "scroll": 480,
+      "offenders": [
+        "ARTICLE.source-thumbnail",
+        "DIV.source-image",
+        "DIV.annotated-image",
+        "IMG.",
+        "H4.",
+        "BUTTON.secondary",
+        "ARTICLE.source-thumbnail",
+        "DIV.source-image"
+      ]
+    },
+    {
+      "name": "480 class selector touch target",
+      "passed": true
+    },
+    {
+      "name": "480 phone hides geometry",
+      "passed": true
+    },
+    {
+      "name": "480 editor returns focus",
+      "passed": true
+    },
+    {
+      "name": "480 eight uploads no overflow",
+      "passed": true,
+      "width": 480,
+      "scroll": 480,
+      "offenders": []
+    },
+    {
+      "name": "480 plan no overflow",
+      "passed": true,
+      "width": 480,
+      "scroll": 480,
+      "offenders": []
+    },
+    {
+      "name": "480 plan checkbox groups",
+      "passed": true
+    },
+    {
+      "name": "480 running no overflow",
+      "passed": true,
+      "width": 480,
+      "scroll": 480,
+      "offenders": [
+        "ARTICLE.source-thumbnail",
+        "DIV.source-image",
+        "P.muted",
+        "H4.",
+        "BUTTON.secondary",
+        "ARTICLE.source-thumbnail",
+        "DIV.source-image",
+        "P.muted"
+      ]
+    },
+    {
+      "name": "480 disconnect stops sweep",
+      "passed": true
+    },
+    {
+      "name": "480 reduced motion sweep hidden",
+      "passed": true
+    },
+    {
+      "name": "480 user disables motion",
+      "passed": true
+    },
+    {
+      "name": "480 admin annotation no overflow",
+      "passed": true,
+      "width": 480,
+      "scroll": 480,
+      "offenders": []
+    },
+    {
+      "name": "480 queue restores focus",
+      "passed": true
+    },
+    {
+      "name": "480 feedback no overflow",
+      "passed": true,
+      "width": 480,
+      "scroll": 480,
+      "offenders": []
+    },
+    {
+      "name": "480 feedback restores focus",
+      "passed": true
+    },
+    {
+      "name": "480 no uncaught errors",
+      "passed": true,
+      "errors": []
+    },
+    {
+      "name": "768 skip link above header",
+      "passed": true
+    },
+    {
+      "name": "768 result no overflow",
+      "passed": true,
+      "width": 768,
+      "scroll": 768,
+      "offenders": [
+        "ARTICLE.source-thumbnail",
+        "DIV.source-image",
+        "DIV.annotated-image",
+        "IMG.",
+        "H4.",
+        "BUTTON.secondary",
+        "ARTICLE.source-thumbnail",
+        "DIV.source-image"
+      ]
+    },
+    {
+      "name": "768 photo before explanation",
+      "passed": true
+    },
+    {
+      "name": "768 protocol disclosed",
+      "passed": true
+    },
+    {
+      "name": "768 image selects list",
+      "passed": true
+    },
+    {
+      "name": "768 list selects image",
+      "passed": true
+    },
+    {
+      "name": "768 editor no overflow",
+      "passed": true,
+      "width": 768,
+      "scroll": 768,
+      "offenders": [
+        "ARTICLE.source-thumbnail",
+        "DIV.source-image",
+        "DIV.annotated-image",
+        "IMG.",
+        "H4.",
+        "BUTTON.secondary",
+        "ARTICLE.source-thumbnail",
+        "DIV.source-image"
+      ]
+    },
+    {
+      "name": "768 class selector touch target",
+      "passed": true
+    },
+    {
+      "name": "768 phone hides geometry",
+      "passed": true
+    },
+    {
+      "name": "768 editor returns focus",
+      "passed": true
+    },
+    {
+      "name": "768 eight uploads no overflow",
+      "passed": true,
+      "width": 768,
+      "scroll": 768,
+      "offenders": []
+    },
+    {
+      "name": "768 plan no overflow",
+      "passed": true,
+      "width": 768,
+      "scroll": 768,
+      "offenders": []
+    },
+    {
+      "name": "768 plan checkbox groups",
+      "passed": true
+    },
+    {
+      "name": "768 running no overflow",
+      "passed": true,
+      "width": 768,
+      "scroll": 768,
+      "offenders": [
+        "ARTICLE.source-thumbnail",
+        "DIV.source-image",
+        "P.muted",
+        "H4.",
+        "BUTTON.secondary",
+        "ARTICLE.source-thumbnail",
+        "DIV.source-image",
+        "P.muted"
+      ]
+    },
+    {
+      "name": "768 disconnect stops sweep",
+      "passed": true
+    },
+    {
+      "name": "768 reduced motion sweep hidden",
+      "passed": true
+    },
+    {
+      "name": "768 user disables motion",
+      "passed": true
+    },
+    {
+      "name": "768 admin annotation no overflow",
+      "passed": true,
+      "width": 768,
+      "scroll": 768,
+      "offenders": []
+    },
+    {
+      "name": "768 queue restores focus",
+      "passed": true
+    },
+    {
+      "name": "768 feedback no overflow",
+      "passed": true,
+      "width": 768,
+      "scroll": 768,
+      "offenders": []
+    },
+    {
+      "name": "768 feedback restores focus",
+      "passed": true
+    },
+    {
+      "name": "768 200 percent zoom no overflow",
+      "passed": true,
+      "width": 768,
+      "scroll": 768,
+      "offenders": []
+    },
+    {
+      "name": "768 no uncaught errors",
+      "passed": true,
+      "errors": []
+    },
+    {
+      "name": "1024 skip link above header",
+      "passed": true
+    },
+    {
+      "name": "1024 result no overflow",
+      "passed": true,
+      "width": 1024,
+      "scroll": 1024,
+      "offenders": [
+        "ARTICLE.source-thumbnail",
+        "DIV.source-image",
+        "DIV.annotated-image",
+        "IMG.",
+        "H4.",
+        "BUTTON.secondary",
+        "ARTICLE.source-thumbnail",
+        "DIV.source-image"
+      ]
+    },
+    {
+      "name": "1024 photo before explanation",
+      "passed": true
+    },
+    {
+      "name": "1024 protocol disclosed",
+      "passed": true
+    },
+    {
+      "name": "1024 image selects list",
+      "passed": true
+    },
+    {
+      "name": "1024 list selects image",
+      "passed": true
+    },
+    {
+      "name": "1024 editor no overflow",
+      "passed": true,
+      "width": 1024,
+      "scroll": 1024,
+      "offenders": [
+        "ARTICLE.source-thumbnail",
+        "DIV.source-image",
+        "DIV.annotated-image",
+        "IMG.",
+        "H4.",
+        "BUTTON.secondary",
+        "ARTICLE.source-thumbnail",
+        "DIV.source-image"
+      ]
+    },
+    {
+      "name": "1024 class selector touch target",
+      "passed": true
+    },
+    {
+      "name": "1024 keyboard moves geometry",
+      "passed": true
+    },
+    {
+      "name": "1024 pointer moves geometry",
+      "passed": true
+    },
+    {
+      "name": "1024 editor returns focus",
+      "passed": true
+    },
+    {
+      "name": "1024 eight uploads no overflow",
+      "passed": true,
+      "width": 1024,
+      "scroll": 1024,
+      "offenders": []
+    },
+    {
+      "name": "1024 plan no overflow",
+      "passed": true,
+      "width": 1024,
+      "scroll": 1024,
+      "offenders": []
+    },
+    {
+      "name": "1024 plan checkbox groups",
+      "passed": true
+    },
+    {
+      "name": "1024 running no overflow",
+      "passed": true,
+      "width": 1024,
+      "scroll": 1024,
+      "offenders": [
+        "ARTICLE.source-thumbnail",
+        "DIV.source-image",
+        "P.muted",
+        "H4.",
+        "BUTTON.secondary",
+        "ARTICLE.source-thumbnail",
+        "DIV.source-image",
+        "P.muted"
+      ]
+    },
+    {
+      "name": "1024 disconnect stops sweep",
+      "passed": true
+    },
+    {
+      "name": "1024 reduced motion sweep hidden",
+      "passed": true
+    },
+    {
+      "name": "1024 user disables motion",
+      "passed": true
+    },
+    {
+      "name": "1024 admin annotation no overflow",
+      "passed": true,
+      "width": 1024,
+      "scroll": 1024,
+      "offenders": []
+    },
+    {
+      "name": "1024 queue restores focus",
+      "passed": true
+    },
+    {
+      "name": "1024 feedback no overflow",
+      "passed": true,
+      "width": 1024,
+      "scroll": 1024,
+      "offenders": []
+    },
+    {
+      "name": "1024 feedback restores focus",
+      "passed": true
+    },
+    {
+      "name": "1024 no uncaught errors",
+      "passed": true,
+      "errors": []
+    },
+    {
+      "name": "1440 skip link above header",
+      "passed": true
+    },
+    {
+      "name": "1440 result no overflow",
+      "passed": true,
+      "width": 1440,
+      "scroll": 1440,
+      "offenders": []
+    },
+    {
+      "name": "1440 photo before explanation",
+      "passed": true
+    },
+    {
+      "name": "1440 protocol disclosed",
+      "passed": true
+    },
+    {
+      "name": "1440 image selects list",
+      "passed": true
+    },
+    {
+      "name": "1440 list selects image",
+      "passed": true
+    },
+    {
+      "name": "1440 editor no overflow",
+      "passed": true,
+      "width": 1440,
+      "scroll": 1440,
+      "offenders": []
+    },
+    {
+      "name": "1440 class selector touch target",
+      "passed": true
+    },
+    {
+      "name": "1440 keyboard moves geometry",
+      "passed": true
+    },
+    {
+      "name": "1440 pointer moves geometry",
+      "passed": true
+    },
+    {
+      "name": "1440 editor returns focus",
+      "passed": true
+    },
+    {
+      "name": "1440 result 200 percent zoom no overflow",
+      "passed": true,
+      "width": 1440,
+      "scroll": 1440,
+      "offenders": [
+        "ARTICLE.source-thumbnail",
+        "DIV.source-image",
+        "DIV.annotated-image",
+        "IMG.",
+        "H4.",
+        "BUTTON.secondary",
+        "ARTICLE.source-thumbnail",
+        "DIV.source-image"
+      ]
+    },
+    {
+      "name": "1440 eight uploads no overflow",
+      "passed": true,
+      "width": 1440,
+      "scroll": 1440,
+      "offenders": []
+    },
+    {
+      "name": "1440 plan no overflow",
+      "passed": true,
+      "width": 1440,
+      "scroll": 1440,
+      "offenders": []
+    },
+    {
+      "name": "1440 plan checkbox groups",
+      "passed": true
+    },
+    {
+      "name": "1440 running no overflow",
+      "passed": true,
+      "width": 1440,
+      "scroll": 1440,
+      "offenders": []
+    },
+    {
+      "name": "1440 disconnect stops sweep",
+      "passed": true
+    },
+    {
+      "name": "1440 reduced motion sweep hidden",
+      "passed": true
+    },
+    {
+      "name": "1440 user disables motion",
+      "passed": true
+    },
+    {
+      "name": "1440 admin annotation no overflow",
+      "passed": true,
+      "width": 1440,
+      "scroll": 1440,
+      "offenders": []
+    },
+    {
+      "name": "1440 queue restores focus",
+      "passed": true
+    },
+    {
+      "name": "1440 feedback no overflow",
+      "passed": true,
+      "width": 1440,
+      "scroll": 1440,
+      "offenders": []
+    },
+    {
+      "name": "1440 feedback restores focus",
+      "passed": true
+    },
+    {
+      "name": "1440 200 percent zoom no overflow",
+      "passed": true,
+      "width": 1440,
+      "scroll": 1440,
+      "offenders": []
+    },
+    {
+      "name": "1440 no uncaught errors",
+      "passed": true,
+      "errors": []
+    }
+  ]
+}
