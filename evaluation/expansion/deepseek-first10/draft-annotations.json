@@ -1,0 +1,895 @@
+{
+  "schema_revision": "expansion-annotation-queue-v1",
+  "status": "machine_candidates_not_ground_truth",
+  "archive_sha256": "6bb648edbc97e7ee3d3f3d4cfd0793c01f3a05dbeae158c36e3930406cea3038",
+  "model_file_sha256": null,
+  "adapter_bundle_sha256": null,
+  "equipment_classes": [
+    "excavator",
+    "dump_truck",
+    "road_roller",
+    "truck_mounted_crane",
+    "concrete_mixer_truck",
+    "bulldozer",
+    "truck",
+    "mobile_crane"
+  ],
+  "scene_features": [
+    "excavation_or_trench",
+    "formwork",
+    "rebar",
+    "concrete_surface",
+    "road_base_or_surface"
+  ],
+  "split": null,
+  "split_reason": "Site/camera/series provenance is unknown; no independent evaluation split is justified.",
+  "images": [
+    {
+      "id": "organizer-png-001",
+      "archive_member": "Строительная_техника/Screenshot_1.png",
+      "sha256": "d29d78a09e276c7c2c30b9e2a0da21e0dda15f5d40912bf509b383afc1729a5f",
+      "bytes": 2090717,
+      "oriented_image_size": [
+        1212,
+        813
+      ],
+      "source_site_camera_sequence_group": null,
+      "capture_at": null,
+      "review_state": "unreviewed",
+      "equipment_candidates": [],
+      "scene_candidates": [],
+      "stage_candidates": [],
+      "provider_response_id": "4a4ba24c-c5e0-48d8-8822-741455bc70a0",
+      "equipment_states": {
+        "dump_truck": "absent",
+        "concrete_mixer_truck": "absent",
+        "excavator": "uncertain",
+        "road_roller": "absent",
+        "bulldozer": "absent",
+        "truck": "absent",
+        "mobile_crane": "absent",
+        "truck_mounted_crane": "absent"
+      },
+      "scene_states": {
+        "rebar": "uncertain",
+        "road_base_or_surface": "absent",
+        "concrete_surface": "absent",
+        "excavation_or_trench": "uncertain",
+        "formwork": "absent"
+      },
+      "stage_proposal": "unknown",
+      "stage_reason": "На площадке видны строительные материалы и паллеты, а также экскаватор, что указывает на продолжающиеся работы, но конкретный этап неочевиден.",
+      "annotation_proposal": {
+        "equipment": {
+          "dump_truck": "absent",
+          "concrete_mixer_truck": "absent",
+          "excavator": "uncertain",
+          "road_roller": "absent",
+          "bulldozer": "absent",
+          "truck": "absent",
+          "mobile_crane": "absent",
+          "truck_mounted_crane": "absent"
+        },
+        "scenes": {
+          "rebar": "uncertain",
+          "road_base_or_surface": "absent",
+          "concrete_surface": "absent",
+          "excavation_or_trench": "uncertain",
+          "formwork": "absent"
+        },
+        "stage": "unknown"
+      }
+    },
+    {
+      "id": "organizer-png-002",
+      "archive_member": "Строительная_техника/Screenshot_2.png",
+      "sha256": "983e4c922b3f7911f39629db87018b724f685216aa0787a74218614d3f3cc593",
+      "bytes": 2540004,
+      "oriented_image_size": [
+        1213,
+        811
+      ],
+      "source_site_camera_sequence_group": null,
+      "capture_at": null,
+      "review_state": "unreviewed",
+      "equipment_candidates": [
+        {
+          "box": [
+            0.352,
+            0.512,
+            0.401,
+            0.56
+          ],
+          "class_name": "excavator"
+        },
+        {
+          "box": [
+            0.5,
+            0.52,
+            0.545,
+            0.565
+          ],
+          "class_name": "excavator"
+        },
+        {
+          "box": [
+            0.52,
+            0.66,
+            0.57,
+            0.72
+          ],
+          "class_name": "excavator"
+        },
+        {
+          "box": [
+            0.3,
+            0.63,
+            0.33,
+            0.665
+          ],
+          "class_name": "excavator"
+        },
+        {
+          "box": [
+            0.345,
+            0.65,
+            0.375,
+            0.68
+          ],
+          "class_name": "excavator"
+        },
+        {
+          "box": [
+            0.77,
+            0.48,
+            0.8,
+            0.54
+          ],
+          "class_name": "excavator"
+        },
+        {
+          "box": [
+            0.2,
+            0.6,
+            0.23,
+            0.625
+          ],
+          "class_name": "truck"
+        },
+        {
+          "box": [
+            0.34,
+            0.78,
+            0.375,
+            0.815
+          ],
+          "class_name": "truck"
+        },
+        {
+          "box": [
+            0.185,
+            0.72,
+            0.215,
+            0.745
+          ],
+          "class_name": "truck"
+        }
+      ],
+      "scene_candidates": [],
+      "stage_candidates": [],
+      "provider_response_id": "e8d9f5c8-509f-4d12-8f11-1eedf4d798f9",
+      "equipment_states": {
+        "dump_truck": "uncertain",
+        "concrete_mixer_truck": "absent",
+        "excavator": "present",
+        "road_roller": "absent",
+        "bulldozer": "absent",
+        "truck": "present",
+        "mobile_crane": "absent",
+        "truck_mounted_crane": "uncertain"
+      },
+      "scene_states": {
+        "rebar": "absent",
+        "road_base_or_surface": "absent",
+        "concrete_surface": "absent",
+        "excavation_or_trench": "present",
+        "formwork": "absent"
+      },
+      "stage_proposal": "excavation",
+      "stage_reason": "На площадке видны земляные работы и забивка свай: экскаваторы разрабатывают грунт, работает буровая/свайная установка, есть котлован и траншеи. Признаков бетонирования, монтажа конструкций или дорожных работ не видно.",
+      "annotation_proposal": {
+        "equipment": {
+          "dump_truck": "uncertain",
+          "concrete_mixer_truck": "absent",
+          "excavator": "present",
+          "road_roller": "absent",
+          "bulldozer": "absent",
+          "truck": "present",
+          "mobile_crane": "absent",
+          "truck_mounted_crane": "uncertain"
+        },
+        "scenes": {
+          "rebar": "absent",
+          "road_base_or_surface": "absent",
+          "concrete_surface": "absent",
+          "excavation_or_trench": "present",
+          "formwork": "absent"
+        },
+        "stage": "excavation"
+      }
+    },
+    {
+      "id": "organizer-png-003",
+      "archive_member": "Строительная_техника/Screenshot_3.png",
+      "sha256": "d24aad00a7ba43418226343f212cfe3dbaf97d76b2b55ccfd971f1e9181e4d4c",
+      "bytes": 2902704,
+      "oriented_image_size": [
+        1217,
+        809
+      ],
+      "source_site_camera_sequence_group": null,
+      "capture_at": null,
+      "review_state": "unreviewed",
+      "equipment_candidates": [
+        {
+          "box": [
+            0.512,
+            0.652,
+            0.556,
+            0.802
+          ],
+          "class_name": "excavator"
+        },
+        {
+          "box": [
+            0.672,
+            0.525,
+            0.712,
+            0.565
+          ],
+          "class_name": "excavator"
+        },
+        {
+          "box": [
+            0.432,
+            0.402,
+            0.452,
+            0.432
+          ],
+          "class_name": "excavator"
+        },
+        {
+          "box": [
+            0.602,
+            0.762,
+            0.632,
+            0.792
+          ],
+          "class_name": "truck"
+        }
+      ],
+      "scene_candidates": [],
+      "stage_candidates": [],
+      "provider_response_id": "4c77e076-63cf-43e5-8a06-87facc71c1d5",
+      "equipment_states": {
+        "dump_truck": "absent",
+        "concrete_mixer_truck": "absent",
+        "excavator": "present",
+        "road_roller": "absent",
+        "bulldozer": "absent",
+        "truck": "present",
+        "mobile_crane": "absent",
+        "truck_mounted_crane": "absent"
+      },
+      "scene_states": {
+        "rebar": "present",
+        "road_base_or_surface": "absent",
+        "concrete_surface": "absent",
+        "excavation_or_trench": "present",
+        "formwork": "present"
+      },
+      "stage_proposal": "excavation",
+      "stage_reason": "На площадке видны земляные работы и буровые установки, а также экскаваторы, что указывает на этап подготовки/земляных работ.",
+      "annotation_proposal": {
+        "equipment": {
+          "dump_truck": "absent",
+          "concrete_mixer_truck": "absent",
+          "excavator": "present",
+          "road_roller": "absent",
+          "bulldozer": "absent",
+          "truck": "present",
+          "mobile_crane": "absent",
+          "truck_mounted_crane": "absent"
+        },
+        "scenes": {
+          "rebar": "present",
+          "road_base_or_surface": "absent",
+          "concrete_surface": "absent",
+          "excavation_or_trench": "present",
+          "formwork": "present"
+        },
+        "stage": "excavation"
+      }
+    },
+    {
+      "id": "organizer-png-004",
+      "archive_member": "Строительная_техника/Screenshot_4.png",
+      "sha256": "3fc026bf395fdcc7b12db6d83e7af512ba9299816efa1ef7b9bbbc6191576155",
+      "bytes": 2763466,
+      "oriented_image_size": [
+        1218,
+        809
+      ],
+      "source_site_camera_sequence_group": null,
+      "capture_at": null,
+      "review_state": "unreviewed",
+      "equipment_candidates": [
+        {
+          "box": [
+            0.128,
+            0.655,
+            0.198,
+            0.805
+          ],
+          "class_name": "excavator"
+        },
+        {
+          "box": [
+            0.562,
+            0.69,
+            0.612,
+            0.735
+          ],
+          "class_name": "excavator"
+        },
+        {
+          "box": [
+            0.7,
+            0.63,
+            0.735,
+            0.675
+          ],
+          "class_name": "excavator"
+        },
+        {
+          "box": [
+            0.24,
+            0.72,
+            0.27,
+            0.76
+          ],
+          "class_name": "truck"
+        }
+      ],
+      "scene_candidates": [],
+      "stage_candidates": [],
+      "provider_response_id": "a46fac02-f5a8-4210-8c18-72364cfb5bf3",
+      "equipment_states": {
+        "dump_truck": "uncertain",
+        "concrete_mixer_truck": "absent",
+        "excavator": "present",
+        "road_roller": "absent",
+        "bulldozer": "absent",
+        "truck": "present",
+        "mobile_crane": "absent",
+        "truck_mounted_crane": "absent"
+      },
+      "scene_states": {
+        "rebar": "present",
+        "road_base_or_surface": "absent",
+        "concrete_surface": "absent",
+        "excavation_or_trench": "present",
+        "formwork": "uncertain"
+      },
+      "stage_proposal": "excavation",
+      "stage_reason": "На площадке видны земляные работы: вырытый котлован, экскаваторы и буровая установка, что указывает на этап excavation.",
+      "annotation_proposal": {
+        "equipment": {
+          "dump_truck": "uncertain",
+          "concrete_mixer_truck": "absent",
+          "excavator": "present",
+          "road_roller": "absent",
+          "bulldozer": "absent",
+          "truck": "present",
+          "mobile_crane": "absent",
+          "truck_mounted_crane": "absent"
+        },
+        "scenes": {
+          "rebar": "present",
+          "road_base_or_surface": "absent",
+          "concrete_surface": "absent",
+          "excavation_or_trench": "present",
+          "formwork": "uncertain"
+        },
+        "stage": "excavation"
+      }
+    },
+    {
+      "id": "organizer-png-005",
+      "archive_member": "Строительная_техника/Screenshot_5.png",
+      "sha256": "b88e35383b1ec988d0112266fe450adaa250757a7563a7f2da06f24f3b6152ce",
+      "bytes": 2362908,
+      "oriented_image_size": [
+        1179,
+        813
+      ],
+      "source_site_camera_sequence_group": null,
+      "capture_at": null,
+      "review_state": "unreviewed",
+      "equipment_candidates": [
+        {
+          "box": [
+            0.78,
+            0.0,
+            0.99,
+            0.55
+          ],
+          "class_name": "mobile_crane"
+        },
+        {
+          "box": [
+            0.49,
+            0.08,
+            0.77,
+            0.5
+          ],
+          "class_name": "mobile_crane"
+        },
+        {
+          "box": [
+            0.36,
+            0.28,
+            0.42,
+            0.5
+          ],
+          "class_name": "mobile_crane"
+        },
+        {
+          "box": [
+            0.45,
+            0.44,
+            0.49,
+            0.5
+          ],
+          "class_name": "excavator"
+        }
+      ],
+      "scene_candidates": [],
+      "stage_candidates": [],
+      "provider_response_id": "34832bb5-1b13-4097-b4c7-91d9f8989871",
+      "equipment_states": {
+        "dump_truck": "absent",
+        "concrete_mixer_truck": "absent",
+        "excavator": "present",
+        "road_roller": "absent",
+        "bulldozer": "absent",
+        "truck": "absent",
+        "mobile_crane": "present",
+        "truck_mounted_crane": "absent"
+      },
+      "scene_states": {
+        "rebar": "absent",
+        "road_base_or_surface": "absent",
+        "concrete_surface": "absent",
+        "excavation_or_trench": "present",
+        "formwork": "absent"
+      },
+      "stage_proposal": "preparation",
+      "stage_reason": "На площадке видны буровые установки, свайные шнеки и краны, что указывает на устройство свайных фундаментов, а не на земляные или дорожные работы.",
+      "annotation_proposal": {
+        "equipment": {
+          "dump_truck": "absent",
+          "concrete_mixer_truck": "absent",
+          "excavator": "present",
+          "road_roller": "absent",
+          "bulldozer": "absent",
+          "truck": "absent",
+          "mobile_crane": "present",
+          "truck_mounted_crane": "absent"
+        },
+        "scenes": {
+          "rebar": "absent",
+          "road_base_or_surface": "absent",
+          "concrete_surface": "absent",
+          "excavation_or_trench": "present",
+          "formwork": "absent"
+        },
+        "stage": "preparation"
+      }
+    },
+    {
+      "id": "organizer-png-006",
+      "archive_member": "Строительная_техника/Screenshot_6.png",
+      "sha256": "f6bd42035b890043e8ee52f7b611ffe19857aa6a5829c691b38cc4831d98948e",
+      "bytes": 2157480,
+      "oriented_image_size": [
+        1219,
+        809
+      ],
+      "source_site_camera_sequence_group": null,
+      "capture_at": null,
+      "review_state": "unreviewed",
+      "equipment_candidates": [
+        {
+          "box": [
+            0.425,
+            0.4,
+            0.505,
+            0.56
+          ],
+          "class_name": "mobile_crane"
+        }
+      ],
+      "scene_candidates": [],
+      "stage_candidates": [],
+      "provider_response_id": "eaf9170c-e8ee-4ecd-b2a1-cbc13ae7735c",
+      "equipment_states": {
+        "dump_truck": "absent",
+        "concrete_mixer_truck": "absent",
+        "excavator": "absent",
+        "road_roller": "absent",
+        "bulldozer": "absent",
+        "truck": "absent",
+        "mobile_crane": "present",
+        "truck_mounted_crane": "absent"
+      },
+      "scene_states": {
+        "rebar": "present",
+        "road_base_or_surface": "present",
+        "concrete_surface": "absent",
+        "excavation_or_trench": "present",
+        "formwork": "uncertain"
+      },
+      "stage_proposal": "preparation",
+      "stage_reason": "На площадке видны подготовленные участки, траншеи и арматурные каркасы, а также работает гусеничный кран; активная фаза — подготовка к бетонированию/монтажу.",
+      "annotation_proposal": {
+        "equipment": {
+          "dump_truck": "absent",
+          "concrete_mixer_truck": "absent",
+          "excavator": "absent",
+          "road_roller": "absent",
+          "bulldozer": "absent",
+          "truck": "absent",
+          "mobile_crane": "present",
+          "truck_mounted_crane": "absent"
+        },
+        "scenes": {
+          "rebar": "present",
+          "road_base_or_surface": "present",
+          "concrete_surface": "absent",
+          "excavation_or_trench": "present",
+          "formwork": "uncertain"
+        },
+        "stage": "preparation"
+      }
+    },
+    {
+      "id": "organizer-png-007",
+      "archive_member": "Строительная_техника/Screenshot_7.png",
+      "sha256": "2e7fbb210c6ea1712a710f56c4e44558a468d58e62325ed5003534d27fac6b25",
+      "bytes": 2431007,
+      "oriented_image_size": [
+        1217,
+        808
+      ],
+      "source_site_camera_sequence_group": null,
+      "capture_at": null,
+      "review_state": "unreviewed",
+      "equipment_candidates": [
+        {
+          "box": [
+            0.12,
+            0.36,
+            0.28,
+            0.62
+          ],
+          "class_name": "excavator"
+        },
+        {
+          "box": [
+            0.22,
+            0.55,
+            0.38,
+            0.75
+          ],
+          "class_name": "excavator"
+        },
+        {
+          "box": [
+            0.7,
+            0.4,
+            0.86,
+            0.56
+          ],
+          "class_name": "excavator"
+        },
+        {
+          "box": [
+            0.38,
+            0.55,
+            0.48,
+            0.68
+          ],
+          "class_name": "truck"
+        }
+      ],
+      "scene_candidates": [],
+      "stage_candidates": [],
+      "provider_response_id": "88ab9333-ec76-4043-a48f-63e5f859e8f5",
+      "equipment_states": {
+        "dump_truck": "absent",
+        "concrete_mixer_truck": "absent",
+        "excavator": "present",
+        "road_roller": "absent",
+        "bulldozer": "absent",
+        "truck": "present",
+        "mobile_crane": "uncertain",
+        "truck_mounted_crane": "uncertain"
+      },
+      "scene_states": {
+        "rebar": "absent",
+        "road_base_or_surface": "absent",
+        "concrete_surface": "absent",
+        "excavation_or_trench": "present",
+        "formwork": "absent"
+      },
+      "stage_proposal": "excavation",
+      "stage_reason": "На площадке видны земляные работы и буровые установки, а также экскаваторы, что указывает на этап разработки котлована/подготовки основания.",
+      "annotation_proposal": {
+        "equipment": {
+          "dump_truck": "absent",
+          "concrete_mixer_truck": "absent",
+          "excavator": "present",
+          "road_roller": "absent",
+          "bulldozer": "absent",
+          "truck": "present",
+          "mobile_crane": "uncertain",
+          "truck_mounted_crane": "uncertain"
+        },
+        "scenes": {
+          "rebar": "absent",
+          "road_base_or_surface": "absent",
+          "concrete_surface": "absent",
+          "excavation_or_trench": "present",
+          "formwork": "absent"
+        },
+        "stage": "excavation"
+      }
+    },
+    {
+      "id": "organizer-png-008",
+      "archive_member": "Строительная_техника/Screenshot_8.png",
+      "sha256": "f23c0641430ab8caeac5dfebdeae3f0ef72fca3c3fe8ca4d35efbd7a0ea9859a",
+      "bytes": 2570867,
+      "oriented_image_size": [
+        1221,
+        808
+      ],
+      "source_site_camera_sequence_group": null,
+      "capture_at": null,
+      "review_state": "unreviewed",
+      "equipment_candidates": [
+        {
+          "box": [
+            0.0,
+            0.45,
+            0.12,
+            0.72
+          ],
+          "class_name": "excavator"
+        },
+        {
+          "box": [
+            0.37,
+            0.0,
+            0.52,
+            0.7
+          ],
+          "class_name": "truck_mounted_crane"
+        },
+        {
+          "box": [
+            0.66,
+            0.0,
+            0.78,
+            0.7
+          ],
+          "class_name": "truck_mounted_crane"
+        }
+      ],
+      "scene_candidates": [],
+      "stage_candidates": [],
+      "provider_response_id": "0abdae4c-4394-4be1-8529-98ef9ea851bb",
+      "equipment_states": {
+        "dump_truck": "absent",
+        "concrete_mixer_truck": "absent",
+        "excavator": "present",
+        "road_roller": "absent",
+        "bulldozer": "absent",
+        "truck": "absent",
+        "mobile_crane": "absent",
+        "truck_mounted_crane": "present"
+      },
+      "scene_states": {
+        "rebar": "absent",
+        "road_base_or_surface": "absent",
+        "concrete_surface": "absent",
+        "excavation_or_trench": "present",
+        "formwork": "absent"
+      },
+      "stage_proposal": "excavation",
+      "stage_reason": "На площадке видны буровые установки и экскаватор, выполняющие работы по устройству свай и выемке грунта; признаки других этапов отсутствуют.",
+      "annotation_proposal": {
+        "equipment": {
+          "dump_truck": "absent",
+          "concrete_mixer_truck": "absent",
+          "excavator": "present",
+          "road_roller": "absent",
+          "bulldozer": "absent",
+          "truck": "absent",
+          "mobile_crane": "absent",
+          "truck_mounted_crane": "present"
+        },
+        "scenes": {
+          "rebar": "absent",
+          "road_base_or_surface": "absent",
+          "concrete_surface": "absent",
+          "excavation_or_trench": "present",
+          "formwork": "absent"
+        },
+        "stage": "excavation"
+      }
+    },
+    {
+      "id": "organizer-png-009",
+      "archive_member": "Строительная_техника/Screenshot_9.png",
+      "sha256": "23989f2f63ccfb1ba2a6ccb2b957c01bd2747dda6b293524b8f6d06b797298e9",
+      "bytes": 2266571,
+      "oriented_image_size": [
+        1217,
+        805
+      ],
+      "source_site_camera_sequence_group": null,
+      "capture_at": null,
+      "review_state": "unreviewed",
+      "equipment_candidates": [
+        {
+          "box": [
+            0.28,
+            0.36,
+            0.45,
+            0.6
+          ],
+          "class_name": "excavator"
+        },
+        {
+          "box": [
+            0.63,
+            0.44,
+            0.78,
+            0.55
+          ],
+          "class_name": "excavator"
+        }
+      ],
+      "scene_candidates": [],
+      "stage_candidates": [],
+      "provider_response_id": "9b108f10-d0ff-4da7-aa13-be4408004d2a",
+      "equipment_states": {
+        "dump_truck": "absent",
+        "concrete_mixer_truck": "absent",
+        "excavator": "present",
+        "road_roller": "absent",
+        "bulldozer": "absent",
+        "truck": "absent",
+        "mobile_crane": "absent",
+        "truck_mounted_crane": "absent"
+      },
+      "scene_states": {
+        "rebar": "absent",
+        "road_base_or_surface": "absent",
+        "concrete_surface": "absent",
+        "excavation_or_trench": "present",
+        "formwork": "absent"
+      },
+      "stage_proposal": "excavation",
+      "stage_reason": "На площадке видны две гусеничные землеройные машины с ковшами и отвалами грунта, что указывает на активные земляные работы; другие этапы не подтверждаются видимыми признаками.",
+      "annotation_proposal": {
+        "equipment": {
+          "dump_truck": "absent",
+          "concrete_mixer_truck": "absent",
+          "excavator": "present",
+          "road_roller": "absent",
+          "bulldozer": "absent",
+          "truck": "absent",
+          "mobile_crane": "absent",
+          "truck_mounted_crane": "absent"
+        },
+        "scenes": {
+          "rebar": "absent",
+          "road_base_or_surface": "absent",
+          "concrete_surface": "absent",
+          "excavation_or_trench": "present",
+          "formwork": "absent"
+        },
+        "stage": "excavation"
+      }
+    },
+    {
+      "id": "organizer-png-010",
+      "archive_member": "Строительная_техника/Screenshot_10.png",
+      "sha256": "97684d82480567953b9b609379726bed1e2979788d227b855298fbca0673d3a7",
+      "bytes": 2017890,
+      "oriented_image_size": [
+        1084,
+        808
+      ],
+      "source_site_camera_sequence_group": null,
+      "capture_at": null,
+      "review_state": "unreviewed",
+      "equipment_candidates": [
+        {
+          "box": [
+            0.222,
+            0.339,
+            0.375,
+            0.601
+          ],
+          "class_name": "excavator"
+        }
+      ],
+      "scene_candidates": [],
+      "stage_candidates": [],
+      "provider_response_id": "81f34434-26c1-4063-bb95-b85a43479dd8",
+      "equipment_states": {
+        "dump_truck": "absent",
+        "concrete_mixer_truck": "absent",
+        "excavator": "present",
+        "road_roller": "absent",
+        "bulldozer": "absent",
+        "truck": "absent",
+        "mobile_crane": "uncertain",
+        "truck_mounted_crane": "uncertain"
+      },
+      "scene_states": {
+        "rebar": "absent",
+        "road_base_or_surface": "absent",
+        "concrete_surface": "absent",
+        "excavation_or_trench": "present",
+        "formwork": "absent"
+      },
+      "stage_proposal": "excavation",
+      "stage_reason": "На площадке видны буровые установки, экскаватор и котлован с обводнённым грунтом; признаки опалубки, арматуры или бетонирования отсутствуют, что указывает на земляные работы.",
+      "annotation_proposal": {
+        "equipment": {
+          "dump_truck": "absent",
+          "concrete_mixer_truck": "absent",
+          "excavator": "present",
+          "road_roller": "absent",
+          "bulldozer": "absent",
+          "truck": "absent",
+          "mobile_crane": "uncertain",
+          "truck_mounted_crane": "uncertain"
+        },
+        "scenes": {
+          "rebar": "absent",
+          "road_base_or_surface": "absent",
+          "concrete_surface": "absent",
+          "excavation_or_trench": "present",
+          "formwork": "absent"
+        },
+        "stage": "excavation"
+      }
+    }
+  ],
+  "model": "deepseek-v4.1-flash",
+  "model_uri": "gpt://b1gcpjp9nc4hhoffpf3a/deepseek-v4.1-flash/latest",
+  "source_manifest_sha256": "b2f041a003091ba9c227691964d5a2d4ebeac1ca527ad3d388fdc83897aeb652",
+  "prompt_sha256": "2272d972b53ee4db69486bf908453523b5d70b9dc1130535981f25257f509fb7",
+  "experiment": "none",
+  "reasoning_effort": "none",
+  "compatible_review_manifest_sha256": [
+    "b2f041a003091ba9c227691964d5a2d4ebeac1ca527ad3d388fdc83897aeb652"
+  ],
+  "review_scope": "First ten organizer frames in source order; no human ground truth."
+}

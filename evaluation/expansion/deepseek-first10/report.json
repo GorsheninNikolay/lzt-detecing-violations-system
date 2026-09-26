@@ -1,0 +1,386 @@
+{
+  "model": "gpt://b1gcpjp9nc4hhoffpf3a/deepseek-v4.1-flash/latest",
+  "frames": 10,
+  "reasoning": "none",
+  "input_tokens": 19200,
+  "output_tokens": 2817,
+  "reasoning_tokens": 0,
+  "calculated_rub": 7.1685,
+  "median_seconds": 6.579409188008867,
+  "min_seconds": 5.226061291992664,
+  "max_seconds": 7.330471375025809,
+  "inference_seconds": 63.32203866698546,
+  "preflight23_rub": 0.6866,
+  "previous_qwen_rub": 0.9178,
+  "rows": [
+    {
+      "id": "organizer-png-001",
+      "sha256": "d29d78a09e276c7c2c30b9e2a0da21e0dda15f5d40912bf509b383afc1729a5f",
+      "response_id": "4a4ba24c-c5e0-48d8-8822-741455bc70a0",
+      "model": "gpt://b1gcpjp9nc4hhoffpf3a/deepseek-v4.1-flash/latest",
+      "requested_reasoning": "none",
+      "returned_reasoning": {
+        "effort": "none",
+        "generate_summary": null,
+        "summary": null,
+        "valid": true
+      },
+      "usage": {
+        "input_tokens": 1922,
+        "input_tokens_details": {
+          "cached_tokens": 0,
+          "valid": true,
+          "tool_tokens": 0
+        },
+        "output_tokens": 157,
+        "output_tokens_details": {
+          "reasoning_tokens": 0,
+          "valid": true
+        },
+        "total_tokens": 2079,
+        "valid": true
+      },
+      "seconds": 5.490980124974158,
+      "calculated_rub": 0.6551,
+      "objects": 0,
+      "present": [],
+      "uncertain": [
+        "excavator"
+      ]
+    },
+    {
+      "id": "organizer-png-002",
+      "sha256": "983e4c922b3f7911f39629db87018b724f685216aa0787a74218614d3f3cc593",
+      "response_id": "e8d9f5c8-509f-4d12-8f11-1eedf4d798f9",
+      "model": "gpt://b1gcpjp9nc4hhoffpf3a/deepseek-v4.1-flash/latest",
+      "requested_reasoning": "none",
+      "returned_reasoning": {
+        "effort": "none",
+        "generate_summary": null,
+        "summary": null,
+        "valid": true
+      },
+      "usage": {
+        "input_tokens": 1922,
+        "input_tokens_details": {
+          "cached_tokens": 0,
+          "valid": true,
+          "tool_tokens": 0
+        },
+        "output_tokens": 415,
+        "output_tokens_details": {
+          "reasoning_tokens": 0,
+          "valid": true
+        },
+        "total_tokens": 2337,
+        "valid": true
+      },
+      "seconds": 6.594256249954924,
+      "calculated_rub": 0.7841,
+      "objects": 9,
+      "present": [
+        "excavator",
+        "truck"
+      ],
+      "uncertain": [
+        "dump_truck",
+        "truck_mounted_crane"
+      ]
+    },
+    {
+      "id": "organizer-png-003",
+      "sha256": "d24aad00a7ba43418226343f212cfe3dbaf97d76b2b55ccfd971f1e9181e4d4c",
+      "response_id": "4c77e076-63cf-43e5-8a06-87facc71c1d5",
+      "model": "gpt://b1gcpjp9nc4hhoffpf3a/deepseek-v4.1-flash/latest",
+      "requested_reasoning": "none",
+      "returned_reasoning": {
+        "effort": "none",
+        "generate_summary": null,
+        "summary": null,
+        "valid": true
+      },
+      "usage": {
+        "input_tokens": 1922,
+        "input_tokens_details": {
+          "cached_tokens": 0,
+          "valid": true,
+          "tool_tokens": 0
+        },
+        "output_tokens": 307,
+        "output_tokens_details": {
+          "reasoning_tokens": 0,
+          "valid": true
+        },
+        "total_tokens": 2229,
+        "valid": true
+      },
+      "seconds": 7.330471375025809,
+      "calculated_rub": 0.7301,
+      "objects": 4,
+      "present": [
+        "excavator",
+        "truck"
+      ],
+      "uncertain": []
+    },
+    {
+      "id": "organizer-png-004",
+      "sha256": "3fc026bf395fdcc7b12db6d83e7af512ba9299816efa1ef7b9bbbc6191576155",
+      "response_id": "a46fac02-f5a8-4210-8c18-72364cfb5bf3",
+      "model": "gpt://b1gcpjp9nc4hhoffpf3a/deepseek-v4.1-flash/latest",
+      "requested_reasoning": "none",
+      "returned_reasoning": {
+        "effort": "none",
+        "generate_summary": null,
+        "summary": null,
+        "valid": true
+      },
+      "usage": {
+        "input_tokens": 1922,
+        "input_tokens_details": {
+          "cached_tokens": 1280,
+          "valid": true,
+          "tool_tokens": 0
+        },
+        "output_tokens": 309,
+        "output_tokens_details": {
+          "reasoning_tokens": 0,
+          "valid": true
+        },
+        "total_tokens": 2231,
+        "valid": true
+      },
+      "seconds": 5.226061291992664,
+      "calculated_rub": 0.7311,
+      "objects": 4,
+      "present": [
+        "excavator",
+        "truck"
+      ],
+      "uncertain": [
+        "dump_truck"
+      ]
+    },
+    {
+      "id": "organizer-png-005",
+      "sha256": "b88e35383b1ec988d0112266fe450adaa250757a7563a7f2da06f24f3b6152ce",
+      "response_id": "34832bb5-1b13-4097-b4c7-91d9f8989871",
+      "model": "gpt://b1gcpjp9nc4hhoffpf3a/deepseek-v4.1-flash/latest",
+      "requested_reasoning": "none",
+      "returned_reasoning": {
+        "effort": "none",
+        "generate_summary": null,
+        "summary": null,
+        "valid": true
+      },
+      "usage": {
+        "input_tokens": 1922,
+        "input_tokens_details": {
+          "cached_tokens": 0,
+          "valid": true,
+          "tool_tokens": 0
+        },
+        "output_tokens": 316,
+        "output_tokens_details": {
+          "reasoning_tokens": 0,
+          "valid": true
+        },
+        "total_tokens": 2238,
+        "valid": true
+      },
+      "seconds": 6.79079866601387,
+      "calculated_rub": 0.7346,
+      "objects": 4,
+      "present": [
+        "excavator",
+        "mobile_crane"
+      ],
+      "uncertain": []
+    },
+    {
+      "id": "organizer-png-006",
+      "sha256": "f6bd42035b890043e8ee52f7b611ffe19857aa6a5829c691b38cc4831d98948e",
+      "response_id": "eaf9170c-e8ee-4ecd-b2a1-cbc13ae7735c",
+      "model": "gpt://b1gcpjp9nc4hhoffpf3a/deepseek-v4.1-flash/latest",
+      "requested_reasoning": "none",
+      "returned_reasoning": {
+        "effort": "none",
+        "generate_summary": null,
+        "summary": null,
+        "valid": true
+      },
+      "usage": {
+        "input_tokens": 1942,
+        "input_tokens_details": {
+          "cached_tokens": 1280,
+          "valid": true,
+          "tool_tokens": 0
+        },
+        "output_tokens": 225,
+        "output_tokens_details": {
+          "reasoning_tokens": 0,
+          "valid": true
+        },
+        "total_tokens": 2167,
+        "valid": true
+      },
+      "seconds": 5.77196504099993,
+      "calculated_rub": 0.6951,
+      "objects": 1,
+      "present": [
+        "mobile_crane"
+      ],
+      "uncertain": []
+    },
+    {
+      "id": "organizer-png-007",
+      "sha256": "2e7fbb210c6ea1712a710f56c4e44558a468d58e62325ed5003534d27fac6b25",
+      "response_id": "88ab9333-ec76-4043-a48f-63e5f859e8f5",
+      "model": "gpt://b1gcpjp9nc4hhoffpf3a/deepseek-v4.1-flash/latest",
+      "requested_reasoning": "none",
+      "returned_reasoning": {
+        "effort": "none",
+        "generate_summary": null,
+        "summary": null,
+        "valid": true
+      },
+      "usage": {
+        "input_tokens": 1922,
+        "input_tokens_details": {
+          "cached_tokens": 0,
+          "valid": true,
+          "tool_tokens": 0
+        },
+        "output_tokens": 313,
+        "output_tokens_details": {
+          "reasoning_tokens": 0,
+          "valid": true
+        },
+        "total_tokens": 2235,
+        "valid": true
+      },
+      "seconds": 6.96581329201581,
+      "calculated_rub": 0.7331,
+      "objects": 4,
+      "present": [
+        "excavator",
+        "truck"
+      ],
+      "uncertain": [
+        "mobile_crane",
+        "truck_mounted_crane"
+      ]
+    },
+    {
+      "id": "organizer-png-008",
+      "sha256": "f23c0641430ab8caeac5dfebdeae3f0ef72fca3c3fe8ca4d35efbd7a0ea9859a",
+      "response_id": "0abdae4c-4394-4be1-8529-98ef9ea851bb",
+      "model": "gpt://b1gcpjp9nc4hhoffpf3a/deepseek-v4.1-flash/latest",
+      "requested_reasoning": "none",
+      "returned_reasoning": {
+        "effort": "none",
+        "generate_summary": null,
+        "summary": null,
+        "valid": true
+      },
+      "usage": {
+        "input_tokens": 1942,
+        "input_tokens_details": {
+          "cached_tokens": 1280,
+          "valid": true,
+          "tool_tokens": 0
+        },
+        "output_tokens": 284,
+        "output_tokens_details": {
+          "reasoning_tokens": 0,
+          "valid": true
+        },
+        "total_tokens": 2226,
+        "valid": true
+      },
+      "seconds": 6.564824209024664,
+      "calculated_rub": 0.7246,
+      "objects": 3,
+      "present": [
+        "excavator",
+        "truck_mounted_crane"
+      ],
+      "uncertain": []
+    },
+    {
+      "id": "organizer-png-009",
+      "sha256": "23989f2f63ccfb1ba2a6ccb2b957c01bd2747dda6b293524b8f6d06b797298e9",
+      "response_id": "9b108f10-d0ff-4da7-aa13-be4408004d2a",
+      "model": "gpt://b1gcpjp9nc4hhoffpf3a/deepseek-v4.1-flash/latest",
+      "requested_reasoning": "none",
+      "returned_reasoning": {
+        "effort": "none",
+        "generate_summary": null,
+        "summary": null,
+        "valid": true
+      },
+      "usage": {
+        "input_tokens": 1922,
+        "input_tokens_details": {
+          "cached_tokens": 0,
+          "valid": true,
+          "tool_tokens": 0
+        },
+        "output_tokens": 261,
+        "output_tokens_details": {
+          "reasoning_tokens": 0,
+          "valid": true
+        },
+        "total_tokens": 2183,
+        "valid": true
+      },
+      "seconds": 6.59399416699307,
+      "calculated_rub": 0.7071,
+      "objects": 2,
+      "present": [
+        "excavator"
+      ],
+      "uncertain": []
+    },
+    {
+      "id": "organizer-png-010",
+      "sha256": "97684d82480567953b9b609379726bed1e2979788d227b855298fbca0673d3a7",
+      "response_id": "81f34434-26c1-4063-bb95-b85a43479dd8",
+      "model": "gpt://b1gcpjp9nc4hhoffpf3a/deepseek-v4.1-flash/latest",
+      "requested_reasoning": "none",
+      "returned_reasoning": {
+        "effort": "none",
+        "generate_summary": null,
+        "summary": null,
+        "valid": true
+      },
+      "usage": {
+        "input_tokens": 1862,
+        "input_tokens_details": {
+          "cached_tokens": 0,
+          "valid": true,
+          "tool_tokens": 0
+        },
+        "output_tokens": 230,
+        "output_tokens_details": {
+          "reasoning_tokens": 0,
+          "valid": true
+        },
+        "total_tokens": 2092,
+        "valid": true
+      },
+      "seconds": 5.992874249990564,
+      "calculated_rub": 0.6736,
+      "objects": 1,
+      "present": [
+        "excavator"
+      ],
+      "uncertain": [
+        "mobile_crane",
+        "truck_mounted_crane"
+      ]
+    }
+  ],
+  "quality_status": "unreviewed_machine_proposals",
+  "billing_status": "computed_from_provider_usage_not_invoice"
+}

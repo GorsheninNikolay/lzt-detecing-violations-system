@@ -1,0 +1,19 @@
+{
+  "date": "2026-09-26",
+  "scope": "first10 none only; stop for owner review",
+  "deepseek_calculated_rub": 7.8551,
+  "first10_calculated_rub": 7.1685,
+  "preflight23_calculated_rub": 0.6866,
+  "qwen_calculated_rub": 0.9178,
+  "overall_calculated_rub": 8.7729,
+  "deepseek_limit_rub": 400,
+  "overall_limit_rub": 1000,
+  "unknown_reservations": 0,
+  "model": "deepseek-v4.1-flash",
+  "reasoning": "none",
+  "next_mode_not_run": "low",
+  "human_ground_truth": false,
+  "temporary_keys_deleted": true,
+  "source_script_sha256": "728ffc2ebba50f60c19fa5e2ea029b8103bb84d3efc9fbf89932b9c768d5f1bc",
+  "shared_script_sha256": "adf9aacf6a036877f43b371731265c412a9557d14f3c8c92e79944ba879307db"
+}

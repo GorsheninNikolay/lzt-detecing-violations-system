@@ -79,3 +79,7 @@ Human labeling site requested and delivered under Desktop/lzt_plan/annotation-re
 Full backend: 278 passed including legacy real CPU admission; later history-only change verified separately. Frontend: 117 passed, production build successful. Annotation headless and real API/PG/S3 plan/UI checks passed. None of these proves expanded eight-class model quality or remote deployment.
 
 Late history projection adjustment: 17 backend module tests passed after full278 run; final117 frontend tests/build passed. Functional commit: 64ee525d4bf953365b3d015e9ddaee33dacc40ac.
+
+## Owner direction update: 2026-09-26
+
+The owner explicitly authorized preliminary annotation of the organizer100 images through Qwen3.6 and chose Qwen3.6 as the target for all model analysis. Grounding DINO stays historical evidence, not the target release candidate. This authorizes upload of this source collection for this annotation run; machine proposals remain unreviewed. The current human review files and browser storage must remain intact. First execute a small real pilot, inspect quality/usage, then resume remaining images within the shared1000RUB budget. Prior expenditure must be supplied or verified before new paid calls. A standalone persistent reservation ledger reserves a conservative full-context bound for each request, settles only known usage, and retains uncertain charges. Production profile admission and runtime cutover remain separate implementation and verification steps; annotation success alone does not establish readiness.
