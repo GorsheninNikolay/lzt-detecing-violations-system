@@ -1049,7 +1049,8 @@ class PostgresStore:
         if expected_revision is not None and row.revision != expected_revision:
             raise AdmissionStoreError("authorization_revision_changed")
         from app.profiles.deepseek import snapshot
-        if row.snapshot != snapshot(row.snapshot.get("folder_id")) or digest(canonical_bytes(row.snapshot)) != row.profile_hash:
+        from app.profiles.hybrid import snapshot as hybrid_snapshot
+        if row.snapshot not in (snapshot(row.snapshot.get("folder_id")), hybrid_snapshot(row.snapshot.get("folder_id"))) or digest(canonical_bytes(row.snapshot)) != row.profile_hash:
             raise AdmissionStoreError("profile_runtime_mismatch")
         return row.snapshot, row.revision
 
@@ -1198,6 +1199,8 @@ class PostgresStore:
                 connection.execute(text("UPDATE publication_intents SET run_id = :run, state = 'referenced' WHERE id = :id"),
                     {"run": run_id, "id": intent_id})
             for ordinal, name in enumerate(STAGES):
+                if snapshot.get("observation_contract") == "hybrid-photo-signals-v1":
+                    name = {1: "yolo_detection", 2: "hybrid_reconciliation"}.get(ordinal, name)
                 connection.execute(text("""INSERT INTO analysis_stages (run_id, ordinal, name, state)
                     VALUES (:run, :ordinal, :name, 'pending')"""),
                     {"run": run_id, "ordinal": ordinal, "name": name})
@@ -1567,7 +1570,7 @@ class PostgresStore:
                 {"id": run_id}).mappings().all()
             plan_binding = connection.execute(text("""SELECT zone_id,revision_id,frame_times
                 FROM run_plan_bindings WHERE run_id=:id"""), {"id": run_id}).mappings().one_or_none()
-            planned_works = connection.execute(text("""SELECT w.title,e.stage_key,e.starts_at,e.ends_at,e.state
+            planned_works = connection.execute(text("""SELECT e.id,w.title,e.stage_key,e.starts_at,e.ends_at,e.state
                 FROM run_plan_bindings b JOIN zone_plan_entries e ON e.revision_id=b.revision_id
                 JOIN catalog_works w ON w.id=e.catalog_work_id
                 WHERE b.run_id=:id ORDER BY e.starts_at,e.id"""), {"id": run_id}).mappings().all()
@@ -1615,7 +1618,7 @@ class PostgresStore:
                     "plan_binding": ({"zone_id": str(plan_binding["zone_id"]),
                                       "revision_id": str(plan_binding["revision_id"]),
                                       "capture_times": plan_binding["frame_times"]} if plan_binding else None),
-                    "planned_works": [{**dict(item), "starts_at": item["starts_at"].isoformat(),
+                    "planned_works": [{**dict(item), "id": str(item["id"]), "starts_at": item["starts_at"].isoformat(),
                                        "ends_at": item["ends_at"].isoformat()} for item in planned_works],
                     "stage_confirmation": ({**dict(confirmation),
                                             "created_at": confirmation["created_at"].isoformat()}
@@ -1800,6 +1803,8 @@ class PostgresStore:
                     {"run": run_id, "zone": plan["zone_id"], "revision": plan["revision_id"],
                      "times": json.dumps(plan["frame_times"])})
             for ordinal, name in enumerate(STAGES):
+                if snapshot.get("observation_contract") == "hybrid-photo-signals-v1":
+                    name = {1: "yolo_detection", 2: "hybrid_reconciliation"}.get(ordinal, name)
                 connection.execute(text("""INSERT INTO analysis_stages (run_id, ordinal, name, state)
                     VALUES (:run, :ordinal, :name, 'pending')"""),
                     {"run": run_id, "ordinal": ordinal, "name": name})

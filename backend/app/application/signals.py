@@ -21,11 +21,14 @@ def _fingerprint(*parts: object) -> str:
 
 
 def _insert_signal(connection, *, run_id, zone_id, revision_id, entry_id, kind, basis):
+    sources = connection.execute(text('SELECT sha256 FROM run_inputs WHERE run_id=:run ORDER BY sha256'),
+                                 {'run': run_id}).scalars().all() if run_id else []
     connection.execute(text("""INSERT INTO site_signals
         (id,fingerprint,run_id,zone_id,revision_id,work_entry_id,kind,basis)
         VALUES (:id,:fingerprint,:run,:zone,:revision,:entry,:kind,CAST(:basis AS jsonb))
         ON CONFLICT (fingerprint) DO NOTHING"""),
-        {"id": uuid.uuid4(), "fingerprint": _fingerprint(run_id, revision_id, entry_id, kind),
+        {"id": uuid.uuid4(), "fingerprint": (_fingerprint(None, revision_id, entry_id, kind) if run_id is None
+                         else _fingerprint(zone_id, revision_id, entry_id, kind, sorted(set(sources)), basis.get("confirmed_stage"))),
          "run": run_id, "zone": zone_id, "revision": revision_id, "entry": entry_id,
          "kind": kind, "basis": json.dumps(basis, default=str)})
 
@@ -64,7 +67,7 @@ def list_signals(request: Request, project_id: uuid.UUID | None = None,
             END AS preview
             FROM site_signals s JOIN site_zones z ON z.id=s.zone_id
             JOIN site_projects p ON p.id=z.project_id
-            JOIN zone_plan_revisions r ON r.id=s.revision_id AND r.zone_id=z.id
+            LEFT JOIN zone_plan_revisions r ON r.id=s.revision_id AND r.zone_id=z.id
             LEFT JOIN zone_plan_entries e ON e.id=s.work_entry_id AND e.revision_id=r.id
             LEFT JOIN catalog_works w ON w.id=e.catalog_work_id
             LEFT JOIN LATERAL (
@@ -93,7 +96,7 @@ def list_signals(request: Request, project_id: uuid.UUID | None = None,
     return {"new_count": counts["new_count"], "summary": {
         key: counts[key] for key in ("open_count", "attention_count", "insufficient_data_count")}, "signals": [{**dict(item),
             "id": str(item["id"]), "run_id": str(item["run_id"]) if item["run_id"] else None,
-            "zone_id": str(item["zone_id"]), "revision_id": str(item["revision_id"]),
+            "zone_id": str(item["zone_id"]), "revision_id": str(item["revision_id"]) if item["revision_id"] else None,
             "work_entry_id": str(item["work_entry_id"]) if item["work_entry_id"] else None,
             "created_at": item["created_at"].isoformat()} for item in rows]}
 
@@ -141,13 +144,21 @@ def confirm_stage(run_id: uuid.UUID, request: Request, body: dict):
             entries = connection.execute(text("""SELECT id,stage_key,starts_at,ends_at FROM zone_plan_entries
                 WHERE revision_id=:revision AND state='active' AND stage_key IS NOT NULL"""),
                 {"revision": run["revision_id"]}).mappings().all()
-            active = [entry for entry in entries if all(entry["starts_at"] <= datetime.fromisoformat(value)
-                      <= entry["ends_at"] for value in run["frame_times"])]
-            if active and stage not in {entry["stage_key"] for entry in active}:
-                _insert_signal(connection, run_id=run_id, zone_id=run["zone_id"],
-                               revision_id=run["revision_id"], entry_id=None,
-                               kind="stage_plan_mismatch",
-                               basis={"rule_revision": "confirmed-stage-v1", "confirmed_stage": stage,
-                                      "planned_stages": sorted({entry["stage_key"] for entry in active}),
-                                      "recommendation": "Review the active zone plan."})
+            inputs = connection.execute(text('SELECT input_id,ordinal FROM run_inputs WHERE run_id=:run ORDER BY ordinal'),
+                                        {'run': run_id}).mappings().all()
+            mismatches = {}
+            for frame in inputs:
+                captured = datetime.fromisoformat(run['frame_times'][frame['ordinal']])
+                active = [entry for entry in entries if entry['starts_at'] <= captured <= entry['ends_at']]
+                if active and stage not in {entry['stage_key'] for entry in active}:
+                    for entry in active:
+                        mismatches.setdefault(entry['id'], []).append(str(frame['input_id']))
+            for entry_id, frame_ids in mismatches.items():
+                _insert_signal(connection, run_id=run_id, zone_id=run['zone_id'],
+                               revision_id=run['revision_id'], entry_id=entry_id,
+                               kind='stage_plan_mismatch',
+                               basis={'rule_revision': 'confirmed-stage-v2', 'confirmed_stage': stage,
+                                      'supporting_input_ids': frame_ids,
+                                      'planned_stages': sorted({e['stage_key'] for e in entries if e['id'] == entry_id}),
+                                      'recommendation': 'Review the active zone plan.'})
     return {"run_id": str(run_id), "stage": stage, "comment": comment}

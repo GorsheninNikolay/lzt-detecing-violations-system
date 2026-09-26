@@ -1,0 +1,1734 @@
+{
+  "ai_assessment": null,
+  "ai_evidence": [
+    {
+      "id": "8bb42de6-5d9d-44f9-a660-72bdc3b4797d",
+      "kind": "frame",
+      "input_id": "31b19487-6d1e-4839-a406-8d4559e827bb",
+      "context": {
+        "sha256": "32f4416faf9046893efb5697dcce9a88e3a9b9df147cfe2f191bf112a577c34c",
+        "ordinal": 0,
+        "input_id": "31b19487-6d1e-4839-a406-8d4559e827bb",
+        "detectors": {
+          "models": [
+            {
+              "model_id": "apoce",
+              "detections": [
+                {
+                  "id": "31b19487-6d1e-4839-a406-8d4559e827bb/apoce/0",
+                  "box": [
+                    0.46599146723747253,
+                    0.35278189182281494,
+                    0.7206067442893982,
+                    0.6655228734016418
+                  ],
+                  "score": 0.7845982313156128,
+                  "class_id": 3,
+                  "input_id": "31b19487-6d1e-4839-a406-8d4559e827bb",
+                  "model_id": "apoce",
+                  "raw_class": "excavator",
+                  "catalog_class": "excavator"
+                }
+              ],
+              "image_size": [
+                1217,
+                808
+              ],
+              "latency_ms": 869.8101670015603,
+              "weights_sha256": "db44473297767157a13a3d534668a16b336ab18c54bd1814e39f8eab1874c705"
+            },
+            {
+              "model_id": "kaggle",
+              "detections": [
+                {
+                  "id": "31b19487-6d1e-4839-a406-8d4559e827bb/kaggle/0",
+                  "box": [
+                    0.47397947311401367,
+                    0.34947893023490906,
+                    0.7089911699295044,
+                    0.6535060405731201
+                  ],
+                  "score": 0.2624427378177643,
+                  "class_id": 1,
+                  "input_id": "31b19487-6d1e-4839-a406-8d4559e827bb",
+                  "model_id": "kaggle",
+                  "raw_class": "Excavator",
+                  "catalog_class": "excavator"
+                }
+              ],
+              "image_size": [
+                1217,
+                808
+              ],
+              "latency_ms": 92.42879197699949,
+              "weights_sha256": "0e86af081bd71dc4c9cd9a07bb151949781d8ec86442a0fe334f1bca11be3622"
+            }
+          ],
+          "manifest": {
+            "models": [
+              {
+                "id": "apoce",
+                "sha256": "db44473297767157a13a3d534668a16b336ab18c54bd1814e39f8eab1874c705",
+                "classes": [
+                  "bulldozer",
+                  "concrete-mixer",
+                  "dump-truck",
+                  "excavator",
+                  "lifting-equipment",
+                  "piling-machine",
+                  "tower-crane"
+                ],
+                "mapping": {
+                  "bulldozer": "bulldozer",
+                  "excavator": "excavator",
+                  "dump-truck": "dump_truck",
+                  "tower-crane": null,
+                  "concrete-mixer": "concrete_mixer_truck",
+                  "piling-machine": null,
+                  "lifting-equipment": null
+                },
+                "filename": "apoce.pt"
+              },
+              {
+                "id": "kaggle",
+                "sha256": "0e86af081bd71dc4c9cd9a07bb151949781d8ec86442a0fe334f1bca11be3622",
+                "classes": [
+                  "Dump truck",
+                  "Excavator",
+                  "Motor grader",
+                  "Roller",
+                  "Crane manipulator",
+                  "Gazelle",
+                  "Forklift Standart",
+                  "Bucket loader Big",
+                  "Mixer",
+                  "Tanker",
+                  "Bulldozer",
+                  "Cleaning equipment",
+                  "Truck",
+                  "Trailer",
+                  "Forklift Giraffe",
+                  "Bucket loader Standart",
+                  "Autocran"
+                ],
+                "mapping": {
+                  "Mixer": "concrete_mixer_truck",
+                  "Truck": "truck",
+                  "Roller": "road_roller",
+                  "Tanker": null,
+                  "Gazelle": null,
+                  "Trailer": null,
+                  "Autocran": "mobile_crane",
+                  "Bulldozer": "bulldozer",
+                  "Excavator": "excavator",
+                  "Dump truck": "dump_truck",
+                  "Motor grader": null,
+                  "Forklift Giraffe": null,
+                  "Bucket loader Big": null,
+                  "Crane manipulator": "truck_mounted_crane",
+                  "Forklift Standart": null,
+                  "Cleaning equipment": null,
+                  "Bucket loader Standart": null
+                },
+                "filename": "kaggle.pt"
+              }
+            ],
+            "revision": "hybrid-yolo-v1",
+            "settings": {
+              "iou": 0.7,
+              "conf": 0.25,
+              "half": false,
+              "save": false,
+              "imgsz": 640,
+              "device": "cpu",
+              "augment": false,
+              "max_det": 100,
+              "verbose": false
+            },
+            "dependencies": {
+              "torch": "2.10.0",
+              "torchvision": "0.25.0",
+              "ultralytics": "8.4.163"
+            },
+            "preprocessing": "exif-oriented-rgb-v1"
+          },
+          "oriented_sha256": "44746d4d54ca24e3f94bf06607c7eb228de36863849a3260764918f15b1fe337"
+        },
+        "schema_version": "deepseek-service-v1",
+        "instruction_version": "deepseek-service-v1"
+      },
+      "result": {
+        "raw": {
+          "id": "8bc34fce-9c43-468c-b69e-a50e43e4de7c",
+          "text": {
+            "valid": true,
+            "format": {
+              "name": "frame",
+              "type": "json_schema",
+              "valid": true,
+              "schema": {
+                "type": "object",
+                "required": [
+                  "objects",
+                  "scenes",
+                  "stage",
+                  "stage_reason",
+                  "detection_dispositions",
+                  "frame_usability",
+                  "class_assessability"
+                ],
+                "properties": {
+                  "stage": {
+                    "enum": [
+                      "unknown",
+                      "ambiguous",
+                      "preparation",
+                      "demolition",
+                      "excavation",
+                      "concreting",
+                      "installation",
+                      "roadwork",
+                      "utilities",
+                      "landscaping"
+                    ],
+                    "type": "string"
+                  },
+                  "scenes": {
+                    "type": "object",
+                    "required": [
+                      "excavation_or_trench",
+                      "formwork",
+                      "rebar",
+                      "concrete_surface",
+                      "road_base_or_surface"
+                    ],
+                    "properties": {
+                      "rebar": {
+                        "enum": [
+                          "present",
+                          "absent",
+                          "uncertain",
+                          "unassessable"
+                        ],
+                        "type": "string"
+                      },
+                      "formwork": {
+                        "enum": [
+                          "present",
+                          "absent",
+                          "uncertain",
+                          "unassessable"
+                        ],
+                        "type": "string"
+                      },
+                      "concrete_surface": {
+                        "enum": [
+                          "present",
+                          "absent",
+                          "uncertain",
+                          "unassessable"
+                        ],
+                        "type": "string"
+                      },
+                      "excavation_or_trench": {
+                        "enum": [
+                          "present",
+                          "absent",
+                          "uncertain",
+                          "unassessable"
+                        ],
+                        "type": "string"
+                      },
+                      "road_base_or_surface": {
+                        "enum": [
+                          "present",
+                          "absent",
+                          "uncertain",
+                          "unassessable"
+                        ],
+                        "type": "string"
+                      }
+                    },
+                    "additionalProperties": false
+                  },
+                  "objects": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "type_ru",
+                        "type_en",
+                        "catalog_class",
+                        "status",
+                        "evidence",
+                        "box",
+                        "missing_localization_reason",
+                        "detection_ids",
+                        "disagreements",
+                        "visual_action",
+                        "action_evidence",
+                        "idle_indicator"
+                      ],
+                      "properties": {
+                        "box": {
+                          "anyOf": [
+                            {
+                              "type": "null"
+                            },
+                            {
+                              "type": "array",
+                              "items": {
+                                "type": "number",
+                                "maximum": 1,
+                                "minimum": 0
+                              },
+                              "maxItems": 4,
+                              "minItems": 4
+                            }
+                          ]
+                        },
+                        "status": {
+                          "enum": [
+                            "identified",
+                            "uncertain"
+                          ],
+                          "type": "string"
+                        },
+                        "type_en": {
+                          "type": "string",
+                          "maxLength": 1000,
+                          "minLength": 1
+                        },
+                        "type_ru": {
+                          "type": "string",
+                          "maxLength": 1000,
+                          "minLength": 1
+                        },
+                        "evidence": {
+                          "type": "string",
+                          "maxLength": 1000,
+                          "minLength": 1
+                        },
+                        "catalog_class": {
+                          "enum": [
+                            "excavator",
+                            "dump_truck",
+                            "road_roller",
+                            "truck_mounted_crane",
+                            "concrete_mixer_truck",
+                            "bulldozer",
+                            "truck",
+                            "mobile_crane",
+                            null
+                          ],
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "detection_ids": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "maxItems": 100
+                        },
+                        "disagreements": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "maxLength": 1000,
+                            "minLength": 1
+                          },
+                          "maxItems": 20
+                        },
+                        "visual_action": {
+                          "enum": [
+                            "digging",
+                            "loading",
+                            "compacting",
+                            "pouring",
+                            "lifting",
+                            "moving_material",
+                            "no_visible_action",
+                            "unknown"
+                          ],
+                          "type": "string"
+                        },
+                        "idle_indicator": {
+                          "enum": [
+                            "stowed_work_attachment",
+                            "parked_outside_work_area",
+                            "none"
+                          ],
+                          "type": "string"
+                        },
+                        "action_evidence": {
+                          "type": "string",
+                          "maxLength": 1000,
+                          "minLength": 1
+                        },
+                        "missing_localization_reason": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "maxLength": 1000,
+                              "minLength": 1
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      },
+                      "additionalProperties": false
+                    },
+                    "maxItems": 100
+                  },
+                  "stage_reason": {
+                    "type": "string",
+                    "maxLength": 1000,
+                    "minLength": 1
+                  },
+                  "frame_usability": {
+                    "type": "object",
+                    "required": [
+                      "usable",
+                      "reason"
+                    ],
+                    "properties": {
+                      "reason": {
+                        "type": "string",
+                        "maxLength": 1000,
+                        "minLength": 1
+                      },
+                      "usable": {
+                        "type": "boolean"
+                      }
+                    },
+                    "additionalProperties": false
+                  },
+                  "class_assessability": {
+                    "type": "object",
+                    "required": [
+                      "excavator",
+                      "dump_truck",
+                      "road_roller",
+                      "truck_mounted_crane",
+                      "concrete_mixer_truck",
+                      "bulldozer",
+                      "truck",
+                      "mobile_crane"
+                    ],
+                    "properties": {
+                      "truck": {
+                        "enum": [
+                          "assessable",
+                          "unassessable",
+                          "uncertain"
+                        ],
+                        "type": "string"
+                      },
+                      "bulldozer": {
+                        "enum": [
+                          "assessable",
+                          "unassessable",
+                          "uncertain"
+                        ],
+                        "type": "string"
+                      },
+                      "excavator": {
+                        "enum": [
+                          "assessable",
+                          "unassessable",
+                          "uncertain"
+                        ],
+                        "type": "string"
+                      },
+                      "dump_truck": {
+                        "enum": [
+                          "assessable",
+                          "unassessable",
+                          "uncertain"
+                        ],
+                        "type": "string"
+                      },
+                      "road_roller": {
+                        "enum": [
+                          "assessable",
+                          "unassessable",
+                          "uncertain"
+                        ],
+                        "type": "string"
+                      },
+                      "mobile_crane": {
+                        "enum": [
+                          "assessable",
+                          "unassessable",
+                          "uncertain"
+                        ],
+                        "type": "string"
+                      },
+                      "truck_mounted_crane": {
+                        "enum": [
+                          "assessable",
+                          "unassessable",
+                          "uncertain"
+                        ],
+                        "type": "string"
+                      },
+                      "concrete_mixer_truck": {
+                        "enum": [
+                          "assessable",
+                          "unassessable",
+                          "uncertain"
+                        ],
+                        "type": "string"
+                      }
+                    },
+                    "additionalProperties": false
+                  },
+                  "detection_dispositions": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "detection_id",
+                        "status",
+                        "reason"
+                      ],
+                      "properties": {
+                        "reason": {
+                          "type": "string",
+                          "maxLength": 1000,
+                          "minLength": 1
+                        },
+                        "status": {
+                          "enum": [
+                            "accepted",
+                            "dismissed",
+                            "unresolved"
+                          ],
+                          "type": "string"
+                        },
+                        "detection_id": {
+                          "type": "string"
+                        }
+                      },
+                      "additionalProperties": false
+                    },
+                    "maxItems": 200
+                  }
+                },
+                "additionalProperties": false
+              },
+              "strict": true,
+              "description": null
+            },
+            "verbosity": null
+          },
+          "error": null,
+          "model": "gpt://b1gcpjp9nc4hhoffpf3a/deepseek-v4.1-flash/latest",
+          "tools": [],
+          "top_p": 1.0,
+          "usage": {
+            "valid": true,
+            "input_tokens": 3937,
+            "total_tokens": 4685,
+            "output_tokens": 748,
+            "input_tokens_details": {
+              "valid": true,
+              "tool_tokens": 0,
+              "cached_tokens": 0
+            },
+            "output_tokens_details": {
+              "valid": true,
+              "reasoning_tokens": 0
+            }
+          },
+          "valid": true,
+          "object": "response",
+          "output": [
+            {
+              "id": "00834c24-92ae-4ce9-adc2-f77f4827d3f0",
+              "role": "assistant",
+              "type": "message",
+              "valid": true,
+              "status": "completed",
+              "content": [
+                {
+                  "text": "{\"stage_reason\":\"Видны две работающие землеройные машины и вынутый грунт; сцена соответствует этапу земляных работ (разработка котлована/выемки грунта).\",\"stage\":\"excavation\",\"objects\":[{\"action_evidence\":\"Ковш опущен к грунту, стрела наклонена вниз, машина стоит на грунте у отвала.\",\"evidence\":\"Жёлто-чёрный гусеничный экскаватор с надписью CAT, шарнирно-сочленённая стрела и ковш, кабина слева.\",\"catalog_class\":\"excavator\",\"idle_indicator\":\"none\",\"missing_localization_reason\":null,\"type_en\":\"excavator\",\"box\":[0.0,0.5,0.35,0.72],\"type_ru\":\"экскаватор\",\"visual_action\":\"digging\",\"detection_ids\":[],\"disagreements\":[],\"status\":\"identified\"},{\"action_evidence\":\"Ковш приподнят над отвалом, из ковша сыпется грунт; стрела наклонена вниз.\",\"evidence\":\"Серо-жёлтый гусеничный экскаватор Volvo с шарнирно-сочленённой стрелой и ковшом, кабина справа.\",\"catalog_class\":\"excavator\",\"idle_indicator\":\"none\",\"missing_localization_reason\":null,\"type_en\":\"excavator\",\"box\":[0.46,0.35,0.72,0.67],\"type_ru\":\"экскаватор\",\"visual_action\":\"moving_material\",\"detection_ids\":[\"31b19487-6d1e-4839-a406-8d4559e827bb/apoce/0\",\"31b19487-6d1e-4839-a406-8d4559e827bb/kaggle/0\"],\"disagreements\":[],\"status\":\"identified\"}],\"scenes\":{\"rebar\":\"absent\",\"road_base_or_surface\":\"absent\",\"concrete_surface\":\"absent\",\"excavation_or_trench\":\"present\",\"formwork\":\"absent\"},\"frame_usability\":{\"reason\":\"Кадр резкий, освещение достаточное, техника и грунт видны отчётливо.\",\"usable\":true},\"class_assessability\":{\"concrete_mixer_truck\":\"assessable\",\"dump_truck\":\"assessable\",\"excavator\":\"assessable\",\"road_roller\":\"assessable\",\"bulldozer\":\"assessable\",\"truck\":\"assessable\",\"mobile_crane\":\"assessable\",\"truck_mounted_crane\":\"assessable\"},\"detection_dispositions\":[{\"reason\":\"Обнаружение соответствует серо-жёлтому гусеничному экскаватору Volvo с шарнирно-сочленённой стрелой и ковшом.\",\"detection_id\":\"31b19487-6d1e-4839-a406-8d4559e827bb/apoce/0\",\"status\":\"accepted\"},{\"reason\":\"Обнаружение соответствует тому же серо-жёлтому экскаватору Volvo; дублирует принятое обнаружение, отдельного объекта нет.\",\"detection_id\":\"31b19487-6d1e-4839-a406-8d4559e827bb/kaggle/0\",\"status\":\"accepted\"}]}",
+                  "type": "output_text",
+                  "valid": true,
+                  "annotations": []
+                }
+              ]
+            }
+          ],
+          "prompt": null,
+          "status": "completed",
+          "metadata": {},
+          "reasoning": {
+            "valid": true,
+            "effort": "none",
+            "summary": null,
+            "generate_summary": null
+          },
+          "background": false,
+          "created_at": 1790459470.0,
+          "truncation": null,
+          "temperature": 0.0,
+          "tool_choice": "auto",
+          "instructions": null,
+          "service_tier": "default",
+          "max_tool_calls": null,
+          "max_output_tokens": 8192,
+          "incomplete_details": null,
+          "parallel_tool_calls": false,
+          "previous_response_id": null
+        },
+        "model": "gpt://b1gcpjp9nc4hhoffpf3a/deepseek-v4.1-flash/latest",
+        "usage": {
+          "valid": true,
+          "input_tokens": 3937,
+          "total_tokens": 4685,
+          "output_tokens": 748,
+          "input_tokens_details": {
+            "valid": true,
+            "tool_tokens": 0,
+            "cached_tokens": 0
+          },
+          "output_tokens_details": {
+            "valid": true,
+            "reasoning_tokens": 0
+          }
+        },
+        "valid": true,
+        "value": {
+          "stage": "excavation",
+          "scenes": {
+            "rebar": "absent",
+            "formwork": "absent",
+            "concrete_surface": "absent",
+            "excavation_or_trench": "present",
+            "road_base_or_surface": "absent"
+          },
+          "objects": [
+            {
+              "box": [
+                0.0,
+                0.5,
+                0.35,
+                0.72
+              ],
+              "status": "identified",
+              "type_en": "excavator",
+              "type_ru": "экскаватор",
+              "evidence": "Жёлто-чёрный гусеничный экскаватор с надписью CAT, шарнирно-сочленённая стрела и ковш, кабина слева.",
+              "catalog_class": "excavator",
+              "detection_ids": [],
+              "disagreements": [],
+              "visual_action": "digging",
+              "idle_indicator": "none",
+              "action_evidence": "Ковш опущен к грунту, стрела наклонена вниз, машина стоит на грунте у отвала.",
+              "missing_localization_reason": null
+            },
+            {
+              "box": [
+                0.46,
+                0.35,
+                0.72,
+                0.67
+              ],
+              "status": "identified",
+              "type_en": "excavator",
+              "type_ru": "экскаватор",
+              "evidence": "Серо-жёлтый гусеничный экскаватор Volvo с шарнирно-сочленённой стрелой и ковшом, кабина справа.",
+              "catalog_class": "excavator",
+              "detection_ids": [
+                "31b19487-6d1e-4839-a406-8d4559e827bb/apoce/0",
+                "31b19487-6d1e-4839-a406-8d4559e827bb/kaggle/0"
+              ],
+              "disagreements": [],
+              "visual_action": "moving_material",
+              "idle_indicator": "none",
+              "action_evidence": "Ковш приподнят над отвалом, из ковша сыпется грунт; стрела наклонена вниз.",
+              "missing_localization_reason": null
+            }
+          ],
+          "stage_reason": "Видны две работающие землеройные машины и вынутый грунт; сцена соответствует этапу земляных работ (разработка котлована/выемки грунта).",
+          "frame_usability": {
+            "reason": "Кадр резкий, освещение достаточное, техника и грунт видны отчётливо.",
+            "usable": true
+          },
+          "class_assessability": {
+            "truck": "assessable",
+            "bulldozer": "assessable",
+            "excavator": "assessable",
+            "dump_truck": "assessable",
+            "road_roller": "assessable",
+            "mobile_crane": "assessable",
+            "truck_mounted_crane": "assessable",
+            "concrete_mixer_truck": "assessable"
+          },
+          "detection_dispositions": [
+            {
+              "reason": "Обнаружение соответствует серо-жёлтому гусеничному экскаватору Volvo с шарнирно-сочленённой стрелой и ковшом.",
+              "status": "accepted",
+              "detection_id": "31b19487-6d1e-4839-a406-8d4559e827bb/apoce/0"
+            },
+            {
+              "reason": "Обнаружение соответствует тому же серо-жёлтому экскаватору Volvo; дублирует принятое обнаружение, отдельного объекта нет.",
+              "status": "accepted",
+              "detection_id": "31b19487-6d1e-4839-a406-8d4559e827bb/kaggle/0"
+            }
+          ]
+        },
+        "detectors": {
+          "models": [
+            {
+              "model_id": "apoce",
+              "detections": [
+                {
+                  "id": "31b19487-6d1e-4839-a406-8d4559e827bb/apoce/0",
+                  "box": [
+                    0.46599146723747253,
+                    0.35278189182281494,
+                    0.7206067442893982,
+                    0.6655228734016418
+                  ],
+                  "score": 0.7845982313156128,
+                  "class_id": 3,
+                  "input_id": "31b19487-6d1e-4839-a406-8d4559e827bb",
+                  "model_id": "apoce",
+                  "raw_class": "excavator",
+                  "catalog_class": "excavator"
+                }
+              ],
+              "image_size": [
+                1217,
+                808
+              ],
+              "latency_ms": 869.8101670015603,
+              "weights_sha256": "db44473297767157a13a3d534668a16b336ab18c54bd1814e39f8eab1874c705"
+            },
+            {
+              "model_id": "kaggle",
+              "detections": [
+                {
+                  "id": "31b19487-6d1e-4839-a406-8d4559e827bb/kaggle/0",
+                  "box": [
+                    0.47397947311401367,
+                    0.34947893023490906,
+                    0.7089911699295044,
+                    0.6535060405731201
+                  ],
+                  "score": 0.2624427378177643,
+                  "class_id": 1,
+                  "input_id": "31b19487-6d1e-4839-a406-8d4559e827bb",
+                  "model_id": "kaggle",
+                  "raw_class": "Excavator",
+                  "catalog_class": "excavator"
+                }
+              ],
+              "image_size": [
+                1217,
+                808
+              ],
+              "latency_ms": 92.42879197699949,
+              "weights_sha256": "0e86af081bd71dc4c9cd9a07bb151949781d8ec86442a0fe334f1bca11be3622"
+            }
+          ],
+          "manifest": {
+            "models": [
+              {
+                "id": "apoce",
+                "sha256": "db44473297767157a13a3d534668a16b336ab18c54bd1814e39f8eab1874c705",
+                "classes": [
+                  "bulldozer",
+                  "concrete-mixer",
+                  "dump-truck",
+                  "excavator",
+                  "lifting-equipment",
+                  "piling-machine",
+                  "tower-crane"
+                ],
+                "mapping": {
+                  "bulldozer": "bulldozer",
+                  "excavator": "excavator",
+                  "dump-truck": "dump_truck",
+                  "tower-crane": null,
+                  "concrete-mixer": "concrete_mixer_truck",
+                  "piling-machine": null,
+                  "lifting-equipment": null
+                },
+                "filename": "apoce.pt"
+              },
+              {
+                "id": "kaggle",
+                "sha256": "0e86af081bd71dc4c9cd9a07bb151949781d8ec86442a0fe334f1bca11be3622",
+                "classes": [
+                  "Dump truck",
+                  "Excavator",
+                  "Motor grader",
+                  "Roller",
+                  "Crane manipulator",
+                  "Gazelle",
+                  "Forklift Standart",
+                  "Bucket loader Big",
+                  "Mixer",
+                  "Tanker",
+                  "Bulldozer",
+                  "Cleaning equipment",
+                  "Truck",
+                  "Trailer",
+                  "Forklift Giraffe",
+                  "Bucket loader Standart",
+                  "Autocran"
+                ],
+                "mapping": {
+                  "Mixer": "concrete_mixer_truck",
+                  "Truck": "truck",
+                  "Roller": "road_roller",
+                  "Tanker": null,
+                  "Gazelle": null,
+                  "Trailer": null,
+                  "Autocran": "mobile_crane",
+                  "Bulldozer": "bulldozer",
+                  "Excavator": "excavator",
+                  "Dump truck": "dump_truck",
+                  "Motor grader": null,
+                  "Forklift Giraffe": null,
+                  "Bucket loader Big": null,
+                  "Crane manipulator": "truck_mounted_crane",
+                  "Forklift Standart": null,
+                  "Cleaning equipment": null,
+                  "Bucket loader Standart": null
+                },
+                "filename": "kaggle.pt"
+              }
+            ],
+            "revision": "hybrid-yolo-v1",
+            "settings": {
+              "iou": 0.7,
+              "conf": 0.25,
+              "half": false,
+              "save": false,
+              "imgsz": 640,
+              "device": "cpu",
+              "augment": false,
+              "max_det": 100,
+              "verbose": false
+            },
+            "dependencies": {
+              "torch": "2.10.0",
+              "torchvision": "0.25.0",
+              "ultralytics": "8.4.163"
+            },
+            "preprocessing": "exif-oriented-rgb-v1"
+          },
+          "oriented_sha256": "44746d4d54ca24e3f94bf06607c7eb228de36863849a3260764918f15b1fe337"
+        },
+        "rejection": null,
+        "image_size": [
+          1217,
+          808
+        ],
+        "latency_ms": 7584.616792039014,
+        "schema_version": "hybrid-photo-signals-v1",
+        "instruction_version": "hybrid-photo-signals-v1"
+      },
+      "state": "completed"
+    },
+    {
+      "id": "b102a53a-a040-4f0b-9fe9-f6e581c374ec",
+      "kind": "assessment",
+      "input_id": null,
+      "context": {
+        "plan": {
+          "entries": [
+            {
+              "id": "c86b78a4-ab02-41fd-8576-f50a5da044fd",
+              "state": "active",
+              "title": "Устройство котлована",
+              "ends_at": "2026-09-27T15:00:00+00:00",
+              "stage_key": "excavation",
+              "starts_at": "2026-09-27T05:00:00+00:00",
+              "allowed_equipment": [
+                "bulldozer",
+                "concrete_mixer_truck",
+                "dump_truck",
+                "mobile_crane",
+                "road_roller",
+                "truck",
+                "truck_mounted_crane"
+              ],
+              "excluded_equipment": [],
+              "expected_equipment": [
+                "excavator"
+              ]
+            }
+          ],
+          "zone_id": "d14aba73-45d9-4b55-955d-f8a9c2154e5a",
+          "revision_id": "6c5f6df4-0949-4532-88d7-3c8702ca726a"
+        },
+        "frames": [
+          {
+            "stage": "excavation",
+            "sha256": "32f4416faf9046893efb5697dcce9a88e3a9b9df147cfe2f191bf112a577c34c",
+            "ordinal": 0,
+            "input_id": "31b19487-6d1e-4839-a406-8d4559e827bb",
+            "detectors": {
+              "models": [
+                {
+                  "model_id": "apoce",
+                  "detections": [
+                    {
+                      "id": "31b19487-6d1e-4839-a406-8d4559e827bb/apoce/0",
+                      "box": [
+                        0.46599146723747253,
+                        0.35278189182281494,
+                        0.7206067442893982,
+                        0.6655228734016418
+                      ],
+                      "score": 0.7845982313156128,
+                      "class_id": 3,
+                      "input_id": "31b19487-6d1e-4839-a406-8d4559e827bb",
+                      "model_id": "apoce",
+                      "raw_class": "excavator",
+                      "catalog_class": "excavator"
+                    }
+                  ],
+                  "image_size": [
+                    1217,
+                    808
+                  ],
+                  "latency_ms": 869.8101670015603,
+                  "weights_sha256": "db44473297767157a13a3d534668a16b336ab18c54bd1814e39f8eab1874c705"
+                },
+                {
+                  "model_id": "kaggle",
+                  "detections": [
+                    {
+                      "id": "31b19487-6d1e-4839-a406-8d4559e827bb/kaggle/0",
+                      "box": [
+                        0.47397947311401367,
+                        0.34947893023490906,
+                        0.7089911699295044,
+                        0.6535060405731201
+                      ],
+                      "score": 0.2624427378177643,
+                      "class_id": 1,
+                      "input_id": "31b19487-6d1e-4839-a406-8d4559e827bb",
+                      "model_id": "kaggle",
+                      "raw_class": "Excavator",
+                      "catalog_class": "excavator"
+                    }
+                  ],
+                  "image_size": [
+                    1217,
+                    808
+                  ],
+                  "latency_ms": 92.42879197699949,
+                  "weights_sha256": "0e86af081bd71dc4c9cd9a07bb151949781d8ec86442a0fe334f1bca11be3622"
+                }
+              ],
+              "manifest": {
+                "models": [
+                  {
+                    "id": "apoce",
+                    "sha256": "db44473297767157a13a3d534668a16b336ab18c54bd1814e39f8eab1874c705",
+                    "classes": [
+                      "bulldozer",
+                      "concrete-mixer",
+                      "dump-truck",
+                      "excavator",
+                      "lifting-equipment",
+                      "piling-machine",
+                      "tower-crane"
+                    ],
+                    "mapping": {
+                      "bulldozer": "bulldozer",
+                      "excavator": "excavator",
+                      "dump-truck": "dump_truck",
+                      "tower-crane": null,
+                      "concrete-mixer": "concrete_mixer_truck",
+                      "piling-machine": null,
+                      "lifting-equipment": null
+                    },
+                    "filename": "apoce.pt"
+                  },
+                  {
+                    "id": "kaggle",
+                    "sha256": "0e86af081bd71dc4c9cd9a07bb151949781d8ec86442a0fe334f1bca11be3622",
+                    "classes": [
+                      "Dump truck",
+                      "Excavator",
+                      "Motor grader",
+                      "Roller",
+                      "Crane manipulator",
+                      "Gazelle",
+                      "Forklift Standart",
+                      "Bucket loader Big",
+                      "Mixer",
+                      "Tanker",
+                      "Bulldozer",
+                      "Cleaning equipment",
+                      "Truck",
+                      "Trailer",
+                      "Forklift Giraffe",
+                      "Bucket loader Standart",
+                      "Autocran"
+                    ],
+                    "mapping": {
+                      "Mixer": "concrete_mixer_truck",
+                      "Truck": "truck",
+                      "Roller": "road_roller",
+                      "Tanker": null,
+                      "Gazelle": null,
+                      "Trailer": null,
+                      "Autocran": "mobile_crane",
+                      "Bulldozer": "bulldozer",
+                      "Excavator": "excavator",
+                      "Dump truck": "dump_truck",
+                      "Motor grader": null,
+                      "Forklift Giraffe": null,
+                      "Bucket loader Big": null,
+                      "Crane manipulator": "truck_mounted_crane",
+                      "Forklift Standart": null,
+                      "Cleaning equipment": null,
+                      "Bucket loader Standart": null
+                    },
+                    "filename": "kaggle.pt"
+                  }
+                ],
+                "revision": "hybrid-yolo-v1",
+                "settings": {
+                  "iou": 0.7,
+                  "conf": 0.25,
+                  "half": false,
+                  "save": false,
+                  "imgsz": 640,
+                  "device": "cpu",
+                  "augment": false,
+                  "max_det": 100,
+                  "verbose": false
+                },
+                "dependencies": {
+                  "torch": "2.10.0",
+                  "torchvision": "0.25.0",
+                  "ultralytics": "8.4.163"
+                },
+                "preprocessing": "exif-oriented-rgb-v1"
+              },
+              "oriented_sha256": "44746d4d54ca24e3f94bf06607c7eb228de36863849a3260764918f15b1fe337"
+            },
+            "captured_at": "2026-09-27T12:00:00+03:00",
+            "observations": [
+              {
+                "id": "ecbcc162-8e7e-5b95-bb32-d55a4f948658",
+                "box": [
+                  0.0,
+                  0.5,
+                  0.35,
+                  0.72
+                ],
+                "kind": "equipment",
+                "status": "identified",
+                "type_en": "excavator",
+                "type_ru": "экскаватор",
+                "visible": true,
+                "evidence": "Жёлто-чёрный гусеничный экскаватор с надписью CAT, шарнирно-сочленённая стрела и ковш, кабина слева.",
+                "catalog_class": "excavator",
+                "detection_ids": [],
+                "disagreements": [],
+                "visual_action": "digging",
+                "idle_indicator": "none",
+                "action_evidence": "Ковш опущен к грунту, стрела наклонена вниз, машина стоит на грунте у отвала.",
+                "missing_localization_reason": null
+              },
+              {
+                "id": "87fb94e6-2bd2-5e03-9d61-d656f455b6f5",
+                "box": [
+                  0.46,
+                  0.35,
+                  0.72,
+                  0.67
+                ],
+                "kind": "equipment",
+                "status": "identified",
+                "type_en": "excavator",
+                "type_ru": "экскаватор",
+                "visible": true,
+                "evidence": "Серо-жёлтый гусеничный экскаватор Volvo с шарнирно-сочленённой стрелой и ковшом, кабина справа.",
+                "catalog_class": "excavator",
+                "detection_ids": [
+                  "31b19487-6d1e-4839-a406-8d4559e827bb/apoce/0",
+                  "31b19487-6d1e-4839-a406-8d4559e827bb/kaggle/0"
+                ],
+                "disagreements": [],
+                "visual_action": "moving_material",
+                "idle_indicator": "none",
+                "action_evidence": "Ковш приподнят над отвалом, из ковша сыпется грунт; стрела наклонена вниз.",
+                "missing_localization_reason": null
+              },
+              {
+                "id": "31b19487-6d1e-4839-a406-8d4559e827bb/scene/rebar",
+                "kind": "scene",
+                "name": "rebar",
+                "state": "absent",
+                "visible": false
+              },
+              {
+                "id": "31b19487-6d1e-4839-a406-8d4559e827bb/scene/road_base_or_surface",
+                "kind": "scene",
+                "name": "road_base_or_surface",
+                "state": "absent",
+                "visible": false
+              },
+              {
+                "id": "31b19487-6d1e-4839-a406-8d4559e827bb/scene/concrete_surface",
+                "kind": "scene",
+                "name": "concrete_surface",
+                "state": "absent",
+                "visible": false
+              },
+              {
+                "id": "31b19487-6d1e-4839-a406-8d4559e827bb/scene/excavation_or_trench",
+                "kind": "scene",
+                "name": "excavation_or_trench",
+                "state": "present",
+                "visible": true
+              },
+              {
+                "id": "31b19487-6d1e-4839-a406-8d4559e827bb/scene/formwork",
+                "kind": "scene",
+                "name": "formwork",
+                "state": "absent",
+                "visible": false
+              }
+            ],
+            "stage_reason": "Видны две работающие землеройные машины и вынутый грунт; сцена соответствует этапу земляных работ (разработка котлована/выемки грунта).",
+            "frame_usability": {
+              "reason": "Кадр резкий, освещение достаточное, техника и грунт видны отчётливо.",
+              "usable": true
+            },
+            "source_artifact_id": "02d79ee5-e76a-4705-beb0-cf1db127edaa",
+            "class_assessability": {
+              "truck": "assessable",
+              "bulldozer": "assessable",
+              "excavator": "assessable",
+              "dump_truck": "assessable",
+              "road_roller": "assessable",
+              "mobile_crane": "assessable",
+              "truck_mounted_crane": "assessable",
+              "concrete_mixer_truck": "assessable"
+            },
+            "detection_dispositions": [
+              {
+                "reason": "Обнаружение соответствует серо-жёлтому гусеничному экскаватору Volvo с шарнирно-сочленённой стрелой и ковшом.",
+                "status": "accepted",
+                "detection_id": "31b19487-6d1e-4839-a406-8d4559e827bb/apoce/0"
+              },
+              {
+                "reason": "Обнаружение соответствует тому же серо-жёлтому экскаватору Volvo; дублирует принятое обнаружение, отдельного объекта нет.",
+                "status": "accepted",
+                "detection_id": "31b19487-6d1e-4839-a406-8d4559e827bb/kaggle/0"
+              }
+            ]
+          }
+        ],
+        "history": [],
+        "zone_id": "d14aba73-45d9-4b55-955d-f8a9c2154e5a",
+        "rule_results": [
+          {
+            "kind": "insufficient_observations",
+            "reason": "At least three assessable frames of the active zone are required.",
+            "entry_id": null
+          }
+        ],
+        "schema_version": "hybrid-photo-signals-v1",
+        "declared_context": {
+          "period": "2026-09-27T12:00:00+03:00",
+          "zone_id": "d14aba73-45d9-4b55-955d-f8a9c2154e5a",
+          "scenario": "Учебный график; демонстрационная дата, фактическое время съёмки неизвестно. Наблюдение земляных работ",
+          "project_id": "ce575eca-8b2c-47f8-8dd7-f6373313a627",
+          "capture_times": [
+            "2026-09-27T12:00:00+03:00"
+          ],
+          "observation_area": "Наблюдение земляных работ",
+          "plan_revision_id": "6c5f6df4-0949-4532-88d7-3c8702ca726a",
+          "cloud_processing_consent": true
+        },
+        "history_eligible": true,
+        "comparison_method": "individual_frames_only",
+        "instruction_version": "hybrid-photo-signals-v1"
+      },
+      "result": {
+        "raw": {
+          "id": "cfc97e87-d2c5-42b4-9dd6-cc7e0af504bf",
+          "text": {
+            "valid": true,
+            "format": {
+              "name": "assessment",
+              "type": "json_schema",
+              "valid": true,
+              "schema": {
+                "type": "object",
+                "required": [
+                  "summary",
+                  "stage_hypothesis",
+                  "risks",
+                  "recommendations",
+                  "limitations",
+                  "activity",
+                  "stage_hypotheses"
+                ],
+                "properties": {
+                  "risks": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "category",
+                        "text",
+                        "frame_ids",
+                        "observation_ids",
+                        "cause",
+                        "work_entry_id",
+                        "impact",
+                        "recommended_check",
+                        "limitations"
+                      ],
+                      "properties": {
+                        "text": {
+                          "type": "string",
+                          "maxLength": 1000,
+                          "minLength": 1
+                        },
+                        "cause": {
+                          "enum": [
+                            "expected_equipment_missing",
+                            "equipment_not_planned",
+                            "possible_idle",
+                            "visible_process_risk",
+                            "visible_safety_risk",
+                            "stage_plan_mismatch"
+                          ],
+                          "type": "string"
+                        },
+                        "impact": {
+                          "type": "string",
+                          "maxLength": 1000,
+                          "minLength": 1
+                        },
+                        "category": {
+                          "enum": [
+                            "process",
+                            "plan",
+                            "safety"
+                          ],
+                          "type": "string"
+                        },
+                        "frame_ids": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          },
+                          "minItems": 1
+                        },
+                        "limitations": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "maxLength": 1000,
+                            "minLength": 1
+                          },
+                          "maxItems": 20,
+                          "minItems": 1
+                        },
+                        "work_entry_id": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "maxLength": 1000,
+                              "minLength": 1
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "observation_ids": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          },
+                          "minItems": 1
+                        },
+                        "recommended_check": {
+                          "type": "string",
+                          "maxLength": 1000,
+                          "minLength": 1
+                        }
+                      },
+                      "additionalProperties": false
+                    },
+                    "maxItems": 30
+                  },
+                  "summary": {
+                    "type": "string",
+                    "maxLength": 1000,
+                    "minLength": 1
+                  },
+                  "activity": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "state",
+                        "reason",
+                        "uncertainty",
+                        "comparison",
+                        "frame_ids",
+                        "observation_ids",
+                        "grounds"
+                      ],
+                      "properties": {
+                        "state": {
+                          "enum": [
+                            "working_signs",
+                            "possible_idle",
+                            "insufficient_data"
+                          ],
+                          "type": "string"
+                        },
+                        "reason": {
+                          "type": "string",
+                          "maxLength": 1000,
+                          "minLength": 1
+                        },
+                        "grounds": {
+                          "enum": [
+                            "visible_work_action",
+                            "comparable_series_without_work_signs",
+                            "insufficient_evidence"
+                          ],
+                          "type": "string"
+                        },
+                        "frame_ids": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "maxItems": 100
+                        },
+                        "comparison": {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "required": [
+                                "same_view",
+                                "view_reason",
+                                "object_observation_ids",
+                                "identity_reason",
+                                "non_work_evidence"
+                              ],
+                              "properties": {
+                                "same_view": {
+                                  "type": "boolean"
+                                },
+                                "view_reason": {
+                                  "type": "string",
+                                  "maxLength": 1000,
+                                  "minLength": 1
+                                },
+                                "identity_reason": {
+                                  "type": "string",
+                                  "maxLength": 1000,
+                                  "minLength": 1
+                                },
+                                "non_work_evidence": {
+                                  "type": "string",
+                                  "maxLength": 1000,
+                                  "minLength": 1
+                                },
+                                "object_observation_ids": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "string",
+                                    "minLength": 1
+                                  },
+                                  "maxItems": 100
+                                }
+                              },
+                              "additionalProperties": false
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "uncertainty": {
+                          "type": "string",
+                          "maxLength": 1000,
+                          "minLength": 1
+                        },
+                        "observation_ids": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "maxItems": 100
+                        }
+                      },
+                      "additionalProperties": false
+                    },
+                    "maxItems": 100,
+                    "minItems": 1
+                  },
+                  "limitations": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "maxLength": 1000,
+                      "minLength": 1
+                    },
+                    "maxItems": 30,
+                    "minItems": 1
+                  },
+                  "recommendations": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "maxLength": 1000,
+                      "minLength": 1
+                    },
+                    "maxItems": 30
+                  },
+                  "stage_hypotheses": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "frame_ids",
+                        "observation_ids",
+                        "stage",
+                        "reason",
+                        "work_entry_id"
+                      ],
+                      "properties": {
+                        "stage": {
+                          "enum": [
+                            "unknown",
+                            "ambiguous",
+                            "preparation",
+                            "demolition",
+                            "excavation",
+                            "concreting",
+                            "installation",
+                            "roadwork",
+                            "utilities",
+                            "landscaping"
+                          ],
+                          "type": "string"
+                        },
+                        "reason": {
+                          "type": "string",
+                          "maxLength": 1000,
+                          "minLength": 1
+                        },
+                        "frame_ids": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "maxItems": 100
+                        },
+                        "work_entry_id": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "maxLength": 1000,
+                              "minLength": 1
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "observation_ids": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "maxItems": 100
+                        }
+                      },
+                      "additionalProperties": false
+                    },
+                    "maxItems": 100
+                  },
+                  "stage_hypothesis": {
+                    "type": "object",
+                    "required": [
+                      "stage",
+                      "reason"
+                    ],
+                    "properties": {
+                      "stage": {
+                        "enum": [
+                          "unknown",
+                          "ambiguous",
+                          "preparation",
+                          "demolition",
+                          "excavation",
+                          "concreting",
+                          "installation",
+                          "roadwork",
+                          "utilities",
+                          "landscaping"
+                        ],
+                        "type": "string"
+                      },
+                      "reason": {
+                        "type": "string",
+                        "maxLength": 1000,
+                        "minLength": 1
+                      }
+                    },
+                    "additionalProperties": false
+                  }
+                },
+                "additionalProperties": false
+              },
+              "strict": true,
+              "description": null
+            },
+            "verbosity": null
+          },
+          "error": null,
+          "model": "gpt://b1gcpjp9nc4hhoffpf3a/deepseek-v4.1-flash/latest",
+          "tools": [],
+          "top_p": 1.0,
+          "usage": {
+            "valid": true,
+            "input_tokens": 5081,
+            "total_tokens": 6548,
+            "output_tokens": 1467,
+            "input_tokens_details": {
+              "valid": true,
+              "tool_tokens": 0,
+              "cached_tokens": 0
+            },
+            "output_tokens_details": {
+              "valid": true,
+              "reasoning_tokens": 0
+            }
+          },
+          "valid": true,
+          "object": "response",
+          "output": [
+            {
+              "id": "7e6ddb8b-ee73-479e-8667-fad46ac97451",
+              "role": "assistant",
+              "type": "message",
+              "valid": true,
+              "status": "completed",
+              "content": [
+                {
+                  "text": "{\"summary\":\"На единственном пригодном кадре (input_id 31b19487-6d1e-4839-a406-8d4559e827bb, 2026-09-27T12:00:00+03:00) в зоне d14aba73-45d9-4b55-955d-f8a9c2154e5a видны два гусеничных экскаватора в котловане с вынутым грунтом: жёлто-чёрный CAT (наблюдение ecbcc162-8e7e-5b95-bb32-d55a4f948658) с опущенным к грунту ковшом и серо-жёлтый Volvo (наблюдение 87fb94e6-2bd2-5e03-9d61-d656f455b6f5) с приподнятым ковшом, из которого сыпется грунт. Сцена содержит признак excavation_or_trench; признаки rebar, formwork, road_base_or_surface и concrete_surface отсутствуют. По привязанному плану (ревизия 6c5f6df4-0949-4532-88d7-3c8702ca726a) активна запись c86b78a4-ab02-41fd-8576-f50a5da044fd «Устройство котлована», этап excavation, с ожидаемой техникой excavator; обе видимые машины соответствуют ожидаемой технике, признаков отсутствия ожидаемой или незапланированной техники по правилам не выявлено. Правило rule_results сообщает insufficient_observations: для оценки динамики/простоев требуется не менее трёх приго\" ,\"risks\":[],\"activity\":[{\"grounds\":\"visible_work_action\",\"reason\":\"На кадре 31b19487-6d1e-4839-a406-8d4559e827bb виден жёлто-чёрный гусеничный экскаватор CAT с опущенным к грунту ковшом и наклонённой вниз стрелой у отвала; наблюдение ecbcc162-8e7e-5b95-bb32-d55a4f948658 описывает visual_action=digging.\",\"observation_ids\":[\"ecbcc162-8e7e-5b95-bb32-d55a4f948658\"],\"comparison\":null,\"frame_ids\":[\"31b19487-6d1e-4839-a406-8d4559e827bb\"],\"state\":\"working_signs\",\"uncertainty\":\"Один кадр не позволяет судить о продолжительности или цикличности действия; видимое положение ковша может быть кратковременной фазой цикла.\"},{\"grounds\":\"visible_work_action\",\"reason\":\"На кадре 31b19487-6d1e-4839-a406-8d4559e827bb виден серо-жёлтый гусеничный экскаватор Volvo с приподнятым ковшом, из которого сыпется грунт; наблюдение 87fb94e6-2bd2-5e03-9d61-d656f455b6f5 описывает visual_action=moving_material.\",\"observation_ids\":[\"87fb94e6-2bd2-5e03-9d61-d656f455b6f5\"],\"comparison\":null,\"frame_ids\":[\"31b19487-6d1e-4839-a406-8d4559e827bb\"],\"state\":\"working_signs\",\"uncertainty\":\"Один кадр не даёт независимого подтверждения динамики; разлёт грунта из ковша — видимый признак перемещения материала, но не измеренная производительность.\"}],\"stage_hypothesis\":{\"reason\":\"Видны две землеройные машины в котловане с вынутым грунтом и признак excavation_or_trench; это соответствует этапу разработки котлована/выемки грунта.\",\"stage\":\"excavation\"},\"stage_hypotheses\":[{\"reason\":\"Сцена с двумя экскаваторами и вынутым грунтом, признак excavation_or_trench присутствует; соответствует активной записи плана «Устройство котлована» (этап excavation).\",\"observation_ids\":[\"ecbcc162-8e7e-5b95-bb32-d55a4f948658\",\"87fb94e6-2bd2-5e03-9d61-d656f455b6f5\",\"31b19487-6d1e-4839-a406-8d4559e827bb/scene/excavation_or_trench\"],\"frame_ids\":[\"31b19487-6d1e-4839-a406-8d4559e827bb\"],\"stage\":\"excavation\",\"work_entry_id\":\"c86b78a4-ab02-41fd-8576-f50a5da044fd\"}],\"recommendations\":[\"Проверить привязку времени съёмки: заявленная дата 2026-09-27 является демонстрационной, фактическое время съёмки неизвестно, а на изображении присутствует иная календарная отметка.\",\"Для оценки простоев и динамики выполнить дополнительную съёмку той же зоны не менее чем тремя независимыми кадрами с известными интервалами времени.\",\"Подтвердить фактический этап работ и состав техники у ответственного за производство работ; кадр не заменяет исполнительную документацию.\",\"Уточнить, относятся ли оба экскаватора к одной захватке и одному технологическому циклу, либо один из них выполняет вспомогательную операцию.\"],\"limitations\":[\"Анализ основан на одном пригодном кадре; правило rule_results фиксирует insufficient_observations (требуется не менее трёх пригодных кадров активной зоны).\",\"Отсутствие признаков rebar, formwork, road_base_or_surface и concrete_surface на кадре не доказывает их отсутствие на площадке.\",\"Границы зоны, расстояния, отметки и нормативные отступы по фотографии не измеряются и не подтверждаются.\",\"Заявленное время съёмки носит демонстрационный характер; фактическое время и интервалы между кадрами неизвестны.\",\"Стадия работ является гипотезой, а не подтверждённым человеком фактом; требуется проверка специалистом.\"]}",
+                  "type": "output_text",
+                  "valid": true,
+                  "annotations": []
+                }
+              ]
+            }
+          ],
+          "prompt": null,
+          "status": "completed",
+          "metadata": {},
+          "reasoning": {
+            "valid": true,
+            "effort": "none",
+            "summary": null,
+            "generate_summary": null
+          },
+          "background": false,
+          "created_at": 1790459477.0,
+          "truncation": null,
+          "temperature": 0.0,
+          "tool_choice": "auto",
+          "instructions": null,
+          "service_tier": "default",
+          "max_tool_calls": null,
+          "max_output_tokens": 8192,
+          "incomplete_details": null,
+          "parallel_tool_calls": false,
+          "previous_response_id": null
+        },
+        "model": "gpt://b1gcpjp9nc4hhoffpf3a/deepseek-v4.1-flash/latest",
+        "usage": null,
+        "valid": false,
+        "value": null,
+        "rejection": "hybrid_duration_unverified",
+        "image_size": null,
+        "latency_ms": 8773.915208992548,
+        "schema_version": "hybrid-photo-signals-v1",
+        "instruction_version": "hybrid-photo-signals-v1"
+      },
+      "state": "invalid"
+    }
+  ],
+  "cloud_processing_consent": true,
+  "run_id": "1cee4b83-f0e2-413c-a578-bda31ae20288",
+  "purpose": "ordinary",
+  "state": "failed",
+  "error_code": "deepseek_call_failed_or_uncertain",
+  "created_at": "2026-09-26T21:51:05.622409+00:00",
+  "context": {
+    "period": "2026-09-27T12:00:00+03:00",
+    "zone_id": "d14aba73-45d9-4b55-955d-f8a9c2154e5a",
+    "scenario": "Учебный график; демонстрационная дата, фактическое время съёмки неизвестно. Наблюдение земляных работ",
+    "project_id": "ce575eca-8b2c-47f8-8dd7-f6373313a627",
+    "capture_times": [
+      "2026-09-27T12:00:00+03:00"
+    ],
+    "observation_area": "Наблюдение земляных работ",
+    "plan_revision_id": "6c5f6df4-0949-4532-88d7-3c8702ca726a",
+    "cloud_processing_consent": true
+  },
+  "requested_classes": [
+    "excavator",
+    "dump_truck",
+    "road_roller",
+    "truck_mounted_crane",
+    "concrete_mixer_truck",
+    "bulldozer",
+    "truck",
+    "mobile_crane"
+  ],
+  "project_id": "ce575eca-8b2c-47f8-8dd7-f6373313a627",
+  "zone_id": "d14aba73-45d9-4b55-955d-f8a9c2154e5a",
+  "profile_id": "febf2296-d710-55f6-8700-da674519cdac",
+  "authorization_revision": 1,
+  "binding_kind": "admitted_profile",
+  "profile_snapshot": {
+    "kind": "deepseek",
+    "store": false,
+    "adapter": {
+      "code": "yandex_deepseek",
+      "version": "hybrid-photo-signals-v1"
+    },
+    "runtime": {
+      "sdk_retries": 0,
+      "batch_timeout_seconds": 1200,
+      "per_image_timeout_seconds": 120
+    },
+    "folder_id": "b1gcpjp9nc4hhoffpf3a",
+    "temperature": 0,
+    "schema_sha256": "1c632d9e2dc208871381dd68e52ba274093795a02167e9f1bffd6d1fe79bb32a",
+    "schema_version": "hybrid-photo-signals-v1",
+    "reasoning_effort": "none",
+    "max_output_tokens": 8192,
+    "instruction_sha256": "bde10bde147c5225f5fcba1040d96cd59c41671da832cbdfb6fc87bcac28fd21",
+    "instruction_version": "hybrid-photo-signals-v1",
+    "data_logging_enabled": false,
+    "observation_contract": "hybrid-photo-signals-v1",
+    "detector_manifest_sha256": "cba5bbcdac16c41845cd55e29d9c52c9a987640d2e6d1cb5f6c374054e9d0256",
+    "requested_model_identity": {
+      "id": "gpt://b1gcpjp9nc4hhoffpf3a/deepseek-v4.1-flash/latest"
+    }
+  },
+  "taxonomy_snapshot": {
+    "revision": "presence-only-v1",
+    "portable_classes": [
+      "excavator",
+      "dump_truck"
+    ]
+  },
+  "intent": "observation_only",
+  "stage": null,
+  "retry_predecessor_id": null,
+  "retry_successor_id": null,
+  "retry_of_run_id": null,
+  "successor_run_id": null,
+  "policy_snapshot": {
+    "intent": "observation_only",
+    "revision": "observations-only-v1"
+  },
+  "rule_snapshot": null,
+  "stages": [
+    {
+      "name": "input_registration",
+      "state": "succeeded",
+      "reason": null
+    },
+    {
+      "name": "yolo_detection",
+      "state": "succeeded",
+      "reason": null
+    },
+    {
+      "name": "hybrid_reconciliation",
+      "state": "succeeded",
+      "reason": null
+    },
+    {
+      "name": "series_aggregation",
+      "state": "failed",
+      "reason": "deepseek_call_failed_or_uncertain"
+    },
+    {
+      "name": "rule_evaluation",
+      "state": "skipped",
+      "reason": "dependency_failed"
+    },
+    {
+      "name": "result_projection",
+      "state": "skipped",
+      "reason": "dependency_failed"
+    }
+  ],
+  "inputs": [
+    {
+      "input_id": "31b19487-6d1e-4839-a406-8d4559e827bb",
+      "ordinal": 0,
+      "sha256": "32f4416faf9046893efb5697dcce9a88e3a9b9df147cfe2f191bf112a577c34c",
+      "size": 2173301,
+      "artifact_id": "02d79ee5-e76a-4705-beb0-cf1db127edaa",
+      "media_type": "image/png"
+    }
+  ],
+  "observations": [],
+  "objects": [],
+  "scene_features": [],
+  "plan_binding": {
+    "zone_id": "d14aba73-45d9-4b55-955d-f8a9c2154e5a",
+    "revision_id": "6c5f6df4-0949-4532-88d7-3c8702ca726a",
+    "capture_times": [
+      "2026-09-27T12:00:00+03:00"
+    ]
+  },
+  "planned_works": [
+    {
+      "id": "c86b78a4-ab02-41fd-8576-f50a5da044fd",
+      "title": "Устройство котлована",
+      "stage_key": "excavation",
+      "starts_at": "2026-09-27T05:00:00+00:00",
+      "ends_at": "2026-09-27T15:00:00+00:00",
+      "state": "active"
+    }
+  ],
+  "stage_confirmation": null,
+  "native_evidence": null,
+  "native_evidence_by_frame": [],
+  "outcome": null,
+  "result_projection": null,
+  "retry_eligible": false
+}

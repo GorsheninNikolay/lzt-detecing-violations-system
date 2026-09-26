@@ -78,6 +78,9 @@ async def lifespan(app: FastAPI):
             try:
                 snapshot, _ = store.require_authorized(uuid.UUID(runtime_profile))
                 DeepSeek(snapshot, config.cloud_api_key)
+                if snapshot.get("observation_contract") == "hybrid-photo-signals-v1":
+                    from app.profiles.yolo import detectors
+                    await asyncio.to_thread(detectors)
             except Exception:
                 state.code = "observer_snapshot_invalid"
                 return
@@ -195,6 +198,17 @@ def create_app() -> FastAPI:
             return JSONResponse({"code": "evaluation_report_unavailable"}, status_code=503, headers=headers)
         except Exception:
             return JSONResponse({"code": "readiness_unavailable"}, status_code=503, headers=headers)
+
+    @app.get("/hybrid-readiness")
+    async def read_hybrid_readiness() -> JSONResponse:
+        from app.application.hybrid_readiness import read_report
+        binding = getattr(getattr(app.state, 'claim_loop', None), 'runtime_binding', None)
+        try:
+            profile, _ = await asyncio.to_thread(app.state.store.require_authorized, binding[0], binding[1]) if binding else (None, None)
+            report = await asyncio.to_thread(read_report, profile)
+        except Exception:
+            report = {'status': 'blocked', 'code': 'current_report_unavailable'}
+        return JSONResponse(report, headers={'Cache-Control': 'no-store'})
 
     @app.get("/provider-comparison")
     async def read_provider_comparison() -> JSONResponse:

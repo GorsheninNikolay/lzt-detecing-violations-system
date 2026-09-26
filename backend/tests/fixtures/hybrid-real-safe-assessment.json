@@ -1,0 +1,225 @@
+{
+  "value": {
+    "summary": "На единственном пригодном кадре (input_id 31b19487-6d1e-4839-a406-8d4559e827bb, 2026-09-27T12:00:00+03:00) в зоне d14aba73-45d9-4b55-955d-f8a9c2154e5a видны два гусеничных экскаватора в котловане с вынутым грунтом: жёлто-чёрный CAT (наблюдение ecbcc162-8e7e-5b95-bb32-d55a4f948658) с опущенным к грунту ковшом и серо-жёлтый Volvo (наблюдение 87fb94e6-2bd2-5e03-9d61-d656f455b6f5) с приподнятым ковшом, из которого сыпется грунт. Сцена содержит признак excavation_or_trench; признаки rebar, formwork, road_base_or_surface и concrete_surface отсутствуют. По привязанному плану (ревизия 6c5f6df4-0949-4532-88d7-3c8702ca726a) активна запись c86b78a4-ab02-41fd-8576-f50a5da044fd «Устройство котлована», этап excavation, с ожидаемой техникой excavator; обе видимые машины соответствуют ожидаемой технике, признаков отсутствия ожидаемой или незапланированной техники по правилам не выявлено. Правило rule_results сообщает insufficient_observations: для оценки динамики/простоев требуется не менее трёх приго",
+    "risks": [],
+    "activity": [
+      {
+        "grounds": "visible_work_action",
+        "reason": "На кадре 31b19487-6d1e-4839-a406-8d4559e827bb виден жёлто-чёрный гусеничный экскаватор CAT с опущенным к грунту ковшом и наклонённой вниз стрелой у отвала; наблюдение ecbcc162-8e7e-5b95-bb32-d55a4f948658 описывает visual_action=digging.",
+        "observation_ids": [
+          "ecbcc162-8e7e-5b95-bb32-d55a4f948658"
+        ],
+        "comparison": null,
+        "frame_ids": [
+          "31b19487-6d1e-4839-a406-8d4559e827bb"
+        ],
+        "state": "working_signs",
+        "uncertainty": "Один кадр не позволяет судить о продолжительности или цикличности действия; видимое положение ковша может быть кратковременной фазой цикла."
+      },
+      {
+        "grounds": "visible_work_action",
+        "reason": "На кадре 31b19487-6d1e-4839-a406-8d4559e827bb виден серо-жёлтый гусеничный экскаватор Volvo с приподнятым ковшом, из которого сыпется грунт; наблюдение 87fb94e6-2bd2-5e03-9d61-d656f455b6f5 описывает visual_action=moving_material.",
+        "observation_ids": [
+          "87fb94e6-2bd2-5e03-9d61-d656f455b6f5"
+        ],
+        "comparison": null,
+        "frame_ids": [
+          "31b19487-6d1e-4839-a406-8d4559e827bb"
+        ],
+        "state": "working_signs",
+        "uncertainty": "Один кадр не даёт независимого подтверждения динамики; разлёт грунта из ковша — видимый признак перемещения материала, но не измеренная производительность."
+      }
+    ],
+    "stage_hypothesis": {
+      "reason": "Видны две землеройные машины в котловане с вынутым грунтом и признак excavation_or_trench; это соответствует этапу разработки котлована/выемки грунта.",
+      "stage": "excavation"
+    },
+    "stage_hypotheses": [
+      {
+        "reason": "Сцена с двумя экскаваторами и вынутым грунтом, признак excavation_or_trench присутствует; соответствует активной записи плана «Устройство котлована» (этап excavation).",
+        "observation_ids": [
+          "ecbcc162-8e7e-5b95-bb32-d55a4f948658",
+          "87fb94e6-2bd2-5e03-9d61-d656f455b6f5",
+          "31b19487-6d1e-4839-a406-8d4559e827bb/scene/excavation_or_trench"
+        ],
+        "frame_ids": [
+          "31b19487-6d1e-4839-a406-8d4559e827bb"
+        ],
+        "stage": "excavation",
+        "work_entry_id": "c86b78a4-ab02-41fd-8576-f50a5da044fd"
+      }
+    ],
+    "recommendations": [
+      "Проверить привязку времени съёмки: заявленная дата 2026-09-27 является демонстрационной, фактическое время съёмки неизвестно, а на изображении присутствует иная календарная отметка.",
+      "Для оценки простоев и динамики выполнить дополнительную съёмку той же зоны не менее чем тремя независимыми кадрами с известными интервалами времени.",
+      "Подтвердить фактический этап работ и состав техники у ответственного за производство работ; кадр не заменяет исполнительную документацию.",
+      "Уточнить, относятся ли оба экскаватора к одной захватке и одному технологическому циклу, либо один из них выполняет вспомогательную операцию."
+    ],
+    "limitations": [
+      "Анализ основан на одном пригодном кадре; правило rule_results фиксирует insufficient_observations (требуется не менее трёх пригодных кадров активной зоны).",
+      "Отсутствие признаков rebar, formwork, road_base_or_surface и concrete_surface на кадре не доказывает их отсутствие на площадке.",
+      "Границы зоны, расстояния, отметки и нормативные отступы по фотографии не измеряются и не подтверждаются.",
+      "Заявленное время съёмки носит демонстрационный характер; фактическое время и интервалы между кадрами неизвестны.",
+      "Стадия работ является гипотезой, а не подтверждённым человеком фактом; требуется проверка специалистом."
+    ]
+  },
+  "context": {
+    "frames": [
+      {
+        "stage": "excavation",
+        "sha256": "32f4416faf9046893efb5697dcce9a88e3a9b9df147cfe2f191bf112a577c34c",
+        "ordinal": 0,
+        "input_id": "31b19487-6d1e-4839-a406-8d4559e827bb",
+        "captured_at": "2026-09-27T12:00:00+03:00",
+        "observations": [
+          {
+            "id": "ecbcc162-8e7e-5b95-bb32-d55a4f948658",
+            "box": [
+              0.0,
+              0.5,
+              0.35,
+              0.72
+            ],
+            "kind": "equipment",
+            "status": "identified",
+            "type_en": "excavator",
+            "type_ru": "экскаватор",
+            "visible": true,
+            "evidence": "Жёлто-чёрный гусеничный экскаватор с надписью CAT, шарнирно-сочленённая стрела и ковш, кабина слева.",
+            "catalog_class": "excavator",
+            "detection_ids": [],
+            "disagreements": [],
+            "visual_action": "digging",
+            "idle_indicator": "none",
+            "action_evidence": "Ковш опущен к грунту, стрела наклонена вниз, машина стоит на грунте у отвала.",
+            "missing_localization_reason": null
+          },
+          {
+            "id": "87fb94e6-2bd2-5e03-9d61-d656f455b6f5",
+            "box": [
+              0.46,
+              0.35,
+              0.72,
+              0.67
+            ],
+            "kind": "equipment",
+            "status": "identified",
+            "type_en": "excavator",
+            "type_ru": "экскаватор",
+            "visible": true,
+            "evidence": "Серо-жёлтый гусеничный экскаватор Volvo с шарнирно-сочленённой стрелой и ковшом, кабина справа.",
+            "catalog_class": "excavator",
+            "detection_ids": [
+              "31b19487-6d1e-4839-a406-8d4559e827bb/apoce/0",
+              "31b19487-6d1e-4839-a406-8d4559e827bb/kaggle/0"
+            ],
+            "disagreements": [],
+            "visual_action": "moving_material",
+            "idle_indicator": "none",
+            "action_evidence": "Ковш приподнят над отвалом, из ковша сыпется грунт; стрела наклонена вниз.",
+            "missing_localization_reason": null
+          },
+          {
+            "id": "31b19487-6d1e-4839-a406-8d4559e827bb/scene/rebar",
+            "kind": "scene",
+            "name": "rebar",
+            "state": "absent",
+            "visible": false
+          },
+          {
+            "id": "31b19487-6d1e-4839-a406-8d4559e827bb/scene/road_base_or_surface",
+            "kind": "scene",
+            "name": "road_base_or_surface",
+            "state": "absent",
+            "visible": false
+          },
+          {
+            "id": "31b19487-6d1e-4839-a406-8d4559e827bb/scene/concrete_surface",
+            "kind": "scene",
+            "name": "concrete_surface",
+            "state": "absent",
+            "visible": false
+          },
+          {
+            "id": "31b19487-6d1e-4839-a406-8d4559e827bb/scene/excavation_or_trench",
+            "kind": "scene",
+            "name": "excavation_or_trench",
+            "state": "present",
+            "visible": true
+          },
+          {
+            "id": "31b19487-6d1e-4839-a406-8d4559e827bb/scene/formwork",
+            "kind": "scene",
+            "name": "formwork",
+            "state": "absent",
+            "visible": false
+          }
+        ],
+        "stage_reason": "Видны две работающие землеройные машины и вынутый грунт; сцена соответствует этапу земляных работ (разработка котлована/выемки грунта).",
+        "frame_usability": {
+          "reason": "Кадр резкий, освещение достаточное, техника и грунт видны отчётливо.",
+          "usable": true
+        },
+        "source_artifact_id": "02d79ee5-e76a-4705-beb0-cf1db127edaa",
+        "class_assessability": {
+          "truck": "assessable",
+          "bulldozer": "assessable",
+          "excavator": "assessable",
+          "dump_truck": "assessable",
+          "road_roller": "assessable",
+          "mobile_crane": "assessable",
+          "truck_mounted_crane": "assessable",
+          "concrete_mixer_truck": "assessable"
+        },
+        "detection_dispositions": [
+          {
+            "reason": "Обнаружение соответствует серо-жёлтому гусеничному экскаватору Volvo с шарнирно-сочленённой стрелой и ковшом.",
+            "status": "accepted",
+            "detection_id": "31b19487-6d1e-4839-a406-8d4559e827bb/apoce/0"
+          },
+          {
+            "reason": "Обнаружение соответствует тому же серо-жёлтому экскаватору Volvo; дублирует принятое обнаружение, отдельного объекта нет.",
+            "status": "accepted",
+            "detection_id": "31b19487-6d1e-4839-a406-8d4559e827bb/kaggle/0"
+          }
+        ]
+      }
+    ],
+    "plan": {
+      "entries": [
+        {
+          "id": "c86b78a4-ab02-41fd-8576-f50a5da044fd",
+          "state": "active",
+          "title": "Устройство котлована",
+          "ends_at": "2026-09-27T15:00:00+00:00",
+          "stage_key": "excavation",
+          "starts_at": "2026-09-27T05:00:00+00:00",
+          "allowed_equipment": [
+            "bulldozer",
+            "concrete_mixer_truck",
+            "dump_truck",
+            "mobile_crane",
+            "road_roller",
+            "truck",
+            "truck_mounted_crane"
+          ],
+          "excluded_equipment": [],
+          "expected_equipment": [
+            "excavator"
+          ]
+        }
+      ],
+      "zone_id": "d14aba73-45d9-4b55-955d-f8a9c2154e5a",
+      "revision_id": "6c5f6df4-0949-4532-88d7-3c8702ca726a"
+    },
+    "zone_id": "d14aba73-45d9-4b55-955d-f8a9c2154e5a",
+    "comparison_method": "individual_frames_only",
+    "rule_results": [
+      {
+        "kind": "insufficient_observations",
+        "reason": "At least three assessable frames of the active zone are required.",
+        "entry_id": null
+      }
+    ]
+  }
+}

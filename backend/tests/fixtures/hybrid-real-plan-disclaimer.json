@@ -1,0 +1,433 @@
+{
+  "context": {
+    "plan": {
+      "entries": [
+        {
+          "id": "c86b78a4-ab02-41fd-8576-f50a5da044fd",
+          "state": "active",
+          "title": "Устройство котлована",
+          "ends_at": "2026-09-27T15:00:00+00:00",
+          "stage_key": "excavation",
+          "starts_at": "2026-09-27T05:00:00+00:00",
+          "allowed_equipment": [
+            "bulldozer",
+            "concrete_mixer_truck",
+            "dump_truck",
+            "mobile_crane",
+            "road_roller",
+            "truck",
+            "truck_mounted_crane"
+          ],
+          "excluded_equipment": [],
+          "expected_equipment": [
+            "excavator"
+          ]
+        }
+      ],
+      "zone_id": "d14aba73-45d9-4b55-955d-f8a9c2154e5a",
+      "revision_id": "6c5f6df4-0949-4532-88d7-3c8702ca726a"
+    },
+    "frames": [
+      {
+        "stage": "excavation",
+        "sha256": "32f4416faf9046893efb5697dcce9a88e3a9b9df147cfe2f191bf112a577c34c",
+        "ordinal": 0,
+        "input_id": "7af5a8b4-d4bf-4530-bbeb-39d5f9d0c2db",
+        "detectors": {
+          "models": [
+            {
+              "model_id": "apoce",
+              "detections": [
+                {
+                  "id": "7af5a8b4-d4bf-4530-bbeb-39d5f9d0c2db/apoce/0",
+                  "box": [
+                    0.46599146723747253,
+                    0.35278189182281494,
+                    0.7206067442893982,
+                    0.6655228734016418
+                  ],
+                  "score": 0.7845982313156128,
+                  "class_id": 3,
+                  "input_id": "7af5a8b4-d4bf-4530-bbeb-39d5f9d0c2db",
+                  "model_id": "apoce",
+                  "raw_class": "excavator",
+                  "catalog_class": "excavator"
+                }
+              ],
+              "image_size": [
+                1217,
+                808
+              ],
+              "latency_ms": 796.3158749626018,
+              "weights_sha256": "db44473297767157a13a3d534668a16b336ab18c54bd1814e39f8eab1874c705"
+            },
+            {
+              "model_id": "kaggle",
+              "detections": [
+                {
+                  "id": "7af5a8b4-d4bf-4530-bbeb-39d5f9d0c2db/kaggle/0",
+                  "box": [
+                    0.47397947311401367,
+                    0.34947893023490906,
+                    0.7089911699295044,
+                    0.6535060405731201
+                  ],
+                  "score": 0.2624427378177643,
+                  "class_id": 1,
+                  "input_id": "7af5a8b4-d4bf-4530-bbeb-39d5f9d0c2db",
+                  "model_id": "kaggle",
+                  "raw_class": "Excavator",
+                  "catalog_class": "excavator"
+                }
+              ],
+              "image_size": [
+                1217,
+                808
+              ],
+              "latency_ms": 101.20870801620185,
+              "weights_sha256": "0e86af081bd71dc4c9cd9a07bb151949781d8ec86442a0fe334f1bca11be3622"
+            }
+          ],
+          "manifest": {
+            "models": [
+              {
+                "id": "apoce",
+                "sha256": "db44473297767157a13a3d534668a16b336ab18c54bd1814e39f8eab1874c705",
+                "classes": [
+                  "bulldozer",
+                  "concrete-mixer",
+                  "dump-truck",
+                  "excavator",
+                  "lifting-equipment",
+                  "piling-machine",
+                  "tower-crane"
+                ],
+                "mapping": {
+                  "bulldozer": "bulldozer",
+                  "excavator": "excavator",
+                  "dump-truck": "dump_truck",
+                  "tower-crane": null,
+                  "concrete-mixer": "concrete_mixer_truck",
+                  "piling-machine": null,
+                  "lifting-equipment": null
+                },
+                "filename": "apoce.pt"
+              },
+              {
+                "id": "kaggle",
+                "sha256": "0e86af081bd71dc4c9cd9a07bb151949781d8ec86442a0fe334f1bca11be3622",
+                "classes": [
+                  "Dump truck",
+                  "Excavator",
+                  "Motor grader",
+                  "Roller",
+                  "Crane manipulator",
+                  "Gazelle",
+                  "Forklift Standart",
+                  "Bucket loader Big",
+                  "Mixer",
+                  "Tanker",
+                  "Bulldozer",
+                  "Cleaning equipment",
+                  "Truck",
+                  "Trailer",
+                  "Forklift Giraffe",
+                  "Bucket loader Standart",
+                  "Autocran"
+                ],
+                "mapping": {
+                  "Mixer": "concrete_mixer_truck",
+                  "Truck": "truck",
+                  "Roller": "road_roller",
+                  "Tanker": null,
+                  "Gazelle": null,
+                  "Trailer": null,
+                  "Autocran": "mobile_crane",
+                  "Bulldozer": "bulldozer",
+                  "Excavator": "excavator",
+                  "Dump truck": "dump_truck",
+                  "Motor grader": null,
+                  "Forklift Giraffe": null,
+                  "Bucket loader Big": null,
+                  "Crane manipulator": "truck_mounted_crane",
+                  "Forklift Standart": null,
+                  "Cleaning equipment": null,
+                  "Bucket loader Standart": null
+                },
+                "filename": "kaggle.pt"
+              }
+            ],
+            "revision": "hybrid-yolo-v1",
+            "settings": {
+              "iou": 0.7,
+              "conf": 0.25,
+              "half": false,
+              "save": false,
+              "imgsz": 640,
+              "device": "cpu",
+              "augment": false,
+              "max_det": 100,
+              "verbose": false
+            },
+            "dependencies": {
+              "torch": "2.10.0",
+              "torchvision": "0.25.0",
+              "ultralytics": "8.4.163"
+            },
+            "preprocessing": "exif-oriented-rgb-v1"
+          },
+          "oriented_sha256": "44746d4d54ca24e3f94bf06607c7eb228de36863849a3260764918f15b1fe337"
+        },
+        "captured_at": "2026-09-27T12:00:00+03:00",
+        "observations": [
+          {
+            "id": "6be27f13-d551-59e3-a408-5693e723f46a",
+            "box": [
+              0.05,
+              0.5,
+              0.35,
+              0.72
+            ],
+            "kind": "equipment",
+            "status": "identified",
+            "type_en": "excavator",
+            "type_ru": "экскаватор",
+            "visible": true,
+            "evidence": "Жёлто-чёрный гусеничный экскаватор с надписью CAT, кабина и стрела с ковшом; рядом куча грунта.",
+            "catalog_class": "excavator",
+            "detection_ids": [],
+            "disagreements": [],
+            "visual_action": "digging",
+            "idle_indicator": "none",
+            "action_evidence": "Ковш опущен к грунту, стрела наклонена вниз, что визуально совместимо с копанием или перемещением грунта.",
+            "missing_localization_reason": null
+          },
+          {
+            "id": "6e70113e-4f11-501a-88a6-ae8207bab9e7",
+            "box": [
+              0.46,
+              0.35,
+              0.72,
+              0.67
+            ],
+            "kind": "equipment",
+            "status": "identified",
+            "type_en": "excavator",
+            "type_ru": "экскаватор",
+            "visible": true,
+            "evidence": "Серо-жёлтый гусеничный экскаватор Volvo с кабиной и стрелой, ковш над кучей грунта.",
+            "catalog_class": "excavator",
+            "detection_ids": [
+              "7af5a8b4-d4bf-4530-bbeb-39d5f9d0c2db/apoce/0",
+              "7af5a8b4-d4bf-4530-bbeb-39d5f9d0c2db/kaggle/0"
+            ],
+            "disagreements": [],
+            "visual_action": "moving_material",
+            "idle_indicator": "none",
+            "action_evidence": "Ковш поднят над грунтом, стрела наклонена вниз; видимая поза совместима с перемещением или выгрузкой грунта.",
+            "missing_localization_reason": null
+          },
+          {
+            "id": "7af5a8b4-d4bf-4530-bbeb-39d5f9d0c2db/scene/rebar",
+            "kind": "scene",
+            "name": "rebar",
+            "state": "uncertain",
+            "visible": false
+          },
+          {
+            "id": "7af5a8b4-d4bf-4530-bbeb-39d5f9d0c2db/scene/road_base_or_surface",
+            "kind": "scene",
+            "name": "road_base_or_surface",
+            "state": "absent",
+            "visible": false
+          },
+          {
+            "id": "7af5a8b4-d4bf-4530-bbeb-39d5f9d0c2db/scene/concrete_surface",
+            "kind": "scene",
+            "name": "concrete_surface",
+            "state": "absent",
+            "visible": false
+          },
+          {
+            "id": "7af5a8b4-d4bf-4530-bbeb-39d5f9d0c2db/scene/excavation_or_trench",
+            "kind": "scene",
+            "name": "excavation_or_trench",
+            "state": "present",
+            "visible": true
+          },
+          {
+            "id": "7af5a8b4-d4bf-4530-bbeb-39d5f9d0c2db/scene/formwork",
+            "kind": "scene",
+            "name": "formwork",
+            "state": "uncertain",
+            "visible": false
+          }
+        ],
+        "stage_reason": "Видны две землеройные машины, работающие с грунтом в котловане; это соответствует этапу земляных работ.",
+        "frame_usability": {
+          "reason": "Кадр пригоден для визуального анализа: техника и грунт видны достаточно чётко.",
+          "usable": true
+        },
+        "source_artifact_id": "655f9659-b153-4708-afd4-4804867f13c9",
+        "class_assessability": {
+          "truck": "assessable",
+          "bulldozer": "assessable",
+          "excavator": "assessable",
+          "dump_truck": "assessable",
+          "road_roller": "assessable",
+          "mobile_crane": "assessable",
+          "truck_mounted_crane": "assessable",
+          "concrete_mixer_truck": "assessable"
+        },
+        "detection_dispositions": [
+          {
+            "reason": "Обнаружение соответствует видимому гусеничному экскаватору Volvo в центре кадра.",
+            "status": "accepted",
+            "detection_id": "7af5a8b4-d4bf-4530-bbeb-39d5f9d0c2db/apoce/0"
+          },
+          {
+            "reason": "Обнаружение соответствует тому же видимому гусеничному экскаватору Volvo; класс подтверждён визуально.",
+            "status": "accepted",
+            "detection_id": "7af5a8b4-d4bf-4530-bbeb-39d5f9d0c2db/kaggle/0"
+          }
+        ]
+      }
+    ],
+    "history": [],
+    "zone_id": "d14aba73-45d9-4b55-955d-f8a9c2154e5a",
+    "rule_results": [
+      {
+        "kind": "insufficient_observations",
+        "reason": "At least three assessable frames of the active zone are required.",
+        "entry_id": "c86b78a4-ab02-41fd-8576-f50a5da044fd",
+        "supporting_input_ids": [
+          "7af5a8b4-d4bf-4530-bbeb-39d5f9d0c2db"
+        ]
+      }
+    ],
+    "schema_version": "hybrid-photo-signals-v1",
+    "declared_context": {
+      "period": "2026-09-27T12:00:00+03:00",
+      "zone_id": "d14aba73-45d9-4b55-955d-f8a9c2154e5a",
+      "scenario": "Учебный график; демонстрационная дата, фактическое время съёмки неизвестно. Наблюдение земляных работ",
+      "project_id": "ce575eca-8b2c-47f8-8dd7-f6373313a627",
+      "capture_times": [
+        "2026-09-27T12:00:00+03:00"
+      ],
+      "observation_area": "Наблюдение земляных работ",
+      "plan_revision_id": "6c5f6df4-0949-4532-88d7-3c8702ca726a",
+      "cloud_processing_consent": true
+    },
+    "history_eligible": true,
+    "comparison_method": "individual_frames_only",
+    "instruction_version": "hybrid-photo-signals-v1"
+  },
+  "assessment": {
+    "summary": "На единственном пригодном кадре (input_id 7af5a8b4-d4bf-4530-bbeb-39d5f9d0c2db, 2026-09-27T12:00:00+03:00) в зоне d14aba73-45d9-4b55-955d-f8a9c2154e5a видны два гусеничных экскаватора (CAT и Volvo) в котловане с грунтом; сцена содержит признак excavation_or_trench. Привязанный план (ревизия 6c5f6df4-0949-4532-88d7-3c8702ca726a, работа c86b78a4-ab02-41fd-8576-f50a5da044fd, этап excavation, 05:00–15:00 UTC) допускает экскаватор как ожидаемую технику, поэтому признаков отсутствия или неучтённой техники по правилам не выявлено. Правило дало insufficient_observations: для оценки динамики/простоев требуется не менее трёх пригодных кадров активной зоны, а имеется один. Выводы о простое, длительности, нарушениях или отставаниях невозможны.",
+    "risks": [
+      {
+        "observation_ids": [
+          "6be27f13-d551-59e3-a408-5693e723f46a",
+          "6e70113e-4f11-501a-88a6-ae8207bab9e7",
+          "7af5a8b4-d4bf-4530-bbeb-39d5f9d0c2db/scene/excavation_or_trench"
+        ],
+        "frame_ids": [
+          "7af5a8b4-d4bf-4530-bbeb-39d5f9d0c2db"
+        ],
+        "work_entry_id": "c86b78a4-ab02-41fd-8576-f50a5da044fd",
+        "impact": "Возможен контакт людей с движущейся техникой или падение в незакрытый откос котлована; последствия потенциально тяжёлые.",
+        "cause": "visible_safety_risk",
+        "recommended_check": "Проверить ограждение и знаки опасной зоны, наличие сигнальщика, маршруты пешеходов и отсутствие людей в радиусе действия ковшей; подтвердить очным осмотром.",
+        "text": "В кадре две единицы техники работают с грунтом вблизи открытого котлована; в левой нижней части кадра видна тень человека, что может указывать на присутствие людей в рабочей зоне. Это возможный сигнал безопасности, требующий проверки человеком, а не подтверждённое нарушение.",
+        "category": "safety",
+        "limitations": [
+          "Один кадр, нет динамики и привязки к разметке зоны.",
+          "Тень не позволяет достоверно установить положение и количество людей.",
+          "Расстояния и нормативные разрывы по фото не измеряются."
+        ]
+      },
+      {
+        "observation_ids": [
+          "6be27f13-d551-59e3-a408-5693e723f46a",
+          "6e70113e-4f11-501a-88a6-ae8207bab9e7",
+          "7af5a8b4-d4bf-4530-bbeb-39d5f9d0c2db/scene/excavation_or_trench"
+        ],
+        "frame_ids": [
+          "7af5a8b4-d4bf-4530-bbeb-39d5f9d0c2db"
+        ],
+        "work_entry_id": "c86b78a4-ab02-41fd-8576-f50a5da044fd",
+        "impact": "Возможны наезд на персонал, повреждение подземных коммуникаций или обрушение борта выемки при работе двух машин в стеснённых условиях.",
+        "cause": "visible_process_risk",
+        "recommended_check": "Уточнить схему движения техники, наличие разграничения маршрутов и сигнальщика, а также фактическое состояние откосов и наличие коммуникаций по исполнительной документации.",
+        "text": "Два экскаватора одновременно работают с грунтом в одной зоне; взаимное расположение машин и кучи грунта у бровки котлована может создавать технологические затруднения. Сигнал носит предположительный характер.",
+        "category": "process",
+        "limitations": [
+          "Отсутствуют данные о фактических маршрутах и зонах ответственности машин.",
+          "Нет сведений о подземных коммуникациях в кадре.",
+          "Оценка по одному моменту времени."
+        ]
+      }
+    ],
+    "activity": [
+      {
+        "grounds": "visible_work_action",
+        "reason": "У экскаватора CAT ковш опущен к грунту, стрела наклонена вниз — видимая поза совместима с копанием/перемещением грунта; это видимое рабочее действие в текущем кадре.",
+        "observation_ids": [
+          "6be27f13-d551-59e3-a408-5693e723f46a"
+        ],
+        "comparison": null,
+        "frame_ids": [
+          "7af5a8b4-d4bf-4530-bbeb-39d5f9d0c2db"
+        ],
+        "state": "working_signs",
+        "uncertainty": "Один кадр не позволяет подтвердить непрерывность работы; поза может быть кратковременной фазой цикла."
+      },
+      {
+        "grounds": "visible_work_action",
+        "reason": "У экскаватора Volvo ковш поднят над кучей грунта, стрела наклонена вниз — видимая поза совместима с перемещением или выгрузкой грунта; это видимое рабочее действие в текущем кадре.",
+        "observation_ids": [
+          "6e70113e-4f11-501a-88a6-ae8207bab9e7"
+        ],
+        "comparison": null,
+        "frame_ids": [
+          "7af5a8b4-d4bf-4530-bbeb-39d5f9d0c2db"
+        ],
+        "state": "working_signs",
+        "uncertainty": "Один кадр не позволяет отличить рабочую фазу цикла от кратковременной остановки с поднятым ковшом."
+      }
+    ],
+    "stage_hypothesis": {
+      "reason": "В кадре видны две землеройные машины, работающие с грунтом в котловане, и признак excavation_or_trench; это соответствует этапу земляных работ по активной записи плана.",
+      "stage": "excavation"
+    },
+    "stage_hypotheses": [
+      {
+        "reason": "Видимые действия экскаваторов по перемещению грунта и наличие выемки/котлована соответствуют этапу земляных работ, заявленному в активной записи плана.",
+        "observation_ids": [
+          "6be27f13-d551-59e3-a408-5693e723f46a",
+          "6e70113e-4f11-501a-88a6-ae8207bab9e7",
+          "7af5a8b4-d4bf-4530-bbeb-39d5f9d0c2db/scene/excavation_or_trench"
+        ],
+        "frame_ids": [
+          "7af5a8b4-d4bf-4530-bbeb-39d5f9d0c2db"
+        ],
+        "stage": "excavation",
+        "work_entry_id": "c86b78a4-ab02-41fd-8576-f50a5da044fd"
+      }
+    ],
+    "recommendations": [
+      "Выполнить очный осмотр зоны d14aba73-45d9-4b55-955d-f8a9c2154e5a: границы опасной зоны, ограждения, маршруты людей и техники.",
+      "Собрать дополнительные пригодные кадры той же зоны (не менее трёх) для оценки динамики и обоснованных выводов о работе/простое.",
+      "Проверить по исполнительной документации наличие и положение подземных коммуникаций в месте производства земляных работ.",
+      "Уточнить у ответственного лица фактические зоны работы каждой машины и наличие сигнальщика."
+    ],
+    "limitations": [
+      "Доступен только один пригодный кадр; правило оценки дало insufficient_observations (требуется не менее трёх кадров активной зоны).",
+      "Отсутствуют независимые сравнимые кадры, поэтому выводы о простое, длительности или динамике невозможны.",
+      "Фактическое время съёмки неизвестно (учебный/демонстрационный контекст), метка на изображении не является достоверным временем.",
+      "Фотоматериал не позволяет измерять расстояния, уклоны и нормативные разрывы.",
+      "Отсутствие видимых признаков не является доказательством отсутствия риска или нарушения.",
+      "Плановая привязка ограничена одной активной записью; выводы о графике и отставаниях не делаются."
+    ]
+  }
+}

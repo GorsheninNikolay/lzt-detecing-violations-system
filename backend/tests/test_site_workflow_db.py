@@ -236,3 +236,75 @@ def test_signal_summary_is_scoped_before_filter_and_list_limit():
             assert client.get(scope).json()['summary'] == {'open_count': 519, 'attention_count': 500, 'insufficient_data_count': 19}
     finally:
         store.close()
+
+
+@pytest.mark.skipif(not os.getenv('TEST_DATABASE_URL'), reason='isolated PostgreSQL required')
+def test_calendar_read_preserves_historical_closed_signal_fingerprint():
+    from app.application.signals import _fingerprint
+    store = PostgresStore(os.environ['TEST_DATABASE_URL'])
+    app = FastAPI(); app.include_router(site_router); app.include_router(signals_router)
+    app.state.store = store
+    app.state.readiness = type('Ready', (), {'ready': type('Event', (), {'is_set': lambda _: True})()})()
+    try:
+        with TestClient(app) as client:
+            project = client.post('/projects', json={'name': f'Calendar {uuid4()}', 'timezone':'UTC'}).json()
+            zone = project['default_zone_id']
+            work = client.get('/catalog/works').json()['works'][0]['id']
+            client.put(f'/zones/{zone}/plan', json={'expected_revision':0,'entries':[{'catalog_work_id':work,
+                'start_at':'2020-01-01T00:00:00Z','end_at':'2020-01-02T00:00:00Z','state':'active'}]})
+            plan = client.get(f'/zones/{zone}/plan').json(); entry = plan['entries'][0]['id']; signal = uuid4()
+            with store.engine.begin() as db:
+                db.execute(text('''INSERT INTO site_signals(id,fingerprint,zone_id,revision_id,work_entry_id,kind,state,basis)
+                    VALUES (:id,:fingerprint,:zone,:revision,:entry,'completion_unconfirmed','closed','{}')'''),
+                    {'id':signal,'fingerprint':_fingerprint(None,plan['revision_id'],entry,'completion_unconfirmed'),
+                     'zone':zone,'revision':plan['revision_id'],'entry':entry})
+            for _ in range(2):
+                result = client.get(f'/signals?zone_id={zone}').json()
+                assert result['new_count'] == 0
+                assert [(s['id'], s['state']) for s in result['signals']] == [(str(signal), 'closed')]
+    finally:
+        store.close()
+
+
+@pytest.mark.skipif(not os.getenv('TEST_DATABASE_URL'), reason='isolated PostgreSQL required')
+def test_confirm_stage_uses_boundary_times_concurrent_operations_and_frozen_revision():
+    store = PostgresStore(os.environ['TEST_DATABASE_URL'])
+    app = FastAPI(); app.include_router(site_router); app.include_router(signals_router)
+    app.state.store = store
+    app.state.readiness = type('Ready', (), {'ready': type('Event', (), {'is_set': lambda _: True})()})()
+    try:
+        with TestClient(app) as client:
+            project = client.post('/projects', json={'name':f'Stage boundary {uuid4()}','timezone':'UTC'}).json()
+            zone = project['default_zone_id']; works = client.get('/catalog/works').json()['works']
+            entries = [{'catalog_work_id':works[i]['id'],'start_at':start,'end_at':end,'state':'active','stage_key':stage}
+                for i,(start,end,stage) in enumerate([
+                    ('2030-01-01T10:00:00Z','2030-01-01T11:00:00Z','excavation'),
+                    ('2030-01-01T11:00:00Z','2030-01-01T12:00:00Z','concreting')])]
+            client.put(f'/zones/{zone}/plan',json={'expected_revision':0,'entries':entries})
+            plan = client.get(f'/zones/{zone}/plan').json()
+            work_entry = next(e['id'] for e in plan['entries'] if e['stage_key']=='concreting')
+            run = uuid4(); inputs = [uuid4() for _ in range(4)]
+            times = ['2030-01-01T10:00:00Z','2030-01-01T11:00:00Z','2030-01-01T11:30:00Z','2030-01-01T12:00:00Z']
+            with store.engine.begin() as db:
+                db.execute(text("INSERT INTO analysis_runs(id,state,purpose,analysis_intent) VALUES (:id,'succeeded','ordinary','observation_only')"), {'id':run})
+                db.execute(text('''INSERT INTO run_plan_bindings(run_id,zone_id,revision_id,frame_times)
+                    VALUES (:run,:zone,:revision,CAST(:times AS jsonb))'''), {'run':run,'zone':zone,'revision':plan['revision_id'],'times':json.dumps(times)})
+                for ordinal, input_id in enumerate(inputs):
+                    db.execute(text('''INSERT INTO run_inputs(run_id,ordinal,input_id,sha256,size,context)
+                        VALUES (:run,:ordinal,:input,:sha,1,'{}')'''),
+                        {'run':run,'ordinal':ordinal,'input':input_id,'sha':str(ordinal)*64})
+            newer = client.put(f'/zones/{zone}/plan',json={'expected_revision':1,'entries':[]}).json()
+            response = client.post(f'/runs/{run}/confirm-stage',json={'stage':'excavation','comment':'Checked'})
+            assert response.status_code == 200, response.text
+            assert client.post(f'/runs/{run}/confirm-stage',json={'stage':'excavation','comment':'Checked'}).status_code == 200
+            assert client.post(f'/runs/{run}/confirm-stage',json={'stage':'concreting'}).status_code == 409
+            signals = client.get(f'/signals?zone_id={zone}').json()['signals']
+            assert len(signals) == 1
+            signal = signals[0]
+            assert signal['kind'] == 'stage_plan_mismatch'
+            assert signal['revision_id'] == plan['revision_id'] != newer['revision_id']
+            assert signal['work_entry_id'] == work_entry
+            assert signal['basis']['supporting_input_ids'] == list(map(str, inputs[2:]))
+            assert store.read_ordinary(run)['stage_confirmation']['stage'] == 'excavation'
+    finally:
+        store.close()

@@ -56,6 +56,7 @@ SUMMARIES = {
     'live':'Проверить работоспособность процесса', 'ready':'Проверить готовность БД, S3 и исполнителя',
     'analysis_choices':'Доступные сценарии анализа', 'submit_single_image':'Загрузить кадры и создать анализ',
     'stage_summary':'Сводка этапов', 'read_readiness':'Исторический отчёт готовности',
+    'read_hybrid_readiness':'Качество текущего hybrid-профиля: несовпавший или отсутствующий отчёт блокирует готовность',
     'read_provider_comparison':'Историческое сравнение выведенных из исполнения моделей',
     'read_run':'Прочитать анализ, исходные данные и неизменяемую аналитику', 'list_runs':'История анализов',
     'retry_run':'Явный повтор допустимого сбоя до первого облачного вызова', 'read_run_artifact':'Прочитать проверенный по SHA-256 артефакт',
@@ -93,6 +94,11 @@ ASSESSMENT = obj({'summary':field('string','Итог наблюдения.'),
                  'recommendations':array(TEXT,'Действия для человека.'),
                  'limitations':array(TEXT,'Ограничения вывода, включая отсутствие плана.')},
                  ('summary','stage_hypothesis','risks','recommendations','limitations'))
+from app.profiles.hybrid import ASSESSMENT_SCHEMA as HYBRID_ASSESSMENT_SCHEMA
+ASSESSMENT['properties'].update({key: value for key, value in HYBRID_ASSESSMENT_SCHEMA['properties'].items()
+                                 if key in ('activity', 'stage_hypotheses')})
+RISK['properties'].update({key: value for key, value in HYBRID_ASSESSMENT_SCHEMA['properties']['risks']['items']['properties'].items()
+                           if key not in RISK['properties']})
 INPUT = obj({'input_id':UUID,'ordinal':field('integer','Порядок кадра, начиная с 0.'),'sha256':field('string','SHA-256 исходных байтов.'),'artifact_id':NULL_UUID,'size':COUNT,'media_type':TEXT}, ('input_id','ordinal','sha256','artifact_id'))
 OBSERVATION = obj({'input_id':UUID,'class_name':TEXT,'state':field('string','Результат присутствия, не доказательство отсутствия.',enum=['detected','not_detected_in_frame','insufficient_data','not_analyzed']), 'source_artifact_id':NULL_UUID,'invocation_id':NULL_UUID,'reason':field(['string','null'],'Причина ограничения.')})
 DETECTION = obj({'id':UUID,'input_id':UUID,'invocation_id':UUID,'class_name':field('string','Один из восьми классов либо unknown.'),'score':field(['number','null'],'Оценка провайдера, если предоставлена; DeepSeek не придумывает число.',minimum=0,maximum=1),
@@ -110,7 +116,7 @@ RUN = obj({'run_id':UUID,'state':field('string','Состояние запуск
            'ai_assessment':{'anyOf':[ASSESSMENT,{'type':'null'}],'description':'null для исторических и незавершённых запусков.'},
            'ai_evidence':array(EVIDENCE,'Неизменяемые ответы и резервации.'), 'inputs':array(INPUT,'Исходные кадры.'),
            'objects':array(DETECTION,'Свободные и каталогизированные объекты.'),'observations':array(OBSERVATION,'Состояния запрошенных классов.'),
-           'result_projection':field(['object','null'],'Успешная проекция; отсутствует при сбое.'),
+           'result_projection':field(['object','null'],'Успешная проекция. hybrid_frames сохраняет manifest, обе модели YOLO с raw_class, catalog_class (nullable), score, box, SHA-256 весов и кадра; created_signals — идентификаторы сохранённых сигналов; rule_results — сравнение каждого кадра с точной ревизией.'),
            'stage_confirmation':field(['object','null'],'Отдельное подтверждение человеком.'),'retry_eligible':field('boolean','Допустим ли явный повтор до первого вызова.')}, ('run_id','state'))
 ANNOTATION = obj({'id':UUID,'run_id':UUID,'input_id':UUID,'input_sha256':TEXT,'artifact_id':UUID,'version_id':UUID,
                   'revision':COUNT,'status':TEXT,'objects':OBJECTS,'original_objects':array(DETECTION,'Неизменяемая исходная гипотеза, включая unknown/null box.'),'whole_frame_verified':field('boolean','Проверен весь кадр.'),'reason':TEXT})
@@ -123,13 +129,14 @@ RESPONSES = {
     'read_run':RUN,'list_runs':obj({'runs':array(RUN,'Страница истории.'),'total':COUNT,'next_offset':field(['integer','null'],'Следующее смещение или null.')}),
     'stage_summary':obj({'stages':array(obj({'stage_id':TEXT,'name':TEXT,'supported':field('boolean','Поддержка исторического сценария.'),'latest_result':field(['object','null'],'Последняя сохранённая проекция.'),'latest_lifecycle':field(['object','null'],'Более новый незавершённый запуск.')}),'Сводка этапов.')}),
     'read_readiness':obj({'schema_revision':TEXT,'campaign_id':UUID,'status':TEXT,'sections':field('object','Разделы исторической оценки; структура определяется schema_revision.')}),
+    'read_hybrid_readiness':obj({'status':field('string','Текущая готовность.',enum=['blocked','pass']),'code':TEXT,'profile_sha256':TEXT,'detector_manifest_sha256':TEXT,'blocking_reasons':array(TEXT,'Непройденные или отсутствующие доказательства.')}),
     'read_provider_comparison':obj({'campaign':obj({'id':UUID,'revision_number':COUNT,'evaluation_revision_id':UUID}),'candidates':array(field('object','Снимок исторического кандидата.'),'Сравниваемые профили.'),'cells':array(field('object','Измерения ячейки исторической кампании.'),'Сохранённые измерения.')}),
     'list_catalog':obj({'source_sha256':TEXT,'total':COUNT,'works':array(obj({'id':UUID,'source_row':COUNT,'title':TEXT,'code':field(['string','null'],'Исходный код работы.'),'raw_code':{},'applicability':field('object','Ограничения визуальной применимости.')}),'Работы исходного каталога.')}),
     'create_project':obj({**PROJECT['properties'],'default_zone_id':field('string','UUID автоматически созданного основного участка.',format='uuid')},(*PROJECT['required'],'default_zone_id')),'list_projects':obj({'projects':array(PROJECT,'Проекты.')}),
     'create_zone':ZONE,'list_zones':obj({'zones':array(ZONE,'Участки проекта.')}),
     'replace_zone_plan':obj({'revision_id':UUID,'revision_number':COUNT,'entry_count':COUNT}),
     'read_zone_plan':obj({'zone_id':UUID,'revision_id':UUID,'revision_number':COUNT,'created_at':TIME,'entries':array(obj({'id':UUID,'catalog_work_id':UUID,'starts_at':TIME,'ends_at':TIME,'state':TEXT,'stage_key':field(['string','null'],'Этап плана.')}),'Работы сохранённой ревизии.')}),
-    'list_signals':obj({'new_count':COUNT,'summary':obj({'open_count':COUNT,'attention_count':COUNT,'insufficient_data_count':COUNT}),'signals':array(obj({'id':UUID,'run_id':NULL_UUID,'zone_id':UUID,'revision_id':UUID,'kind':TEXT,'state':TEXT,'basis':field('object','Неизменяемое основание сигнала.'),'comment':TEXT,'created_at':TIME}),'Сигналы ручного разбора.')}),
+    'list_signals':obj({'new_count':COUNT,'summary':obj({'open_count':COUNT,'attention_count':COUNT,'insufficient_data_count':COUNT}),'signals':array(obj({'id':UUID,'run_id':NULL_UUID,'zone_id':UUID,'revision_id':NULL_UUID,'kind':TEXT,'state':TEXT,'basis':field('object','Неизменяемое основание сигнала.'),'comment':TEXT,'created_at':TIME}),'Сигналы ручного разбора.')}),
     'update_signal':obj({'id':UUID,'state':TEXT,'comment':TEXT}),'confirm_stage':obj({'run_id':UUID,'stage':TEXT,'comment':TEXT}),
     'login':obj({'csrf':field('string','CSRF-токен текущей сессии.')},('csrf',)),
     'session_info':obj({'csrf':field('string','CSRF-токен текущей сессии.')},('csrf',)),

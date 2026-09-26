@@ -143,6 +143,17 @@ export default function ReadinessPage({ heading, onOpen }: { heading: RefObject<
     return () => { cancelled = true; clearTimeout(timeout); controller.abort() }
   }, [attempt])
 
+  const [hybridQuality, setHybridQuality] = useState<{ status?: string; code?: string; blocking_reasons?: string[] } | null>(null)
+  useEffect(() => {
+    const controller = new AbortController()
+    setHybridQuality(null)
+    void fetch('/api/hybrid-readiness', { signal: controller.signal, cache: 'no-store' })
+      .then(async response => { if (!response.ok) throw new Error('unavailable'); return response.json() })
+      .then(value => { if (!controller.signal.aborted) setHybridQuality(value) })
+      .catch(() => { if (!controller.signal.aborted) setHybridQuality({status: 'blocked', code: 'current_report_unavailable'}) })
+    return () => controller.abort()
+  }, [attempt])
+
   const report = snapshot?.report
   const order = { fail: 0, not_evaluated: 1, pass: 2 }
   const criteria = [...(report?.criteria ?? [])].sort((a, b) => order[a.status] - order[b.status])
@@ -152,6 +163,12 @@ export default function ReadinessPage({ heading, onOpen }: { heading: RefObject<
     unknown: labels.filter(label => label !== 'yes' && label !== 'no').length }
   return <section className="readiness" aria-labelledby="readiness-heading" aria-busy={loading}>
     <div className="page-intro"><p className="eyebrow">Проверка прототипа</p><h1 ref={heading} tabIndex={-1} id="readiness-heading">Проверка качества</h1><p>Сохранённый отчёт по критериям и исходным доказательствам.</p></div>
+    <section className="panel"><h2>Качество текущего гибридного профиля</h2>
+      <p>{!hybridQuality ? 'Проверяем актуальные доказательства…' : hybridQuality.status === 'pass' ? 'Контрольные критерии пройдены.' : 'Готовность заблокирована: доказательств недостаточно или есть ошибки.'}</p>
+      <p>Исторический отчёт ниже не подтверждает качество текущих YOLO и DeepSeek.</p>
+      {!!hybridQuality?.blocking_reasons?.length && <ul>{hybridQuality.blocking_reasons.map(reason => <li key={reason}>{reason}</li>)}</ul>}
+      {hybridQuality?.code && <details><summary>Состояние доказательств</summary><code>{hybridQuality.code}</code></details>}
+    </section>
     {loading && <p role="status">Загружаем сохранённый отчёт…</p>}
     {error && <div className="attention" role="alert"><p>{error} {snapshot && 'Показана последняя загруженная версия; она может быть устаревшей.'}</p>{snapshot && <p>Время сохранения: <time dateTime={snapshot.created_at}>{snapshot.created_at}</time>.</p>}<button type="button" className="secondary" disabled={loading} onClick={() => setAttempt(value => value + 1)}>Повторить загрузку</button></div>}
     {loaded && !snapshot && !error && <div className="panel" role="status"><p>Нет данных: сохранённого отчёта пока нет.</p><button type="button" className="secondary" onClick={() => setAttempt(value => value + 1)}>Повторить загрузку</button></div>}

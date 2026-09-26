@@ -119,3 +119,20 @@ curl --fail-with-body -H 'Content-Type: application/json' \
 ```
 
 Последний запрос сохраняет самостоятельное решение человека, не меняет оценку DeepSeek и не исправляет план. Для настоящего кадра пустая разметка допустима лишь после проверки, что все объекты действительно отсутствуют. Для свободной гипотезы человек должен явно выбрать класс и корректную рамку; экспорт без admin review запрещён.
+
+## Hybrid fields and current quality
+
+`GET /hybrid-readiness` is the current profile's quality report. `GET /readiness` remains historical and cannot qualify the new YOLO/DeepSeek flow. The current report returns `status: "blocked"`; absent/stale evidence is never treated as zero errors.
+
+For a hybrid run, `GET /runs/{id}` adds compatible evidence fields. Historical responses may omit these fields or contain empty arrays:
+
+- `result_projection.hybrid_frames`: frame SHA/capture time, usability, class assessability, reconciled observations and separate `detectors.models` for APOCE/Kaggle.
+- Each raw detection: `id`, `input_id`, `model_id`, `raw_class`, nullable `catalog_class`, `score` and normalized oriented-image `box`.
+- `detection_dispositions`: one accepted/dismissed/unresolved reason per raw detection. Accepted associates a physical object; a corrected class may disagree with the raw label.
+- `ai_assessment.activity`: `working_signs`, `possible_idle` or `insufficient_data`, with frame/observation references, visible grounds and uncertainty. A one-frame request cannot offer idle; unsupported missing/excluded-equipment causes are removed from the request schema before the provider call. Server validation remains mandatory.
+- `ai_assessment.stage_hypotheses`: frame/observation references and an optional applicable work entry. An unknown stage may identify the work being checked without confirming its planned stage.
+- `result_projection.created_signals`: persisted signal ID, state and cause. Same evidence can refer to an existing closed signal; processing does not reopen it.
+
+Signals now permit `revision_id: null` for source-bound process/safety cases with a required zone. Plan risks still require a frozen revision and applicable work. Risk basis retains affected work, source frames/observations, impact, recommended check and limitations. Signal state/comment mutations continue through the existing `PATCH /signals/{id}` API; immutable evidence cannot be overwritten.
+
+The [actual HTTP records](../evaluation/hybrid/results/) provide complete response examples, including failure/rejection evidence. [The demonstration manifest](../evaluation/hybrid/http-demonstration.json) identifies current successful cases and makes its simulated plan/time explicit.

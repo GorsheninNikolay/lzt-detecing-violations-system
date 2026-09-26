@@ -97,3 +97,29 @@ def test_foreign_workspace_is_rejected_before_publication():
         submit(store, artifacts, 'workspace-invalid', body, uuid.uuid4(), 1, {'kind':'deepseek'})
     store.begin_submission.assert_not_called()
     assert artifacts.mock_calls == []
+
+
+def test_each_boundary_operation_reports_its_own_insufficient_frames():
+    entries = [{'id': str(day), 'state':'active','starts_at':datetime(2026,1,day,tzinfo=timezone.utc),
+                'ends_at':datetime(2026,1,day,23,tzinfo=timezone.utc), 'expected_equipment':['excavator'],
+                'allowed_equipment':[],'excluded_equipment':[]} for day in (1,2)]
+    frames = [{'input_id':str(i),'sha256':str(i),'captured_at':f'2026-01-0{1+i//2}T1{i}:00:00Z'} for i in range(4)]
+    obs = [{'input_id':f['input_id'],'class_name':'excavator','state':'not_detected_in_frame'} for f in frames]
+    result = compare_equipment(entries, [f['captured_at'] for f in frames], obs,
+                               [f['input_id'] for f in frames], {'excavator'}, frames=frames)
+    assert [(r['kind'],r['entry_id'],r['supporting_input_ids']) for r in result] == [
+        ('insufficient_observations','1',['0','1']), ('insufficient_observations','2',['2','3'])]
+
+
+def test_three_assessable_frames_survive_extra_unassessable_view_but_not_positive_sighting():
+    entry = {'id':'work','state':'active','starts_at':datetime(2026,1,1,tzinfo=timezone.utc),
+             'ends_at':datetime(2026,1,3,tzinfo=timezone.utc),'expected_equipment':['excavator'],
+             'allowed_equipment':[],'excluded_equipment':[]}
+    frames = [{'input_id':str(i),'sha256':str(i),'captured_at':f'2026-01-02T1{i}:00:00Z',
+               'class_assessability':{'excavator':'assessable' if i<3 else 'unassessable'}} for i in range(4)]
+    obs = [{'input_id':str(i),'class_name':'excavator','state':'not_detected_in_frame' if i<3 else 'insufficient_data'} for i in range(4)]
+    def compare(): return compare_equipment([entry],[f['captured_at'] for f in frames],obs,[f['input_id'] for f in frames],{'excavator'},frames=frames)
+    assert compare()[0]['kind'] == 'expected_equipment_missing'
+    assert compare()[0]['supporting_input_ids'] == ['0','1','2']
+    obs[3]['state'] = 'detected'
+    assert compare() == []

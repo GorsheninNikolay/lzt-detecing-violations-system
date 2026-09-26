@@ -1,0 +1,775 @@
+{
+  "limit_rub": 1000,
+  "pricing_url": "https://aistudio.yandex.ru/ru/docs/ai-studio/pricing",
+  "input_rub_per_1000": 0.3,
+  "output_rub_per_1000": 0.5,
+  "calls": [
+    {
+      "id": "670e5ff7-01c5-4600-91e4-450e1602e1a6",
+      "purpose": "minimal_photo_account_and_responses_schema_access_smoke",
+      "status": "received_valid",
+      "upper_rub": 318.6688,
+      "at": "2026-09-26T21:28:34.729806+00:00",
+      "usage": {
+        "input_tokens": 1772,
+        "input_tokens_details": {
+          "cached_tokens": 0,
+          "valid": true,
+          "tool_tokens": 0
+        },
+        "output_tokens": 214,
+        "output_tokens_details": {
+          "reasoning_tokens": 0,
+          "valid": true
+        },
+        "total_tokens": 1986,
+        "valid": true
+      },
+      "actual_estimate_rub": 0.6386000000000001
+    },
+    {
+      "id": "4096622a-d5f8-4af0-a9dc-c674469469af",
+      "purpose": "hybrid_frame_smoke/Screenshot_99",
+      "status": "received_valid",
+      "upper_rub": 318.6688,
+      "at": "2026-09-26T21:37:11.426171+00:00",
+      "usage": {
+        "input_tokens": 3551,
+        "input_tokens_details": {
+          "cached_tokens": 0,
+          "valid": true,
+          "tool_tokens": 0
+        },
+        "output_tokens": 871,
+        "output_tokens_details": {
+          "reasoning_tokens": 0,
+          "valid": true
+        },
+        "total_tokens": 4422,
+        "valid": true
+      },
+      "actual_estimate_rub": 1.5008
+    },
+    {
+      "id": "4c96bf29-bf8d-4538-bfae-b75aee651a23",
+      "purpose": "hybrid_frame_smoke/Screenshot_60",
+      "status": "received_valid",
+      "upper_rub": 318.6688,
+      "at": "2026-09-26T21:37:17.383102+00:00",
+      "usage": {
+        "input_tokens": 3919,
+        "input_tokens_details": {
+          "cached_tokens": 0,
+          "valid": true,
+          "tool_tokens": 0
+        },
+        "output_tokens": 372,
+        "output_tokens_details": {
+          "reasoning_tokens": 0,
+          "valid": true
+        },
+        "total_tokens": 4291,
+        "valid": true
+      },
+      "actual_estimate_rub": 1.3617000000000001
+    },
+    {
+      "id": "56ceca15-ad55-467e-9936-98b0736d6c7d",
+      "purpose": "hybrid_frame_smoke/Screenshot_24",
+      "status": "received_valid",
+      "upper_rub": 318.6688,
+      "at": "2026-09-26T21:37:22.755933+00:00",
+      "usage": {
+        "input_tokens": 3368,
+        "input_tokens_details": {
+          "cached_tokens": 0,
+          "valid": true,
+          "tool_tokens": 0
+        },
+        "output_tokens": 373,
+        "output_tokens_details": {
+          "reasoning_tokens": 0,
+          "valid": true
+        },
+        "total_tokens": 3741,
+        "valid": true
+      },
+      "actual_estimate_rub": 1.1969
+    },
+    {
+      "id": "fa1d37c8-c438-4bde-a71a-8c26b37ec8a8",
+      "purpose": "http_hybrid/frame",
+      "status": "received",
+      "upper_rub": 318.6688,
+      "at": "2026-09-26T21:51:06.977936+00:00",
+      "request_sha256": "5928efab3dc3da0e6f0c2f1cb01fd0196eeb45d8acef3cd6cb198abbeceedbff",
+      "images_sent": 1,
+      "usage": {
+        "input_tokens": 3937,
+        "input_tokens_details": {
+          "cached_tokens": 0,
+          "valid": true,
+          "tool_tokens": 0
+        },
+        "output_tokens": 748,
+        "output_tokens_details": {
+          "reasoning_tokens": 0,
+          "valid": true
+        },
+        "total_tokens": 4685,
+        "valid": true
+      },
+      "actual_estimate_rub": 1.5551
+    },
+    {
+      "id": "f6b09ce2-a470-445b-9e7a-133afdd218a1",
+      "purpose": "http_hybrid/assessment",
+      "status": "received",
+      "upper_rub": 318.6688,
+      "at": "2026-09-26T21:51:14.639601+00:00",
+      "request_sha256": "a00823606dee72c445dbc4ef1bc86a1c3ed08912f36b32226b39404ce2bc09b7",
+      "images_sent": 1,
+      "usage": {
+        "input_tokens": 5081,
+        "input_tokens_details": {
+          "cached_tokens": 0,
+          "valid": true,
+          "tool_tokens": 0
+        },
+        "output_tokens": 1467,
+        "output_tokens_details": {
+          "reasoning_tokens": 0,
+          "valid": true
+        },
+        "total_tokens": 6548,
+        "valid": true
+      },
+      "actual_estimate_rub": 2.2578
+    },
+    {
+      "id": "feff50d3-0fa7-4f43-a90a-11c8c10c3111",
+      "purpose": "http_hybrid/frame",
+      "status": "received",
+      "upper_rub": 318.6688,
+      "at": "2026-09-26T22:13:36.029796+00:00",
+      "request_sha256": "c1d683362cf8073296d2944859236b194e1d2c994cc02dc85a6ed4b4f1113c39",
+      "images_sent": 1,
+      "usage": {
+        "input_tokens": 3968,
+        "input_tokens_details": {
+          "cached_tokens": 0,
+          "valid": true,
+          "tool_tokens": 0
+        },
+        "output_tokens": 741,
+        "output_tokens_details": {
+          "reasoning_tokens": 0,
+          "valid": true
+        },
+        "total_tokens": 4709,
+        "valid": true
+      },
+      "actual_estimate_rub": 1.5609
+    },
+    {
+      "id": "5a141afe-f3d3-4597-a9b4-951f12a0f0eb",
+      "purpose": "http_hybrid/assessment",
+      "status": "received",
+      "upper_rub": 318.6688,
+      "at": "2026-09-26T22:13:42.388378+00:00",
+      "request_sha256": "e5133695bdaca2be8d047148fa3639ceef140c76af83cf53923e3c4a3807cc50",
+      "images_sent": 1,
+      "usage": {
+        "input_tokens": 5181,
+        "input_tokens_details": {
+          "cached_tokens": 0,
+          "valid": true,
+          "tool_tokens": 0
+        },
+        "output_tokens": 2036,
+        "output_tokens_details": {
+          "reasoning_tokens": 0,
+          "valid": true
+        },
+        "total_tokens": 7217,
+        "valid": true
+      },
+      "actual_estimate_rub": 2.5723000000000003
+    },
+    {
+      "id": "d86c080d-44c3-4d28-be77-8241f29a6fb1",
+      "purpose": "http_hybrid/frame",
+      "status": "received",
+      "upper_rub": 318.6688,
+      "at": "2026-09-26T22:13:52.942904+00:00",
+      "request_sha256": "7cf3759611fe49f713ef84dc3166a074c6ab5c1a8167b40f99845778ce39b704",
+      "images_sent": 1,
+      "usage": {
+        "input_tokens": 3947,
+        "input_tokens_details": {
+          "cached_tokens": 1024,
+          "valid": true,
+          "tool_tokens": 0
+        },
+        "output_tokens": 1000,
+        "output_tokens_details": {
+          "reasoning_tokens": 0,
+          "valid": true
+        },
+        "total_tokens": 4947,
+        "valid": true
+      },
+      "actual_estimate_rub": 1.6841
+    },
+    {
+      "id": "b2bb1b90-2897-46d9-8364-9620f63ae5a2",
+      "purpose": "http_hybrid/frame",
+      "status": "received",
+      "upper_rub": 318.6688,
+      "at": "2026-09-26T22:14:03.860947+00:00",
+      "request_sha256": "6c653becd66746093905b3de2863888244280d3aea483a7e39812a89a3445f08",
+      "images_sent": 1,
+      "usage": {
+        "input_tokens": 3280,
+        "input_tokens_details": {
+          "cached_tokens": 0,
+          "valid": true,
+          "tool_tokens": 0
+        },
+        "output_tokens": 252,
+        "output_tokens_details": {
+          "reasoning_tokens": 0,
+          "valid": true
+        },
+        "total_tokens": 3532,
+        "valid": true
+      },
+      "actual_estimate_rub": 1.11
+    },
+    {
+      "id": "e8d212da-35cb-47e4-81b8-4f4b6288906a",
+      "purpose": "http_hybrid/assessment",
+      "status": "received",
+      "upper_rub": 318.6688,
+      "at": "2026-09-26T22:14:05.267208+00:00",
+      "request_sha256": "e2c9807c77547d39a46e41080774d29467911ec77e352d447c8b3f7342b7122d",
+      "images_sent": 1,
+      "usage": {
+        "input_tokens": 3854,
+        "input_tokens_details": {
+          "cached_tokens": 0,
+          "valid": true,
+          "tool_tokens": 0
+        },
+        "output_tokens": 1187,
+        "output_tokens_details": {
+          "reasoning_tokens": 0,
+          "valid": true
+        },
+        "total_tokens": 5041,
+        "valid": true
+      },
+      "actual_estimate_rub": 1.7497
+    },
+    {
+      "id": "a1ee45e7-77db-4485-b227-86d9dfe5efe7",
+      "purpose": "http_hybrid/frame",
+      "status": "received",
+      "upper_rub": 318.6688,
+      "at": "2026-09-26T22:17:56.644397+00:00",
+      "request_sha256": "d47e7240cc9753e02c4dc7d278c9ab3f3168cd55503ff2046da0881094b0c87d",
+      "images_sent": 1,
+      "usage": {
+        "input_tokens": 4006,
+        "input_tokens_details": {
+          "cached_tokens": 1024,
+          "valid": true,
+          "tool_tokens": 0
+        },
+        "output_tokens": 790,
+        "output_tokens_details": {
+          "reasoning_tokens": 0,
+          "valid": true
+        },
+        "total_tokens": 4796,
+        "valid": true
+      },
+      "actual_estimate_rub": 1.5968
+    },
+    {
+      "id": "15221d9c-a2ba-4c24-a119-8be1b079b1af",
+      "purpose": "http_hybrid/assessment",
+      "status": "received",
+      "upper_rub": 318.6688,
+      "at": "2026-09-26T22:18:04.159421+00:00",
+      "request_sha256": "c0017e7124f1b3479b6ec8f48d5d82e35f8ab7e5fadeb72e98eb15577f78147d",
+      "images_sent": 1,
+      "usage": {
+        "input_tokens": 5293,
+        "input_tokens_details": {
+          "cached_tokens": 0,
+          "valid": true,
+          "tool_tokens": 0
+        },
+        "output_tokens": 998,
+        "output_tokens_details": {
+          "reasoning_tokens": 0,
+          "valid": true
+        },
+        "total_tokens": 6291,
+        "valid": true
+      },
+      "actual_estimate_rub": 2.0868999999999995
+    },
+    {
+      "id": "0dfeb27a-5ab7-495b-ae70-9a61f8736370",
+      "purpose": "http_hybrid/frame",
+      "status": "received",
+      "upper_rub": 318.6688,
+      "at": "2026-09-26T22:18:12.705531+00:00",
+      "request_sha256": "f6f38c5d463715edf80ff34a5bb04b6499dd98c8af95f5fd5695c5ea2ba2e7df",
+      "images_sent": 1,
+      "usage": {
+        "input_tokens": 3985,
+        "input_tokens_details": {
+          "cached_tokens": 1024,
+          "valid": true,
+          "tool_tokens": 0
+        },
+        "output_tokens": 965,
+        "output_tokens_details": {
+          "reasoning_tokens": 0,
+          "valid": true
+        },
+        "total_tokens": 4950,
+        "valid": true
+      },
+      "actual_estimate_rub": 1.678
+    },
+    {
+      "id": "9979b085-0fb3-481c-814f-107374e6853d",
+      "purpose": "http_hybrid/assessment",
+      "status": "received",
+      "upper_rub": 318.6688,
+      "at": "2026-09-26T22:18:23.074068+00:00",
+      "request_sha256": "003639bc2fd697058613a797e74d74c2bf19cbaf3f20e900f3dd57910832af89",
+      "images_sent": 1,
+      "usage": {
+        "input_tokens": 5478,
+        "input_tokens_details": {
+          "cached_tokens": 0,
+          "valid": true,
+          "tool_tokens": 0
+        },
+        "output_tokens": 1393,
+        "output_tokens_details": {
+          "reasoning_tokens": 0,
+          "valid": true
+        },
+        "total_tokens": 6871,
+        "valid": true
+      },
+      "actual_estimate_rub": 2.3398999999999996
+    },
+    {
+      "id": "b1468c71-47c2-416d-bbfe-4aa00a485eeb",
+      "purpose": "http_hybrid/frame",
+      "status": "received",
+      "upper_rub": 318.6688,
+      "at": "2026-09-26T22:18:33.490451+00:00",
+      "request_sha256": "f3e3994593ecaeac4ee74e0f46178bab9a4a5cd57f5cac737a25d8d12514cb89",
+      "images_sent": 1,
+      "usage": {
+        "input_tokens": 3334,
+        "input_tokens_details": {
+          "cached_tokens": 0,
+          "valid": true,
+          "tool_tokens": 0
+        },
+        "output_tokens": 243,
+        "output_tokens_details": {
+          "reasoning_tokens": 0,
+          "valid": true
+        },
+        "total_tokens": 3577,
+        "valid": true
+      },
+      "actual_estimate_rub": 1.1217
+    },
+    {
+      "id": "05d958fc-4c77-4bca-b23c-535588fe94ed",
+      "purpose": "http_hybrid/assessment",
+      "status": "received",
+      "upper_rub": 318.6688,
+      "at": "2026-09-26T22:18:34.930638+00:00",
+      "request_sha256": "628134ba3de83046a70e6e9c22500f74fa3b80f38c05af56a9abe559ad8b5421",
+      "images_sent": 1,
+      "usage": {
+        "input_tokens": 3953,
+        "input_tokens_details": {
+          "cached_tokens": 0,
+          "valid": true,
+          "tool_tokens": 0
+        },
+        "output_tokens": 1161,
+        "output_tokens_details": {
+          "reasoning_tokens": 0,
+          "valid": true
+        },
+        "total_tokens": 5114,
+        "valid": true
+      },
+      "actual_estimate_rub": 1.7664
+    },
+    {
+      "id": "c9f9760e-4d6e-480a-889c-3ad817635a82",
+      "purpose": "http_hybrid/frame",
+      "status": "received",
+      "upper_rub": 318.6688,
+      "at": "2026-09-26T22:19:46.510806+00:00",
+      "request_sha256": "7dfd5dd52546a520f55cb14d7d8865436cc24aed0444c6b8f66853ba829e7164",
+      "images_sent": 1,
+      "usage": {
+        "input_tokens": 3992,
+        "input_tokens_details": {
+          "cached_tokens": 0,
+          "valid": true,
+          "tool_tokens": 0
+        },
+        "output_tokens": 968,
+        "output_tokens_details": {
+          "reasoning_tokens": 0,
+          "valid": true
+        },
+        "total_tokens": 4960,
+        "valid": true
+      },
+      "actual_estimate_rub": 1.6816
+    },
+    {
+      "id": "1ff4d3f4-423c-49f2-9e34-6731b2c9860f",
+      "purpose": "http_hybrid/assessment",
+      "status": "received",
+      "upper_rub": 318.6688,
+      "at": "2026-09-26T22:19:57.292990+00:00",
+      "request_sha256": "dbaa949552533b379fb25bc703c5491c1cb7318e11c0878e06fa086b2ea32130",
+      "images_sent": 1,
+      "usage": {
+        "input_tokens": 5508,
+        "input_tokens_details": {
+          "cached_tokens": 0,
+          "valid": true,
+          "tool_tokens": 0
+        },
+        "output_tokens": 2133,
+        "output_tokens_details": {
+          "reasoning_tokens": 0,
+          "valid": true
+        },
+        "total_tokens": 7641,
+        "valid": true
+      },
+      "actual_estimate_rub": 2.7188999999999997
+    },
+    {
+      "id": "719c4c0e-304c-4f86-b77a-98d74f83f225",
+      "purpose": "http_hybrid/frame",
+      "status": "received",
+      "upper_rub": 318.6688,
+      "at": "2026-09-26T22:23:04.445735+00:00",
+      "request_sha256": "720a7dc8f66688e25651dde3e635f243b2a1d769a7506941930ddcc4b5588ef1",
+      "images_sent": 1,
+      "usage": {
+        "input_tokens": 4017,
+        "input_tokens_details": {
+          "cached_tokens": 0,
+          "valid": true,
+          "tool_tokens": 0
+        },
+        "output_tokens": 989,
+        "output_tokens_details": {
+          "reasoning_tokens": 0,
+          "valid": true
+        },
+        "total_tokens": 5006,
+        "valid": true
+      },
+      "actual_estimate_rub": 1.6996
+    },
+    {
+      "id": "0215a47c-e1e0-43df-90d8-6137347b58f9",
+      "purpose": "http_hybrid/assessment",
+      "status": "received",
+      "upper_rub": 318.6688,
+      "at": "2026-09-26T22:23:13.360553+00:00",
+      "request_sha256": "9987d061a67687ff6a5a444889879c29c43046d7d98d65c7eae2c645564d69a3",
+      "images_sent": 1,
+      "usage": {
+        "input_tokens": 5604,
+        "input_tokens_details": {
+          "cached_tokens": 0,
+          "valid": true,
+          "tool_tokens": 0
+        },
+        "output_tokens": 2428,
+        "output_tokens_details": {
+          "reasoning_tokens": 0,
+          "valid": true
+        },
+        "total_tokens": 8032,
+        "valid": true
+      },
+      "actual_estimate_rub": 2.8952
+    },
+    {
+      "id": "3237bde3-03b9-43c2-9a0c-951d10bc3463",
+      "purpose": "http_hybrid/frame",
+      "status": "received",
+      "upper_rub": 318.6688,
+      "at": "2026-09-26T22:27:17.294123+00:00",
+      "request_sha256": "70444754ae653b0231083041e927c6503da3d16f4f8c076bc5848b46ddbae5d3",
+      "images_sent": 1,
+      "usage": {
+        "input_tokens": 3995,
+        "input_tokens_details": {
+          "cached_tokens": 0,
+          "valid": true,
+          "tool_tokens": 0
+        },
+        "output_tokens": 933,
+        "output_tokens_details": {
+          "reasoning_tokens": 0,
+          "valid": true
+        },
+        "total_tokens": 4928,
+        "valid": true
+      },
+      "actual_estimate_rub": 1.665
+    },
+    {
+      "id": "47c0412d-3b11-4eb4-b011-1392e2e11ac3",
+      "purpose": "http_hybrid/assessment",
+      "status": "received",
+      "upper_rub": 318.6688,
+      "at": "2026-09-26T22:27:26.288123+00:00",
+      "request_sha256": "8d9ea54430152b75ddb3e75335f1f559a21a16ddef9104bff32b54fc00530f3e",
+      "images_sent": 1,
+      "usage": {
+        "input_tokens": 5479,
+        "input_tokens_details": {
+          "cached_tokens": 0,
+          "valid": true,
+          "tool_tokens": 0
+        },
+        "output_tokens": 1943,
+        "output_tokens_details": {
+          "reasoning_tokens": 0,
+          "valid": true
+        },
+        "total_tokens": 7422,
+        "valid": true
+      },
+      "actual_estimate_rub": 2.6151999999999997
+    },
+    {
+      "id": "923e6f70-da24-4876-9f39-d5a6b0dcd371",
+      "purpose": "http_hybrid/frame",
+      "status": "received",
+      "upper_rub": 318.6688,
+      "at": "2026-09-26T22:31:38.978213+00:00",
+      "request_sha256": "d47595c40d014513fec534e49bbffe3e32cbf5f3fc3d056716f8b6712d21d49f",
+      "images_sent": 1,
+      "usage": {
+        "input_tokens": 3980,
+        "input_tokens_details": {
+          "cached_tokens": 1792,
+          "valid": true,
+          "tool_tokens": 0
+        },
+        "output_tokens": 1121,
+        "output_tokens_details": {
+          "reasoning_tokens": 0,
+          "valid": true
+        },
+        "total_tokens": 5101,
+        "valid": true
+      },
+      "actual_estimate_rub": 1.7545
+    },
+    {
+      "id": "44047322-c2bd-4459-b14e-e54f604c7314",
+      "purpose": "http_hybrid/assessment",
+      "status": "received",
+      "upper_rub": 318.6688,
+      "at": "2026-09-26T22:31:48.604098+00:00",
+      "request_sha256": "3dfb96452c89ce5cd5c1da4eac16d649321770cc6d4e2ddf5a20d9d36ae648f2",
+      "images_sent": 1,
+      "usage": {
+        "input_tokens": 5666,
+        "input_tokens_details": {
+          "cached_tokens": 0,
+          "valid": true,
+          "tool_tokens": 0
+        },
+        "output_tokens": 2534,
+        "output_tokens_details": {
+          "reasoning_tokens": 0,
+          "valid": true
+        },
+        "total_tokens": 8200,
+        "valid": true
+      },
+      "actual_estimate_rub": 2.9668
+    },
+    {
+      "id": "3bb2f24e-b1b6-46ef-b5cf-e5fdde8a9ffe",
+      "purpose": "http_hybrid/frame",
+      "status": "received",
+      "upper_rub": 318.6688,
+      "at": "2026-09-26T22:35:46.934765+00:00",
+      "request_sha256": "56d5e5b3d328de46cb25013ea99960a95d22f7374aac1c8be7e284652dac8b20",
+      "images_sent": 1,
+      "usage": {
+        "input_tokens": 4010,
+        "input_tokens_details": {
+          "cached_tokens": 0,
+          "valid": true,
+          "tool_tokens": 0
+        },
+        "output_tokens": 1007,
+        "output_tokens_details": {
+          "reasoning_tokens": 0,
+          "valid": true
+        },
+        "total_tokens": 5017,
+        "valid": true
+      },
+      "actual_estimate_rub": 1.7065
+    },
+    {
+      "id": "7fedc80f-1d7e-43fc-b1e3-230e17064c1b",
+      "purpose": "http_hybrid/assessment",
+      "status": "received",
+      "upper_rub": 318.6688,
+      "at": "2026-09-26T22:35:59.851493+00:00",
+      "request_sha256": "74ad5a40599eca33bb21d48922ba25535b91fb7d22af9e665caabfb8d8482068",
+      "images_sent": 1,
+      "usage": {
+        "input_tokens": 5593,
+        "input_tokens_details": {
+          "cached_tokens": 0,
+          "valid": true,
+          "tool_tokens": 0
+        },
+        "output_tokens": 1406,
+        "output_tokens_details": {
+          "reasoning_tokens": 0,
+          "valid": true
+        },
+        "total_tokens": 6999,
+        "valid": true
+      },
+      "actual_estimate_rub": 2.3808999999999996
+    },
+    {
+      "id": "8e05635f-397b-48c0-b957-7f52778badf0",
+      "purpose": "http_hybrid/frame",
+      "status": "received",
+      "upper_rub": 318.6688,
+      "at": "2026-09-26T22:41:01.679571+00:00",
+      "request_sha256": "414e1a140309ba6e502b97f3b3d2ff0fd36eef145cacc652d9e0d2cbaba078e2",
+      "images_sent": 1,
+      "usage": {
+        "input_tokens": 4010,
+        "input_tokens_details": {
+          "cached_tokens": 0,
+          "valid": true,
+          "tool_tokens": 0
+        },
+        "output_tokens": 1091,
+        "output_tokens_details": {
+          "reasoning_tokens": 0,
+          "valid": true
+        },
+        "total_tokens": 5101,
+        "valid": true
+      },
+      "actual_estimate_rub": 1.7485
+    },
+    {
+      "id": "c5c1da80-7a79-4d11-a1c0-ae98d200990a",
+      "purpose": "http_hybrid/assessment",
+      "status": "received",
+      "upper_rub": 318.6688,
+      "at": "2026-09-26T22:41:11.650800+00:00",
+      "request_sha256": "f81ca9e12e38a415a75d368047ec8130eca33cb57420dd755e91943db7c985dd",
+      "images_sent": 1,
+      "usage": {
+        "input_tokens": 5741,
+        "input_tokens_details": {
+          "cached_tokens": 0,
+          "valid": true,
+          "tool_tokens": 0
+        },
+        "output_tokens": 2532,
+        "output_tokens_details": {
+          "reasoning_tokens": 0,
+          "valid": true
+        },
+        "total_tokens": 8273,
+        "valid": true
+      },
+      "actual_estimate_rub": 2.9883
+    },
+    {
+      "id": "7315b1e0-5a04-4854-bd9f-317d9c470a5a",
+      "purpose": "http_hybrid/frame",
+      "status": "received",
+      "upper_rub": 318.6688,
+      "at": "2026-09-26T22:42:31.635677+00:00",
+      "request_sha256": "138892d1c87271162d653f14310203ea630279bfb1d393d2cbfb307e6d4ab5d2",
+      "images_sent": 1,
+      "usage": {
+        "input_tokens": 3995,
+        "input_tokens_details": {
+          "cached_tokens": 2816,
+          "valid": true,
+          "tool_tokens": 0
+        },
+        "output_tokens": 986,
+        "output_tokens_details": {
+          "reasoning_tokens": 0,
+          "valid": true
+        },
+        "total_tokens": 4981,
+        "valid": true
+      },
+      "actual_estimate_rub": 1.6915
+    },
+    {
+      "id": "c5c9e3c3-03c7-455b-916c-fa9737319d98",
+      "purpose": "http_hybrid/assessment",
+      "status": "received",
+      "upper_rub": 318.6688,
+      "at": "2026-09-26T22:42:38.509041+00:00",
+      "request_sha256": "1469a39f81fa7522c9886dfbaa5a4dd098a8da2586f808cab38f0154f65ce573",
+      "images_sent": 1,
+      "usage": {
+        "input_tokens": 5563,
+        "input_tokens_details": {
+          "cached_tokens": 0,
+          "valid": true,
+          "tool_tokens": 0
+        },
+        "output_tokens": 1651,
+        "output_tokens_details": {
+          "reasoning_tokens": 0,
+          "valid": true
+        },
+        "total_tokens": 7214,
+        "valid": true
+      },
+      "actual_estimate_rub": 2.4943999999999997
+    }
+  ]
+}

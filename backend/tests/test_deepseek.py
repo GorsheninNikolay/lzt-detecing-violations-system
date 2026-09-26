@@ -508,11 +508,12 @@ def test_uncertain_detection_and_bound_plan_revision_survive_later_revision(deep
     assert all(o['state']=='insufficient_data' for o in result['observations'] if o['class_name']=='excavator')
     assert result['objects'][0]['details']['status']=='uncertain'
     assert result['result_projection']['plan_revision_id']==plan_a['revision_id']!=plan_b['revision_id']
-    assert [s['class_name'] for s in result['result_projection']['rule_results']]==['dump_truck']
+    assert [s['kind'] for s in result['result_projection']['rule_results']]==['insufficient_observations']
     with store.engine.connect() as db:
         signal=db.execute(text('SELECT revision_id,basis FROM site_signals WHERE run_id=:id'),{'id':run}).one()
         assert str(signal.revision_id)==plan_a['revision_id']
-        assert len(signal.basis['observations'])==3 and signal.basis['supporting_input_ids']
+        assert len(signal.basis['observations'])==6 and signal.basis['supporting_input_ids']
+        assert len(signal.basis['frames'])==3
 
 
 def test_enabled_retired_queue_is_terminalized(deepseek_service):

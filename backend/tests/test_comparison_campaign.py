@@ -657,7 +657,7 @@ def test_downgrade_refuses_planned_campaign_and_keeps_evidence(database, monkeyp
     campaign_id = database.freeze_comparison_campaign(revision, local_id, cloud_id)
     assert len(database.read_comparison_campaign(campaign_id)["cells"]) == 36
     monkeypatch.setenv("DATABASE_URL", database.engine.url.render_as_string(hide_password=False))
-    with pytest.raises(RuntimeError, match="deepseek_evidence_preservation_requires_forward_migration"):
+    with pytest.raises(RuntimeError, match="hybrid_evidence_preservation_requires_forward_migration"):
         command.downgrade(AlembicConfig(str(ROOT / "backend/alembic.ini")), "0009_evaluation_set")
     assert len(database.read_comparison_campaign(campaign_id)["cells"]) == 36
 
@@ -1162,10 +1162,10 @@ def test_empty_database_downgrade_requires_forward_migration(isolated_campaign_d
 
     database = isolated_campaign_database
     migrations = AlembicConfig(str(ROOT / "backend/alembic.ini"))
-    with pytest.raises(RuntimeError, match="deepseek_evidence_preservation_requires_forward_migration"):
+    with pytest.raises(RuntimeError, match="hybrid_evidence_preservation_requires_forward_migration"):
         command.downgrade(migrations, "0010_comparison_campaign")
     with database.engine.connect() as connection:
-        assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == "0022_deepseek"
+        assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == "0023_hybrid_signals"
 
 
 @pytest.mark.parametrize("recover", [False, True])

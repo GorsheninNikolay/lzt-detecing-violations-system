@@ -1,0 +1,322 @@
+{
+  "load_ms": 24340.53716697963,
+  "frames": [
+    {
+      "file": "Screenshot_1.png",
+      "models": [
+        {
+          "id": "apoce",
+          "count": 0,
+          "latency_ms": 5541.158000007272,
+          "classes": []
+        },
+        {
+          "id": "kaggle",
+          "count": 0,
+          "latency_ms": 87.77433296199888,
+          "classes": []
+        }
+      ]
+    },
+    {
+      "file": "Screenshot_100.png",
+      "models": [
+        {
+          "id": "apoce",
+          "count": 5,
+          "latency_ms": 60.74149999767542,
+          "classes": [
+            "concrete-mixer",
+            "excavator",
+            "excavator",
+            "excavator",
+            "dump-truck"
+          ]
+        },
+        {
+          "id": "kaggle",
+          "count": 0,
+          "latency_ms": 48.743832972832024,
+          "classes": []
+        }
+      ]
+    },
+    {
+      "file": "Screenshot_15.png",
+      "models": [
+        {
+          "id": "apoce",
+          "count": 1,
+          "latency_ms": 68.61129199387506,
+          "classes": [
+            "excavator"
+          ]
+        },
+        {
+          "id": "kaggle",
+          "count": 6,
+          "latency_ms": 49.396916991099715,
+          "classes": [
+            "Gazelle",
+            "Trailer",
+            "Excavator",
+            "Excavator",
+            "Trailer",
+            "Gazelle"
+          ]
+        }
+      ]
+    },
+    {
+      "file": "Screenshot_23.png",
+      "models": [
+        {
+          "id": "apoce",
+          "count": 1,
+          "latency_ms": 62.15170898940414,
+          "classes": [
+            "tower-crane"
+          ]
+        },
+        {
+          "id": "kaggle",
+          "count": 0,
+          "latency_ms": 48.693417047616094,
+          "classes": []
+        }
+      ]
+    },
+    {
+      "file": "Screenshot_24.png",
+      "models": [
+        {
+          "id": "apoce",
+          "count": 0,
+          "latency_ms": 60.63554197316989,
+          "classes": []
+        },
+        {
+          "id": "kaggle",
+          "count": 0,
+          "latency_ms": 47.17833298491314,
+          "classes": []
+        }
+      ]
+    },
+    {
+      "file": "Screenshot_47.png",
+      "models": [
+        {
+          "id": "apoce",
+          "count": 2,
+          "latency_ms": 64.61450003553182,
+          "classes": [
+            "excavator",
+            "excavator"
+          ]
+        },
+        {
+          "id": "kaggle",
+          "count": 3,
+          "latency_ms": 48.49625000497326,
+          "classes": [
+            "Excavator",
+            "Excavator",
+            "Gazelle"
+          ]
+        }
+      ]
+    },
+    {
+      "file": "Screenshot_48.png",
+      "models": [
+        {
+          "id": "apoce",
+          "count": 1,
+          "latency_ms": 61.480875010602176,
+          "classes": [
+            "excavator"
+          ]
+        },
+        {
+          "id": "kaggle",
+          "count": 1,
+          "latency_ms": 47.8212499874644,
+          "classes": [
+            "Excavator"
+          ]
+        }
+      ]
+    },
+    {
+      "file": "Screenshot_60.png",
+      "models": [
+        {
+          "id": "apoce",
+          "count": 5,
+          "latency_ms": 60.527583002112806,
+          "classes": [
+            "excavator",
+            "excavator",
+            "excavator",
+            "excavator",
+            "excavator"
+          ]
+        },
+        {
+          "id": "kaggle",
+          "count": 1,
+          "latency_ms": 47.93449997669086,
+          "classes": [
+            "Trailer"
+          ]
+        }
+      ]
+    },
+    {
+      "file": "Screenshot_61.png",
+      "models": [
+        {
+          "id": "apoce",
+          "count": 1,
+          "latency_ms": 61.99516699416563,
+          "classes": [
+            "excavator"
+          ]
+        },
+        {
+          "id": "kaggle",
+          "count": 2,
+          "latency_ms": 53.576416976284236,
+          "classes": [
+            "Excavator",
+            "Crane manipulator"
+          ]
+        }
+      ]
+    },
+    {
+      "file": "Screenshot_67.png",
+      "models": [
+        {
+          "id": "apoce",
+          "count": 0,
+          "latency_ms": 64.43237501662225,
+          "classes": []
+        },
+        {
+          "id": "kaggle",
+          "count": 0,
+          "latency_ms": 52.99408303108066,
+          "classes": []
+        }
+      ]
+    },
+    {
+      "file": "Screenshot_71.png",
+      "models": [
+        {
+          "id": "apoce",
+          "count": 0,
+          "latency_ms": 66.33987498935312,
+          "classes": []
+        },
+        {
+          "id": "kaggle",
+          "count": 1,
+          "latency_ms": 53.11858298955485,
+          "classes": [
+            "Dump truck"
+          ]
+        }
+      ]
+    },
+    {
+      "file": "Screenshot_78.png",
+      "models": [
+        {
+          "id": "apoce",
+          "count": 1,
+          "latency_ms": 61.14441598765552,
+          "classes": [
+            "excavator"
+          ]
+        },
+        {
+          "id": "kaggle",
+          "count": 0,
+          "latency_ms": 48.49383304826915,
+          "classes": []
+        }
+      ]
+    },
+    {
+      "file": "Screenshot_87.png",
+      "models": [
+        {
+          "id": "apoce",
+          "count": 1,
+          "latency_ms": 59.740333002991974,
+          "classes": [
+            "excavator"
+          ]
+        },
+        {
+          "id": "kaggle",
+          "count": 4,
+          "latency_ms": 48.354499973356724,
+          "classes": [
+            "Bucket loader Big",
+            "Excavator",
+            "Trailer",
+            "Bucket loader Standart"
+          ]
+        }
+      ]
+    },
+    {
+      "file": "Screenshot_97.png",
+      "models": [
+        {
+          "id": "apoce",
+          "count": 2,
+          "latency_ms": 64.64108399813995,
+          "classes": [
+            "concrete-mixer",
+            "excavator"
+          ]
+        },
+        {
+          "id": "kaggle",
+          "count": 3,
+          "latency_ms": 47.64274996705353,
+          "classes": [
+            "Mixer",
+            "Bucket loader Standart",
+            "Dump truck"
+          ]
+        }
+      ]
+    },
+    {
+      "file": "Screenshot_99.png",
+      "models": [
+        {
+          "id": "apoce",
+          "count": 0,
+          "latency_ms": 62.8214169992134,
+          "classes": []
+        },
+        {
+          "id": "kaggle",
+          "count": 2,
+          "latency_ms": 49.01233303826302,
+          "classes": [
+            "Trailer",
+            "Mixer"
+          ]
+        }
+      ]
+    }
+  ]
+}

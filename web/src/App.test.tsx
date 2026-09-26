@@ -232,7 +232,9 @@ describe('Prototype readiness', () => {
     const fetchMock = vi.fn().mockResolvedValueOnce({ status: 404 })
       .mockRejectedValueOnce(new Error('offline'))
       .mockResolvedValueOnce({ ok: true, json: async () => report })
-    vi.stubGlobal('fetch', fetchMock)
+    vi.stubGlobal('fetch', (url: string, options: RequestInit) => url === '/api/hybrid-readiness'
+      ? Promise.resolve({ok:true,json:async()=>({status:'blocked',code:'missing_current_report'})})
+      : fetchMock(url, options))
     render(<App />)
     expect(screen.getByRole('status', { name: '' }).textContent).toContain('Загружаем сохранённый отчёт')
     expect(await screen.findByText('Нет данных: сохранённого отчёта пока нет.')).toBeTruthy()
@@ -259,7 +261,9 @@ describe('Prototype readiness', () => {
       .mockRejectedValueOnce(new Error('offline'))
       .mockResolvedValueOnce({ ok: true, json: async () => campaignRun })
       .mockResolvedValue({ ok: true, blob: async () => new Blob(['jpeg']) })
-    vi.stubGlobal('fetch', fetchMock)
+    vi.stubGlobal('fetch', (url: string, options: RequestInit) => url === '/api/hybrid-readiness'
+      ? Promise.resolve({ok:true,json:async()=>({status:'blocked',code:'missing_current_report'})})
+      : fetchMock(url, options))
     render(<App />)
     await screen.findByRole('heading', { name: 'Сохранённый отчёт' })
     const criteria = screen.getByRole('heading', { name: 'Критерии' }).nextElementSibling!
@@ -336,7 +340,9 @@ describe('Prototype readiness', () => {
   it('retains the persisted report and timestamp after a later 404', async () => {
     const fetchMock = vi.fn().mockResolvedValueOnce({ ok: true, json: async () => report })
       .mockResolvedValueOnce({ status: 404 })
-    vi.stubGlobal('fetch', fetchMock)
+    vi.stubGlobal('fetch', (url: string, options: RequestInit) => url === '/api/hybrid-readiness'
+      ? Promise.resolve({ok:true,json:async()=>({status:'blocked',code:'missing_current_report'})})
+      : fetchMock(url, options))
     render(<App />)
     await screen.findByRole('heading', { name: 'Сохранённый отчёт' })
     fireEvent.click(screen.getByRole('button', { name: 'Обновить отчёт' }))
@@ -349,7 +355,9 @@ describe('Prototype readiness', () => {
   it('stops an unresponsive readiness fetch after ten seconds and offers retry', async () => {
     const fetchMock = vi.fn().mockImplementationOnce(() => new Promise<Response>(() => {}))
       .mockResolvedValueOnce({ status: 404 })
-    vi.stubGlobal('fetch', fetchMock)
+    vi.stubGlobal('fetch', (url: string, options: RequestInit) => url === '/api/hybrid-readiness'
+      ? Promise.resolve({ok:true,json:async()=>({status:'blocked',code:'missing_current_report'})})
+      : fetchMock(url, options))
     vi.useFakeTimers()
     await act(async () => { render(<App />) })
     await act(async () => { await vi.advanceTimersByTimeAsync(10000) })
@@ -368,7 +376,9 @@ describe('Prototype readiness', () => {
     const fetchMock = vi.fn().mockResolvedValueOnce({ ok: true, json: async () => report })
       .mockResolvedValueOnce({ ok: true, json: async () => failedRun })
       .mockResolvedValue({ ok: true, blob: async () => new Blob(['jpeg']) })
-    vi.stubGlobal('fetch', fetchMock)
+    vi.stubGlobal('fetch', (url: string, options: RequestInit) => url === '/api/hybrid-readiness'
+      ? Promise.resolve({ok:true,json:async()=>({status:'blocked',code:'missing_current_report'})})
+      : fetchMock(url, options))
     render(<App />)
     await screen.findByRole('heading', { name: 'Сохранённый отчёт' })
     fireEvent.click(screen.getAllByRole('link', { name: `Открыть запуск ${runId}` })[0])
@@ -724,6 +734,78 @@ describe('Observation result', () => {
     await user.click(screen.getByLabelText('Показывать рамки объектов'))
     expect(view.container.querySelectorAll('.object-box')).toHaveLength(0)
     expect(screen.getByText(/91% — оценка модели/)).toBeTruthy()
+  })
+
+  it.each(['unknown', 'ambiguous', 'unsupported-stage'])('requires a supported human selection for the %s stage hypothesis', async proposedStage => {
+    const user = userEvent.setup()
+    const run = {...completed, result_projection:{...completed.result_projection, stage_hypotheses:[{stage:proposedStage,reason:'Недостаточно данных'}]}}
+    const fetchMock = vi.fn(async (url: string, options?: RequestInit) => {
+      if (url === `/api/runs/${runId}/confirm-stage`) return {ok:true,json:async()=>JSON.parse(String(options?.body))}
+      return url === `/api/runs/${runId}` ? {ok:true,json:async()=>run} : {ok:true,blob:async()=>new Blob(['image'])}
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    render(<App />)
+    const select = await screen.findByLabelText('Этап') as HTMLSelectElement
+    const confirm = screen.getByRole('button', {name:'Подтвердить этап'})
+    expect(select.value).toBe('')
+    expect(select.selectedOptions[0].textContent).toBe('Выберите этап')
+    expect(confirm).toHaveProperty('disabled', true)
+    expect(fetchMock.mock.calls.some(([, options]) => options?.method === 'POST')).toBe(false)
+    await user.selectOptions(select, 'excavation')
+    expect(confirm).toHaveProperty('disabled', false)
+    await user.click(confirm)
+    await screen.findByText(/Человек подтвердил этап/)
+    const post = fetchMock.mock.calls.find(([, options]) => options?.method === 'POST')
+    expect(JSON.parse(String(post?.[1]?.body))).toEqual({stage:'excavation',comment:''})
+    expect(run.result_projection.stage_hypotheses[0].stage).toBe(proposedStage)
+  })
+
+  it('keeps a known stage proposal separate from explicit human confirmation', async () => {
+    const user = userEvent.setup()
+    const run = {...completed, result_projection:{...completed.result_projection, stage_hypotheses:[{stage:'excavation',reason:'Виден котлован'}]}}
+    const fetchMock = vi.fn(async (url: string, options?: RequestInit) => {
+      if (url === `/api/runs/${runId}/confirm-stage`) return {ok:true,json:async()=>JSON.parse(String(options?.body))}
+      return url === `/api/runs/${runId}` ? {ok:true,json:async()=>run} : {ok:true,blob:async()=>new Blob(['image'])}
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    render(<App />)
+    expect(await screen.findByLabelText('Этап')).toHaveProperty('value', 'excavation')
+    expect(screen.getByRole('button', {name:'Подтвердить этап'})).toHaveProperty('disabled', false)
+    expect(screen.queryByText(/Человек подтвердил этап/)).toBeNull()
+    expect(fetchMock.mock.calls.some(([, options]) => options?.method === 'POST')).toBe(false)
+    await user.click(screen.getByRole('button', {name:'Подтвердить этап'}))
+    await screen.findByText(/Человек подтвердил этап/)
+    expect(fetchMock.mock.calls.filter(([, options]) => options?.method === 'POST')).toHaveLength(1)
+  })
+
+  it('switches reconciled and raw detector layers without mixing frames or losing unsupported classes', async () => {
+    const user = userEvent.setup()
+    const reconciled = [{input_id:'input-0',class_name:'excavator',score:null,box:[.1,.2,.4,.6],image_size:[1000,500],invocation_id:'call'}]
+    const models = [{model_id:'apoce',image_size:[1000,500],detections:[{id:'a',input_id:'input-0',raw_class:'lifting-equipment',catalog_class:null,score:.67,box:[.2,.2,.5,.6]}]},
+      {model_id:'kaggle',image_size:[1000,500],detections:[{id:'k',input_id:'input-0',raw_class:'Truck',catalog_class:'truck',score:.89,box:[.4,.2,.7,.6]}]}]
+    const run = {...completed,objects:reconciled,result_projection:{...completed.result_projection,
+      hybrid_frames:[{input_id:'input-0',detectors:{models}},{input_id:'input-1',detectors:{models:[{model_id:'apoce',image_size:[1000,500],detections:[{id:'other',input_id:'input-1',raw_class:'tower-crane',catalog_class:null,score:.99,box:[.7,.1,.9,.9]}]}]}}]}}
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => url === `/api/runs/${runId}` ? {ok:true,json:async()=>run} : {ok:true,blob:async()=>new Blob(['image'])}))
+    const view = render(<App />)
+    const layer = await screen.findByLabelText('Источник рамок')
+    const box = () => view.container.querySelector('.result-feature-image .object-box') as HTMLElement
+    await waitFor(() => expect(box()?.style.left).toBe('10%'))
+    expect(screen.getByText('Числовая уверенность не предоставлена.')).toBeTruthy()
+    await user.selectOptions(layer, 'apoce')
+    expect(box().style.left).toBe('20%')
+    expect(screen.getByRole('button',{name:'1. lifting-equipment'})).toBeTruthy()
+    expect(screen.getByText(/67% — оценка модели/)).toBeTruthy()
+    expect(screen.queryByText(/99% — оценка модели/)).toBeNull()
+    expect(view.container.querySelectorAll('.result-feature-image .object-box')).toHaveLength(1)
+    await user.selectOptions(layer, 'kaggle')
+    expect(box().style.left).toBe('40%')
+    expect(screen.getByRole('button',{name:'1. Грузовик'})).toBeTruthy()
+    expect(screen.getByText(/89% — оценка модели/)).toBeTruthy()
+    expect(screen.queryByText(/67% — оценка модели/)).toBeNull()
+    await user.selectOptions(layer, 'reconciled')
+    expect(box().style.left).toBe('10%')
+    expect(screen.getByRole('button',{name:'1. Экскаватор'})).toBeTruthy()
+    expect(screen.queryByText(/89% — оценка модели/)).toBeNull()
   })
 
   it('selects the saved supporting frame and keeps technical IDs in details', async () => {

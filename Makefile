@@ -6,6 +6,7 @@ PORT ?= 8096
 export DEPLOY_PORT := 127.0.0.1:$(PORT)
 export POSTGRES_PASSWORD ?= evidence-local
 export MINIO_ROOT_PASSWORD ?= evidence-local-secret
+export HYBRID_PHOTO_SIGNALS ?= 1
 
 compose = $(COMPOSE) -p $(COMPOSE_PROJECT) -f infra/deploy/compose.yaml
 
@@ -20,6 +21,7 @@ up: build
 	@printf 'Local app: http://127.0.0.1:%s\n' '$(PORT)'
 
 build:
+	@test "$(HYBRID_PHOTO_SIGNALS)" = "0" || test -f artifacts/Models/apoce.pt -a -f artifacts/Models/kaggle.pt || { echo "Missing original YOLO checkpoints in artifacts/Models" >&2; exit 1; }
 	@test -n "$$(find artifacts/dataset -maxdepth 1 -name 'Свод*.xlsx' -print -quit)" || { echo 'Missing source catalog: artifacts/dataset/Свод*.xlsx' >&2; exit 1; }
 	npm --prefix web ci
 	npm --prefix web run build

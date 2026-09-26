@@ -1,1 +1,2 @@
 training/windows/*.cmd text eol=crlf
+*.pdf binary

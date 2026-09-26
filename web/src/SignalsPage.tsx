@@ -7,7 +7,7 @@ type Signal = {
   id: string
   run_id: string | null
   zone_id: string
-  revision_id: string
+  revision_id: string | null
   work_entry_id: string | null
   kind: string
   state: SignalState
@@ -37,6 +37,7 @@ type Draft = { state: SignalState; comment: string }
 
 const STATES: Record<SignalState, string> = { new: 'Новый', in_progress: 'В работе', closed: 'Закрыт' }
 const KINDS: Record<string, string> = {
+  possible_idle: 'Возможный простой', visible_process_risk: 'Возможный риск организации работ', visible_safety_risk: 'Возможный риск безопасности',
   expected_equipment_missing: 'Ожидаемая техника не обнаружена',
   equipment_not_planned: 'Техника не предусмотрена текущей операцией',
   stage_plan_mismatch: 'Этап расходится с планом',
@@ -129,9 +130,11 @@ function SignalPreview({ signal }: { signal: Signal }) {
 
 function SignalBasis({ signal }: { signal: Signal }) {
   const basis = signal.basis ?? {}
+  const risk = basis.risk as { text?: string; impact?: string; recommended_check?: string; limitations?: string[] } | undefined
   const supporting = Array.isArray(basis.supporting_input_ids) ? basis.supporting_input_ids : []
   return <section className="signals-detail-section" aria-labelledby={`signal-basis-${signal.id}`}>
     <h3 id={`signal-basis-${signal.id}`}>Основание</h3>
+    {risk && <><p>{risk.text}</p><p>Возможное влияние: {risk.impact}</p><p>Проверить: {risk.recommended_check}</p>{risk.limitations?.map((item, index) => <p key={index}>{item}</p>)}</>}
     {Boolean(basis.class_name) && <p>Техника: <strong>{EQUIPMENT[String(basis.class_name)] ?? String(basis.class_name)}</strong>.</p>}
     {Boolean(basis.due_at) && <p>Плановый срок: <time dateTime={String(basis.due_at)}>{formatTime(String(basis.due_at))}</time>.</p>}
     {Boolean(basis.confirmed_stage) && <p>Подтверждённый этап: {STAGES[String(basis.confirmed_stage)] ?? String(basis.confirmed_stage)}.</p>}
@@ -167,7 +170,7 @@ function SignalDetail({ signal, context, contextLoading, draft, busy, saveError,
     <details><summary>Полное основание сигнала</summary><SignalBasis signal={signal} /></details>
     <section className="signals-detail-section" aria-labelledby={`signal-plan-${signal.id}`}>
       <h3 id={`signal-plan-${signal.id}`}>План на момент сигнала</h3>
-      <p>Ревизия {signal.plan_revision_number ?? 'не указана в списке'}{signal.work_title ? ` · ${signal.work_title}` : ''}</p>
+      <p>{!signal.revision_id ? 'План не привязан. ' : ''}Ревизия {signal.plan_revision_number ?? 'не указана в списке'}{signal.work_title ? ` · ${signal.work_title}` : ''}</p>
       {contextLoading && <p role="status">Загружаем план и анализ…</p>}
       {context.planError && <p className="error" role="alert">{context.planError}</p>}
       {context.plan && <p>{signal.work_title ?? 'Активные работы'}: {context.plan.entries.filter(entry=>!signal.work_entry_id||entry.id===signal.work_entry_id).map(entry=>`${PLAN_STATES[entry.state]} · ${entry.stage_key?STAGES[entry.stage_key]??entry.stage_key:'этап не указан'} · ${formatTime(entry.starts_at)} — ${formatTime(entry.ends_at)}${entry.expected_equipment?.length ? ` · ожидается ${entry.expected_equipment.map(value=>EQUIPMENT[value]??value).join(', ')}`:''}${entry.excluded_equipment?.length ? ` · явно не предусмотрено ${entry.excluded_equipment.map(value=>EQUIPMENT[value]??value).join(', ')}`:''}`).join('; ')||'Работа в сохранённой ревизии отсутствует.'}</p>}
@@ -243,7 +246,7 @@ export default function SignalsPage({ heading, onOpenRun, projectId }: { project
         run: runResult.status === 'fulfilled' ? runResult.value : undefined,
         runError: runResult.status === 'rejected' ? 'Не удалось загрузить связанный анализ.' : undefined,
         plan: plan?.revision_id === selected.revision_id ? plan : undefined,
-        planError: planResult.status === 'rejected' ? 'Не удалось загрузить сохранённую ревизию плана.'
+        planError: !selected.revision_id ? undefined : planResult.status === 'rejected' ? 'Не удалось загрузить сохранённую ревизию плана.'
           : !selected.plan_revision_number ? 'Номер сохранённой ревизии недоступен.'
             : plan?.revision_id !== selected.revision_id ? 'Полученная ревизия плана не совпадает с сигналом.' : undefined,
       })

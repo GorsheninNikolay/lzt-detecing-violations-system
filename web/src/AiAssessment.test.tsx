@@ -41,3 +41,16 @@ it('shows retained invalid and uncertain calls without a successful assessment',
   expect(screen.getByText(/Успешная аналитика отсутствует/)).toBeTruthy()
   expect(screen.getByText(/"incomplete"/)).toBeTruthy()
 })
+
+it('shows hybrid activity, frame stage hypotheses and applicable plan links', () => {
+  const open = vi.fn()
+  render(<AiAssessmentPanel inputs={[{input_id:'frame',ordinal:0,sha256:'hash',artifact_id:null}]} evidence={[]} onOpenFrame={open}
+    assessment={{summary:'Наблюдение',stage_hypothesis:{stage:'excavation',reason:'Котлован'},risks:[],recommendations:[],limitations:['Один кадр'],
+      activity:[{state:'working_signs',reason:'Пересыпание грунта',uncertainty:'Длительность неизвестна',frame_ids:['frame']}],
+      stage_hypotheses:[{stage:'excavation',reason:'Виден котлован',frame_ids:['frame'],work_entry_id:'work'}]}} />)
+  expect(screen.getByText('Видны признаки работы')).toBeTruthy()
+  expect(screen.getByText('Длительность неизвестна')).toBeTruthy()
+  expect(screen.getByRole('link', {name:'work'}).getAttribute('href')).toBe('#work-work')
+  screen.getAllByRole('button',{name:'Кадр 1'})[0].click()
+  expect(open).toHaveBeenCalledWith('frame')
+})

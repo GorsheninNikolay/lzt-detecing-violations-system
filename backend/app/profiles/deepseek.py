@@ -262,19 +262,28 @@ def validate_assessment(value, context):
 
 class DeepSeek:
     def __init__(self, profile, api_key):
-        if profile != snapshot(profile.get('folder_id')):
+        from app.profiles.hybrid import snapshot as hybrid_snapshot
+        if profile not in (snapshot(profile.get('folder_id')), hybrid_snapshot(profile.get('folder_id'))):
             raise ValueError('deepseek_profile_invalid')
         if not api_key:
             raise ValueError('cloud_credential_missing')
         self.profile, self.api_key = profile, api_key
 
-    def call(self, kind, context, image=None, timeout=120):
+    def call(self, kind, context, image=None, timeout=120, images=None):
+        from app.profiles import hybrid
+        is_hybrid = self.profile.get('observation_contract') == hybrid.REVISION
         content = [{"type": "input_text", "text": PROMPT if kind == 'frame' else ANALYSIS_PROMPT + canonical_bytes(context).decode()}]
+        if is_hybrid:
+            content[0]['text'] = (hybrid.FRAME_PROMPT if kind == 'frame' else hybrid.ASSESSMENT_PROMPT) + canonical_bytes(context).decode()
         dimensions = None
         if image is not None:
             payload, media, dimensions = oriented_image(image)
             content.append({"type": "input_image", "image_url": f"data:{media};base64," + base64.b64encode(payload).decode(), "detail": "auto"})
-        schema = SCHEMA if kind == 'frame' else ASSESSMENT_SCHEMA
+        for frame_id, payload in images or []:
+            pixels, media, _ = oriented_image(payload)
+            content.append({'type': 'input_text', 'text': 'Current frame input_id: ' + str(frame_id)})
+            content.append({'type': 'input_image', 'image_url': f'data:{media};base64,' + base64.b64encode(pixels).decode(), 'detail': 'auto'})
+        schema = (hybrid.FRAME_SCHEMA if kind == 'frame' else hybrid.assessment_schema(context)) if is_hybrid else (SCHEMA if kind == 'frame' else ASSESSMENT_SCHEMA)
         body = {"model": self.profile['requested_model_identity']['id'], "store": False,
                 "temperature": 0, "max_output_tokens": MAX_OUTPUT, "reasoning": {"effort": "none"},
                 "text": {"format": {"type": "json_schema", "name": kind, "strict": True, "schema": schema}},
@@ -283,13 +292,14 @@ class DeepSeek:
         raw = _read_json(request.Request(ENDPOINT, data=canonical_bytes(body), headers={
             "Authorization": "Api-Key " + self.api_key, "OpenAI-Project": self.profile['folder_id'],
             "Content-Type": "application/json", "x-data-logging-enabled": "false"}), timeout)
-        valid = True
+        valid, rejection = True, None
         try:
             value = validate_response(raw, body['model'], 'none')
-            value = validate_annotation(value) if kind == 'frame' else validate_assessment(value, context)
-        except (ValueError, TypeError, KeyError, AttributeError):
-            value, valid = None, False
-        return {"value": value, "valid": valid, "raw": raw, "image_size": dimensions,
+            value = ((hybrid.validate_frame(value, context) if kind == 'frame' else hybrid.validate_assessment(value, context))
+                     if is_hybrid else (validate_annotation(value) if kind == 'frame' else validate_assessment(value, context)))
+        except (ValueError, TypeError, KeyError, AttributeError) as exc:
+            value, valid, rejection = None, False, str(exc)
+        return {"value": value, "valid": valid, "rejection": rejection, "raw": raw, "image_size": dimensions,
                 "model": raw.get('model') if isinstance(raw.get('model'), str) else None,
                 "usage": raw.get('usage') if valid else None, "latency_ms": (time.monotonic()-started)*1000,
-                "instruction_version": REVISION, "schema_version": REVISION}
+                "instruction_version": self.profile["instruction_version"], "schema_version": self.profile["schema_version"]}

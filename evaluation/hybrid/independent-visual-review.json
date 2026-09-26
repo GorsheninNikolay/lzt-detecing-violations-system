@@ -1,0 +1,994 @@
+{
+  "review_kind": "independent_agent_visual_review",
+  "reviewer": "Codex visual inspection without consulting machine draft annotations",
+  "human_adjudicated": false,
+  "ground_truth_status": "candidate_annotations_require_adjudication_for_acceptance",
+  "scope": "14 selected original PNG files only; absence statements below concern this subset, not entire archive",
+  "method": "Viewed every original with view_image; approximate normalized xyxy boxes estimated visually. No provider calls. No machine proposal labels read.",
+  "limitations": [
+    "Image date overlays are unverified text, not true capture metadata.",
+    "No temporal series, camera identity, duration, work rate, schedule adherence or idle duration is established.",
+    "Boxes are visible extents, can be truncated/occluded, and are not measurement-quality adjudicated ground truth.",
+    "Unlisted equipment is not an exhaustive negative annotation.",
+    "Visible working signs describe the instant only and are not proof of sustained productive operation."
+  ],
+  "images": [
+    {
+      "filename": "Screenshot_15.png",
+      "source_archive": "artifacts/dataset/Строительная_техника.zip",
+      "sha256": "64967cdccc0fcf76106d48c0c7896bfed718e10f81871d59091db2d45622d786",
+      "image_size": [
+        1218,
+        809
+      ],
+      "orientation": "as_displayed_original_png",
+      "suitability": "usable_for_some_visible_objects_not_all_class_absence",
+      "objects": [
+        {
+          "catalog_class": "excavator",
+          "box_xyxy_normalized": [
+            0.153,
+            0.417,
+            0.316,
+            0.507
+          ],
+          "box_quality": "approximate_independent_visual_estimate_not_adjudicated",
+          "note": "Partially occluded orange excavator at left.",
+          "activity": "insufficient_data",
+          "activity_evidence": "A single still image does not establish motion, sustained work or idle duration."
+        },
+        {
+          "catalog_class": "truck",
+          "box_xyxy_normalized": [
+            0.518,
+            0.371,
+            0.87,
+            0.624
+          ],
+          "box_quality": "approximate_independent_visual_estimate_not_adjudicated",
+          "note": "Flatbed truck; red structure behind cab is insufficient to confidently label truck_mounted_crane.",
+          "activity": "insufficient_data",
+          "activity_evidence": "A single still image does not establish motion, sustained work or idle duration."
+        }
+      ],
+      "unsupported_or_unresolved": [
+        {
+          "catalog_class": null,
+          "source_name": "tower_crane",
+          "note": "Fixed tower and jib at right, not mobile_crane."
+        }
+      ],
+      "scene_evidence": [
+        "Disturbed soil and rubble",
+        "Concrete structure and vertical reinforcement in background"
+      ],
+      "stage_hypotheses": [
+        "excavation",
+        "structural_work"
+      ],
+      "notes": [
+        "Truck loading/unloading context possible but no visible material transfer."
+      ],
+      "capture_time": null,
+      "temporal_series_id": null,
+      "plan_risk_expected": "not_assessable_without_bound_plan",
+      "idle_expected": "insufficient_data"
+    },
+    {
+      "filename": "Screenshot_23.png",
+      "source_archive": "artifacts/dataset/Строительная_техника.zip",
+      "sha256": "f03313fd866605aed702c598c0fa534f385eb4db615fc1d4c93964b1ce90e81b",
+      "image_size": [
+        1215,
+        811
+      ],
+      "orientation": "as_displayed_original_png",
+      "suitability": "usable_for_some_visible_objects_not_all_class_absence",
+      "objects": [
+        {
+          "catalog_class": "excavator",
+          "box_xyxy_normalized": [
+            0.255,
+            0.172,
+            0.672,
+            0.67
+          ],
+          "box_quality": "approximate_independent_visual_estimate_not_adjudicated",
+          "note": "Main tracked excavator; bucket raised over disturbed soil.",
+          "activity": "insufficient_data",
+          "activity_evidence": "A single still image does not establish motion, sustained work or idle duration."
+        }
+      ],
+      "unsupported_or_unresolved": [],
+      "scene_evidence": [
+        "Snow-covered site with disturbed/excavated soil"
+      ],
+      "stage_hypotheses": [
+        "excavation"
+      ],
+      "notes": [
+        "Tiny yellow machinery fragment at far right is too obscured for a confident class or box.",
+        "Raised empty bucket alone does not establish work or idle."
+      ],
+      "capture_time": null,
+      "temporal_series_id": null,
+      "plan_risk_expected": "not_assessable_without_bound_plan",
+      "idle_expected": "insufficient_data"
+    },
+    {
+      "filename": "Screenshot_24.png",
+      "source_archive": "artifacts/dataset/Строительная_техника.zip",
+      "sha256": "6a4fcb02acfcd1bd854481b88f2d34117b32d94f6add08ac94dc6d6ff3f72b57",
+      "image_size": [
+        1217,
+        808
+      ],
+      "orientation": "as_displayed_original_png",
+      "suitability": "usable_for_some_visible_objects_not_all_class_absence",
+      "objects": [
+        {
+          "catalog_class": "mobile_crane",
+          "box_xyxy_normalized": [
+            0.228,
+            0,
+            0.567,
+            0.741
+          ],
+          "box_quality": "approximate_independent_visual_estimate_not_adjudicated",
+          "note": "Crane on wheeled truck chassis with deployed outriggers; boom truncated at top. Box excludes remote hanging hook/load.",
+          "activity": "insufficient_data",
+          "activity_evidence": "A single still image does not establish motion, sustained work or idle duration."
+        }
+      ],
+      "unsupported_or_unresolved": [],
+      "scene_evidence": [
+        "Mobile crane, slings and concrete slab near a worker",
+        "Snow-covered site"
+      ],
+      "stage_hypotheses": [
+        "material_handling"
+      ],
+      "notes": [
+        "Taut slings and load handling setup are visible; lifting motion and whether slab is fully suspended are not established."
+      ],
+      "capture_time": null,
+      "temporal_series_id": null,
+      "plan_risk_expected": "not_assessable_without_bound_plan",
+      "idle_expected": "insufficient_data"
+    },
+    {
+      "filename": "Screenshot_47.png",
+      "source_archive": "artifacts/dataset/Строительная_техника.zip",
+      "sha256": "2ce0381a7c5b31bd3c1b857599fc1e11ea3b461a94b0fe8ebc947727e3c88639",
+      "image_size": [
+        1222,
+        811
+      ],
+      "orientation": "as_displayed_original_png",
+      "suitability": "usable_for_some_visible_objects_not_all_class_absence",
+      "objects": [
+        {
+          "catalog_class": "excavator",
+          "box_xyxy_normalized": [
+            0.054,
+            0.242,
+            0.214,
+            0.529
+          ],
+          "box_quality": "approximate_independent_visual_estimate_not_adjudicated",
+          "note": "Left excavator partly hidden by foreground central machine/soil.",
+          "activity": "insufficient_data",
+          "activity_evidence": "A single still image does not establish motion, sustained work or idle duration."
+        },
+        {
+          "catalog_class": "excavator",
+          "box_xyxy_normalized": [
+            0.161,
+            0.271,
+            0.605,
+            0.582
+          ],
+          "box_quality": "approximate_independent_visual_estimate_not_adjudicated",
+          "note": "Central CAT excavator with bucket against soil.",
+          "activity": "insufficient_data",
+          "activity_evidence": "A single still image does not establish motion, sustained work or idle duration."
+        },
+        {
+          "catalog_class": "excavator",
+          "box_xyxy_normalized": [
+            0.604,
+            0.37,
+            0.714,
+            0.559
+          ],
+          "box_quality": "approximate_independent_visual_estimate_not_adjudicated",
+          "note": "Small yellow/grey excavator in middle background, partially occluded.",
+          "activity": "insufficient_data",
+          "activity_evidence": "A single still image does not establish motion, sustained work or idle duration."
+        },
+        {
+          "catalog_class": "excavator",
+          "box_xyxy_normalized": [
+            0.717,
+            0.24,
+            0.961,
+            0.708
+          ],
+          "box_quality": "approximate_independent_visual_estimate_not_adjudicated",
+          "note": "Right foreground excavator.",
+          "activity": "visible_working_signs",
+          "activity_evidence": "Material is visibly falling below the raised bucket; this supports an active material handling sign in this instant, not duration or productivity."
+        }
+      ],
+      "unsupported_or_unresolved": [
+        {
+          "catalog_class": null,
+          "source_name": "drilling_or_piling_rig",
+          "note": "Yellow apparatus in rear centre; do not count it as mobile crane or bulldozer."
+        }
+      ],
+      "scene_evidence": [
+        "Large excavated pit, soil piles and retaining wall"
+      ],
+      "stage_hypotheses": [
+        "excavation"
+      ],
+      "notes": [
+        "Multiple independent excavator instances; overlapping detections must not collapse distinct machines."
+      ],
+      "capture_time": null,
+      "temporal_series_id": null,
+      "plan_risk_expected": "not_assessable_without_bound_plan",
+      "idle_expected": "insufficient_data"
+    },
+    {
+      "filename": "Screenshot_48.png",
+      "source_archive": "artifacts/dataset/Строительная_техника.zip",
+      "sha256": "32f4416faf9046893efb5697dcce9a88e3a9b9df147cfe2f191bf112a577c34c",
+      "image_size": [
+        1217,
+        808
+      ],
+      "orientation": "as_displayed_original_png",
+      "suitability": "usable_for_some_visible_objects_not_all_class_absence",
+      "objects": [
+        {
+          "catalog_class": "excavator",
+          "box_xyxy_normalized": [
+            0.021,
+            0.507,
+            0.342,
+            0.711
+          ],
+          "box_quality": "approximate_independent_visual_estimate_not_adjudicated",
+          "note": "Left CAT excavator partly occluded by soil.",
+          "activity": "insufficient_data",
+          "activity_evidence": "A single still image does not establish motion, sustained work or idle duration."
+        },
+        {
+          "catalog_class": "excavator",
+          "box_xyxy_normalized": [
+            0.45,
+            0.35,
+            0.721,
+            0.658
+          ],
+          "box_quality": "approximate_independent_visual_estimate_not_adjudicated",
+          "note": "Large central/right Volvo excavator.",
+          "activity": "visible_working_signs",
+          "activity_evidence": "Raised soil-loaded bucket with falling soil is visible."
+        },
+        {
+          "catalog_class": "excavator",
+          "box_xyxy_normalized": [
+            0.28,
+            0.487,
+            0.337,
+            0.553
+          ],
+          "box_quality": "approximate_independent_visual_estimate_not_adjudicated",
+          "note": "Small background excavator; body partly hidden, arm clearly visible.",
+          "activity": "insufficient_data",
+          "activity_evidence": "A single still image does not establish motion, sustained work or idle duration."
+        }
+      ],
+      "unsupported_or_unresolved": [],
+      "scene_evidence": [
+        "Large excavation pit, fresh soil heaps and cut ground"
+      ],
+      "stage_hypotheses": [
+        "excavation"
+      ],
+      "notes": [
+        "Background machine supports difficult small-object control, but box and class need adjudication before metric ground truth."
+      ],
+      "capture_time": null,
+      "temporal_series_id": null,
+      "plan_risk_expected": "not_assessable_without_bound_plan",
+      "idle_expected": "insufficient_data"
+    },
+    {
+      "filename": "Screenshot_60.png",
+      "source_archive": "artifacts/dataset/Строительная_техника.zip",
+      "sha256": "1abfb0b7143086f788589d861f684d59cbcc87527606817eee267264e3efd6ea",
+      "image_size": [
+        1217,
+        807
+      ],
+      "orientation": "as_displayed_original_png",
+      "suitability": "usable_for_some_visible_objects_not_all_class_absence",
+      "objects": [
+        {
+          "catalog_class": "road_roller",
+          "box_xyxy_normalized": [
+            0.517,
+            0.382,
+            0.677,
+            0.575
+          ],
+          "box_quality": "approximate_independent_visual_estimate_not_adjudicated",
+          "note": "Single-drum soil compactor/roller.",
+          "activity": "insufficient_data",
+          "activity_evidence": "A single still image does not establish motion, sustained work or idle duration."
+        }
+      ],
+      "unsupported_or_unresolved": [],
+      "scene_evidence": [
+        "Graded bare soil with vehicle tracks, surrounding demolition rubble"
+      ],
+      "stage_hypotheses": [
+        "ground_compaction"
+      ],
+      "notes": [
+        "Roller presence does not establish active compaction.",
+        "No asphalt or distinct road alignment is demonstrated; roadwork is an uncertain hypothesis, not accepted stage truth."
+      ],
+      "capture_time": null,
+      "temporal_series_id": null,
+      "plan_risk_expected": "not_assessable_without_bound_plan",
+      "idle_expected": "insufficient_data"
+    },
+    {
+      "filename": "Screenshot_61.png",
+      "source_archive": "artifacts/dataset/Строительная_техника.zip",
+      "sha256": "7694d8ae692e9ecdba0a1115bc4374cd18c7bf1f4336b41ebbdc1dd6b621fc64",
+      "image_size": [
+        1217,
+        808
+      ],
+      "orientation": "as_displayed_original_png",
+      "suitability": "usable_for_some_visible_objects_not_all_class_absence",
+      "objects": [
+        {
+          "catalog_class": "excavator",
+          "box_xyxy_normalized": [
+            0.535,
+            0.387,
+            0.673,
+            0.591
+          ],
+          "box_quality": "approximate_independent_visual_estimate_not_adjudicated",
+          "note": "Wheeled excavator, bucket lowered.",
+          "activity": "insufficient_data",
+          "activity_evidence": "A single still image does not establish motion, sustained work or idle duration."
+        },
+        {
+          "catalog_class": "excavator",
+          "box_xyxy_normalized": [
+            0.661,
+            0.464,
+            0.731,
+            0.573
+          ],
+          "box_quality": "approximate_independent_visual_estimate_not_adjudicated",
+          "note": "Second excavator behind the wheeled machine, partially occluded.",
+          "activity": "insufficient_data",
+          "activity_evidence": "A single still image does not establish motion, sustained work or idle duration."
+        }
+      ],
+      "unsupported_or_unresolved": [
+        {
+          "catalog_class": null,
+          "source_name": "skid_steer_loader",
+          "note": "White compact loader at right; do not map to bulldozer."
+        },
+        {
+          "catalog_class": null,
+          "source_name": "unidentified_yellow_machine_fragment",
+          "note": "Small upper-left cab fragment behind fence is unclassifiable."
+        }
+      ],
+      "scene_evidence": [
+        "Soil heaps, precast ground slabs and construction materials"
+      ],
+      "stage_hypotheses": [
+        "excavation",
+        "site_preparation"
+      ],
+      "notes": [
+        "Good ambiguous-activity control: lowered bucket and stationary pose do not prove idle."
+      ],
+      "capture_time": null,
+      "temporal_series_id": null,
+      "plan_risk_expected": "not_assessable_without_bound_plan",
+      "idle_expected": "insufficient_data"
+    },
+    {
+      "filename": "Screenshot_67.png",
+      "source_archive": "artifacts/dataset/Строительная_техника.zip",
+      "sha256": "3ce495f1631dff831e76af5389a7dc35928c847a36dc33715c90a41ed3d022f1",
+      "image_size": [
+        1212,
+        808
+      ],
+      "orientation": "as_displayed_original_png",
+      "suitability": "usable_for_some_visible_objects_not_all_class_absence",
+      "objects": [
+        {
+          "catalog_class": "mobile_crane",
+          "box_xyxy_normalized": [
+            0,
+            0.464,
+            0.835,
+            0.884
+          ],
+          "box_quality": "approximate_independent_visual_estimate_not_adjudicated",
+          "note": "Truck-chassis mobile crane with long telescopic boom and deployed outriggers; vehicle partially truncated left.",
+          "activity": "insufficient_data",
+          "activity_evidence": "A single still image does not establish motion, sustained work or idle duration."
+        }
+      ],
+      "unsupported_or_unresolved": [
+        {
+          "catalog_class": null,
+          "source_name": "tower_crane",
+          "note": "Two fixed tower cranes in background; not mobile cranes."
+        }
+      ],
+      "scene_evidence": [
+        "Steel reinforcement stockpile and workers next to crane"
+      ],
+      "stage_hypotheses": [
+        "material_handling",
+        "reinforcement_preparation"
+      ],
+      "notes": [
+        "Handling preparation context, but no unambiguous suspended load or visible motion."
+      ],
+      "capture_time": null,
+      "temporal_series_id": null,
+      "plan_risk_expected": "not_assessable_without_bound_plan",
+      "idle_expected": "insufficient_data"
+    },
+    {
+      "filename": "Screenshot_71.png",
+      "source_archive": "artifacts/dataset/Строительная_техника.zip",
+      "sha256": "acf0c3ed194830b0d3dc28e78b23d9f476c945d21106d74810441db661dc733b",
+      "image_size": [
+        1214,
+        807
+      ],
+      "orientation": "as_displayed_original_png",
+      "suitability": "usable_for_some_visible_objects_not_all_class_absence",
+      "objects": [
+        {
+          "catalog_class": "dump_truck",
+          "box_xyxy_normalized": [
+            0.382,
+            0.451,
+            0.62,
+            0.656
+          ],
+          "box_quality": "approximate_independent_visual_estimate_not_adjudicated",
+          "note": "Red tipper with clearly visible dump body.",
+          "activity": "insufficient_data",
+          "activity_evidence": "A single still image does not establish motion, sustained work or idle duration."
+        },
+        {
+          "catalog_class": "excavator",
+          "box_xyxy_normalized": [
+            0.346,
+            0.236,
+            0.495,
+            0.577
+          ],
+          "box_quality": "approximate_independent_visual_estimate_not_adjudicated",
+          "note": "Yellow excavator behind truck, most chassis occluded; raised bucket visible over truck.",
+          "activity": "insufficient_data",
+          "activity_evidence": "A single still image does not establish motion, sustained work or idle duration."
+        },
+        {
+          "catalog_class": "excavator",
+          "box_xyxy_normalized": [
+            0.3,
+            0.479,
+            0.382,
+            0.573
+          ],
+          "box_quality": "approximate_independent_visual_estimate_not_adjudicated",
+          "note": "Orange background excavator, partially occluded.",
+          "activity": "insufficient_data",
+          "activity_evidence": "A single still image does not establish motion, sustained work or idle duration."
+        }
+      ],
+      "unsupported_or_unresolved": [],
+      "scene_evidence": [
+        "Excavation site with pipe stockpiles and dump truck"
+      ],
+      "stage_hypotheses": [
+        "excavation"
+      ],
+      "notes": [
+        "Bucket over truck suggests loading context; no clear falling material in still image, so activity remains insufficient."
+      ],
+      "capture_time": null,
+      "temporal_series_id": null,
+      "plan_risk_expected": "not_assessable_without_bound_plan",
+      "idle_expected": "insufficient_data"
+    },
+    {
+      "filename": "Screenshot_78.png",
+      "source_archive": "artifacts/dataset/Строительная_техника.zip",
+      "sha256": "4d2d1a59795c5cf932b140c2a336dc29e8091e7a713564efd8d339e4deb15cd5",
+      "image_size": [
+        1215,
+        803
+      ],
+      "orientation": "as_displayed_original_png",
+      "suitability": "usable_for_some_visible_objects_not_all_class_absence",
+      "objects": [
+        {
+          "catalog_class": "excavator",
+          "box_xyxy_normalized": [
+            0.416,
+            0.319,
+            0.971,
+            0.694
+          ],
+          "box_quality": "approximate_independent_visual_estimate_not_adjudicated",
+          "note": "Large orange tracked excavator with arm lowered into soil.",
+          "activity": "insufficient_data",
+          "activity_evidence": "A single still image does not establish motion, sustained work or idle duration."
+        }
+      ],
+      "unsupported_or_unresolved": [],
+      "scene_evidence": [
+        "Excavation, retaining wall and steel pipe struts"
+      ],
+      "stage_hypotheses": [
+        "excavation"
+      ],
+      "notes": [
+        "Worker beside cab and lowered attachment do not establish sustained work or idle.",
+        "Useful close-up class and ambiguous-activity control."
+      ],
+      "capture_time": null,
+      "temporal_series_id": null,
+      "plan_risk_expected": "not_assessable_without_bound_plan",
+      "idle_expected": "insufficient_data"
+    },
+    {
+      "filename": "Screenshot_87.png",
+      "source_archive": "artifacts/dataset/Строительная_техника.zip",
+      "sha256": "a0b8d744d9aeef74a88230ac28a5a69137c2d26085a3862e30598de4699880ce",
+      "image_size": [
+        1212,
+        807
+      ],
+      "orientation": "as_displayed_original_png",
+      "suitability": "usable_for_some_visible_objects_not_all_class_absence",
+      "objects": [
+        {
+          "catalog_class": "excavator",
+          "box_xyxy_normalized": [
+            0.697,
+            0.637,
+            0.99,
+            0.888
+          ],
+          "box_quality": "approximate_independent_visual_estimate_not_adjudicated",
+          "note": "Right yellow tracked excavator, bucket over truck area.",
+          "activity": "insufficient_data",
+          "activity_evidence": "A single still image does not establish motion, sustained work or idle duration."
+        },
+        {
+          "catalog_class": "dump_truck",
+          "box_xyxy_normalized": [
+            0.594,
+            0.756,
+            0.808,
+            0.894
+          ],
+          "box_quality": "approximate_independent_visual_estimate_not_adjudicated",
+          "note": "Blue dump truck.",
+          "activity": "insufficient_data",
+          "activity_evidence": "A single still image does not establish motion, sustained work or idle duration."
+        },
+        {
+          "catalog_class": "mobile_crane",
+          "box_xyxy_normalized": [
+            0.342,
+            0.233,
+            0.537,
+            0.681
+          ],
+          "box_quality": "approximate_independent_visual_estimate_not_adjudicated",
+          "note": "Orange truck-mounted telescopic mobile crane in rear.",
+          "activity": "insufficient_data",
+          "activity_evidence": "A single still image does not establish motion, sustained work or idle duration."
+        }
+      ],
+      "unsupported_or_unresolved": [
+        {
+          "catalog_class": null,
+          "source_name": "backhoe_loader",
+          "note": "Front-left yellow wheeled backhoe loader; keep separate rather than force bulldozer or excavator catalog mapping."
+        },
+        {
+          "catalog_class": null,
+          "source_name": "drilling_or_piling_rig",
+          "note": "Tall left rig and central piling installation."
+        },
+        {
+          "catalog_class": null,
+          "source_name": "tower_crane",
+          "note": "Lattice tower crane centre-right."
+        }
+      ],
+      "scene_evidence": [
+        "Earth excavation, piling equipment and snow"
+      ],
+      "stage_hypotheses": [
+        "excavation",
+        "piling"
+      ],
+      "notes": [
+        "Raised bucket near truck is contextual but not conclusive material transfer.",
+        "Rich unsupported-class and crane-type separation control."
+      ],
+      "capture_time": null,
+      "temporal_series_id": null,
+      "plan_risk_expected": "not_assessable_without_bound_plan",
+      "idle_expected": "insufficient_data"
+    },
+    {
+      "filename": "Screenshot_97.png",
+      "source_archive": "artifacts/dataset/Строительная_техника.zip",
+      "sha256": "5b5fd8840414f172869d133d6cc7cdcf09b256a8fe8a3c047f56692489ed33a8",
+      "image_size": [
+        1221,
+        810
+      ],
+      "orientation": "as_displayed_original_png",
+      "suitability": "usable_for_some_visible_objects_not_all_class_absence",
+      "objects": [
+        {
+          "catalog_class": "excavator",
+          "box_xyxy_normalized": [
+            0.398,
+            0.281,
+            0.606,
+            0.559
+          ],
+          "box_quality": "approximate_independent_visual_estimate_not_adjudicated",
+          "note": "Upper middle excavator with long lowered arm.",
+          "activity": "insufficient_data",
+          "activity_evidence": "A single still image does not establish motion, sustained work or idle duration."
+        },
+        {
+          "catalog_class": "excavator",
+          "box_xyxy_normalized": [
+            0.388,
+            0.5,
+            0.526,
+            0.863
+          ],
+          "box_quality": "approximate_independent_visual_estimate_not_adjudicated",
+          "note": "Middle slope excavator, long arm extends down.",
+          "activity": "insufficient_data",
+          "activity_evidence": "A single still image does not establish motion, sustained work or idle duration."
+        },
+        {
+          "catalog_class": "excavator",
+          "box_xyxy_normalized": [
+            0.279,
+            0.662,
+            0.419,
+            0.957
+          ],
+          "box_quality": "approximate_independent_visual_estimate_not_adjudicated",
+          "note": "Bottom foreground mini excavator.",
+          "activity": "insufficient_data",
+          "activity_evidence": "A single still image does not establish motion, sustained work or idle duration."
+        },
+        {
+          "catalog_class": "excavator",
+          "box_xyxy_normalized": [
+            0.81,
+            0.211,
+            0.977,
+            0.338
+          ],
+          "box_quality": "approximate_independent_visual_estimate_not_adjudicated",
+          "note": "Far top-right excavator, body partly occluded.",
+          "activity": "insufficient_data",
+          "activity_evidence": "A single still image does not establish motion, sustained work or idle duration."
+        },
+        {
+          "catalog_class": "concrete_mixer_truck",
+          "box_xyxy_normalized": [
+            0.604,
+            0.24,
+            0.754,
+            0.397
+          ],
+          "box_quality": "approximate_independent_visual_estimate_not_adjudicated",
+          "note": "White mixer behind top excavator.",
+          "activity": "insufficient_data",
+          "activity_evidence": "A single still image does not establish motion, sustained work or idle duration."
+        }
+      ],
+      "unsupported_or_unresolved": [
+        {
+          "catalog_class": null,
+          "source_name": "tower_crane",
+          "note": "Fixed lattice tower at left."
+        }
+      ],
+      "scene_evidence": [
+        "Excavated slope",
+        "Reinforcement cages and stored formwork",
+        "Concrete mixer drum"
+      ],
+      "stage_hypotheses": [
+        "excavation",
+        "reinforcement_formwork"
+      ],
+      "notes": [
+        "Multiple concurrent work hypotheses supported; actual concrete placement is not visible.",
+        "Four excavators overlap but are separate physical instances."
+      ],
+      "capture_time": null,
+      "temporal_series_id": null,
+      "plan_risk_expected": "not_assessable_without_bound_plan",
+      "idle_expected": "insufficient_data"
+    },
+    {
+      "filename": "Screenshot_99.png",
+      "source_archive": "artifacts/dataset/Строительная_техника.zip",
+      "sha256": "c4d2cede161a85e29bb81ff751a9cd2fbe108f07ed397dfe170eceec8085da46",
+      "image_size": [
+        1216,
+        813
+      ],
+      "orientation": "as_displayed_original_png",
+      "suitability": "usable_for_some_visible_objects_not_all_class_absence",
+      "objects": [
+        {
+          "catalog_class": "excavator",
+          "box_xyxy_normalized": [
+            0.292,
+            0.438,
+            0.87,
+            0.783
+          ],
+          "box_quality": "approximate_independent_visual_estimate_not_adjudicated",
+          "note": "Dominant centre-right tracked excavator.",
+          "activity": "visible_working_signs",
+          "activity_evidence": "Soil is visibly falling from tilted bucket into dump truck body."
+        },
+        {
+          "catalog_class": "excavator",
+          "box_xyxy_normalized": [
+            0,
+            0.406,
+            0.234,
+            0.562
+          ],
+          "box_quality": "approximate_independent_visual_estimate_not_adjudicated",
+          "note": "Far left excavator mostly hidden behind fence and truck.",
+          "activity": "insufficient_data",
+          "activity_evidence": "A single still image does not establish motion, sustained work or idle duration."
+        },
+        {
+          "catalog_class": "excavator",
+          "box_xyxy_normalized": [
+            0.687,
+            0.349,
+            0.915,
+            0.61
+          ],
+          "box_quality": "approximate_independent_visual_estimate_not_adjudicated",
+          "note": "Right background excavator visible arm with hidden chassis; approximate visible-extent box.",
+          "activity": "insufficient_data",
+          "activity_evidence": "A single still image does not establish motion, sustained work or idle duration."
+        },
+        {
+          "catalog_class": "dump_truck",
+          "box_xyxy_normalized": [
+            0.122,
+            0.541,
+            0.551,
+            0.792
+          ],
+          "box_quality": "approximate_independent_visual_estimate_not_adjudicated",
+          "note": "Foreground grey tipper receiving soil.",
+          "activity": "insufficient_data",
+          "activity_evidence": "A single still image does not establish motion, sustained work or idle duration."
+        },
+        {
+          "catalog_class": "concrete_mixer_truck",
+          "box_xyxy_normalized": [
+            0.447,
+            0.523,
+            0.634,
+            0.747
+          ],
+          "box_quality": "approximate_independent_visual_estimate_not_adjudicated",
+          "note": "Occluded white drum and chassis behind tipper/excavator; truck boundaries approximate.",
+          "activity": "insufficient_data",
+          "activity_evidence": "A single still image does not establish motion, sustained work or idle duration."
+        }
+      ],
+      "unsupported_or_unresolved": [],
+      "scene_evidence": [
+        "Excavator loading soil into dump truck",
+        "Mixer visible in same scene"
+      ],
+      "stage_hypotheses": [
+        "excavation"
+      ],
+      "notes": [
+        "Strong active-loading control; mixer presence alone does not prove concreting.",
+        "Occluded mixer box unsuitable for strict localization acceptance without review."
+      ],
+      "capture_time": null,
+      "temporal_series_id": null,
+      "plan_risk_expected": "not_assessable_without_bound_plan",
+      "idle_expected": "insufficient_data"
+    },
+    {
+      "filename": "Screenshot_100.png",
+      "source_archive": "artifacts/dataset/Строительная_техника.zip",
+      "sha256": "cec4b90dfed4ce504f620a27176b8e28c72f14dc9b313efdfe791873236a2322",
+      "image_size": [
+        1220,
+        810
+      ],
+      "orientation": "as_displayed_original_png",
+      "suitability": "usable_for_some_visible_objects_not_all_class_absence",
+      "objects": [
+        {
+          "catalog_class": "excavator",
+          "box_xyxy_normalized": [
+            0.732,
+            0.492,
+            0.854,
+            0.61
+          ],
+          "box_quality": "approximate_independent_visual_estimate_not_adjudicated",
+          "note": "Top slope excavator.",
+          "activity": "insufficient_data",
+          "activity_evidence": "A single still image does not establish motion, sustained work or idle duration."
+        },
+        {
+          "catalog_class": "excavator",
+          "box_xyxy_normalized": [
+            0.742,
+            0.575,
+            0.789,
+            0.726
+          ],
+          "box_quality": "approximate_independent_visual_estimate_not_adjudicated",
+          "note": "Middle slope excavator with extended arm.",
+          "activity": "insufficient_data",
+          "activity_evidence": "A single still image does not establish motion, sustained work or idle duration."
+        },
+        {
+          "catalog_class": "excavator",
+          "box_xyxy_normalized": [
+            0.682,
+            0.724,
+            0.749,
+            0.859
+          ],
+          "box_quality": "approximate_independent_visual_estimate_not_adjudicated",
+          "note": "Bottom slope mini excavator.",
+          "activity": "insufficient_data",
+          "activity_evidence": "A single still image does not establish motion, sustained work or idle duration."
+        },
+        {
+          "catalog_class": "concrete_mixer_truck",
+          "box_xyxy_normalized": [
+            0.838,
+            0.546,
+            0.922,
+            0.62
+          ],
+          "box_quality": "approximate_independent_visual_estimate_not_adjudicated",
+          "note": "Distant mixer on upper edge.",
+          "activity": "insufficient_data",
+          "activity_evidence": "A single still image does not establish motion, sustained work or idle duration."
+        }
+      ],
+      "unsupported_or_unresolved": [
+        {
+          "catalog_class": null,
+          "source_name": "tower_crane",
+          "note": "Large fixed tower crane at centre."
+        },
+        {
+          "catalog_class": null,
+          "source_name": "excavator_fragment",
+          "note": "Far-right turquoise fragment cut by frame edge is not included as confident instance."
+        }
+      ],
+      "scene_evidence": [
+        "Excavated slope",
+        "Concrete floor slabs",
+        "Formwork/shoring and reinforcement",
+        "Workers on slabs"
+      ],
+      "stage_hypotheses": [
+        "excavation",
+        "reinforcement_formwork",
+        "concrete_structure"
+      ],
+      "notes": [
+        "Good concurrent-work scene; no verified pouring or productive work rate.",
+        "Potential relation to Screenshot_97 is not treated as a verified temporal sequence."
+      ],
+      "capture_time": null,
+      "temporal_series_id": null,
+      "plan_risk_expected": "not_assessable_without_bound_plan",
+      "idle_expected": "insufficient_data"
+    }
+  ],
+  "coverage": {
+    "confident_catalog_classes": [
+      "excavator",
+      "dump_truck",
+      "road_roller",
+      "truck",
+      "mobile_crane",
+      "concrete_mixer_truck"
+    ],
+    "missing_confident_catalog_classes": [
+      "bulldozer",
+      "truck_mounted_crane"
+    ],
+    "strong_working_sign_candidates": [
+      "Screenshot_47.png",
+      "Screenshot_48.png",
+      "Screenshot_99.png"
+    ],
+    "ambiguous_activity_candidates": [
+      "Screenshot_23.png",
+      "Screenshot_60.png",
+      "Screenshot_61.png",
+      "Screenshot_71.png",
+      "Screenshot_78.png"
+    ],
+    "unsupported_class_candidates": [
+      "Screenshot_15.png",
+      "Screenshot_24.png",
+      "Screenshot_61.png",
+      "Screenshot_67.png",
+      "Screenshot_87.png"
+    ],
+    "required_scenario_gaps": [
+      "No bound authentic plan or externally adjudicated normal/risk outcome for any of the three required scenarios.",
+      "No directly observed concrete pouring action; concrete-related equipment/structure only.",
+      "No unequivocal roadwork scene; roller may be compacting general construction ground.",
+      "No defensible possible-idle duration or confirmed idle example.",
+      "No natural globally unusable/blurred/dark frame among these selected originals.",
+      "No independent trustworthy capture times or verified same-camera temporal series.",
+      "No human-adjudicated eight-class precision/recall or localization ground truth."
+    ],
+    "safe_preparation": [
+      "Use duplicates of exact same image as explicit synthetic duplicate-invariance cases; retain original hash and do not call them independent observations.",
+      "Prepare explicit derived corrupt/blank/blurred cases with source provenance only if needed; these are synthetic robustness tests, not natural photographs.",
+      "Use supplied demo plans only as synthetic fixtures, never authentic construction schedule evidence."
+    ]
+  }
+}

@@ -2,7 +2,7 @@
 
 Сервис помогает разбирать фотографии строительной площадки: сохраняет исходные кадры, распознаёт видимую технику и признаки сцены через **Yandex AI Studio DeepSeek**, затем один раз сопоставляет наблюдения с контекстом участка и привязанной ревизией плана. Результат — гипотеза этапа, риски для проверки, рекомендации и ограничения. Подтверждение человеком хранится отдельно. Это прототип поддержки решений, не автоматическая фиксация нормативных нарушений.
 
-Текущий путь: фотографии → отдельное наблюдение каждого кадра → один анализ зафиксированного контекста. Используется `deepseek-v4.1-flash/latest`, reasoning `none`, temperature `0`, max output `8192`, `store=false`, журналирование данных провайдером отключено. Hosted-версия `latest` не гарантирует неизменность весов: фактический model URI, usage и полный ответ сохраняются.
+Гибридный путь: фотографии → оба YOLO checkpoint на локальном CPU → согласование объектов DeepSeek → один анализ фотографий и зафиксированного контекста → сохранённые сигналы. Старый DeepSeek-only профиль остаётся совместимым. Используется `deepseek-v4.1-flash/latest`, reasoning `none`, temperature `0`, max output `8192`, `store=false`, журналирование данных провайдером отключено. Hosted-версия `latest` не гарантирует неизменность весов: фактический model URI, usage и полный ответ сохраняются.
 
 ## Быстрый запуск локально
 
@@ -89,7 +89,9 @@ DINO/Qwen выведены из исполнения: новые запуски,
 | `S3_REGION` | По умолчанию `us-east-1` |
 | `YANDEX_CLOUD_FOLDER_ID` | Каталог Yandex для создания профиля |
 | `YANDEX_AI_STUDIO_API_KEY` | Только transient environment, без логирования |
-| `OBSERVER_PROFILE_ID` | UUID текущего DeepSeek-профиля |
+| `OBSERVER_PROFILE_ID` | UUID текущего DeepSeek или hybrid-профиля |
+| `HYBRID_PHOTO_SIGNALS` | `1` при создании нового hybrid-профиля; Compose по умолчанию `1` |
+| `YOLO_MODELS_DIR` | Каталог оригинальных `apoce.pt` и `kaggle.pt`; Compose монтирует только для чтения |
 | `POSTGRES_PASSWORD`, `MINIO_ROOT_PASSWORD`, `DEPLOY_PORT` | Compose |
 
 Прямой запуск: `cd backend`, `uv run alembic upgrade head`, затем `uv run evidence-service`. Для каталога используется `app.application.site.ensure_catalog`; Compose вызывает его автоматически. Миграции инициализации не изменяют исторические результаты. После обновления версии инструкции/схемы создайте новый профиль.
@@ -110,7 +112,7 @@ Loopback-исключение действует при прямом обращ�
 
 ## Разработка и проверка
 
-[Architecture.md](Architecture.md) описывает текущий и будущий пути; [docs/CODE_GUIDE.md](docs/CODE_GUIDE.md) — реальные модули и сущности. Windows-набор для двух независимых YOLO-профилей: [training/windows/README.md](training/windows/README.md). Веса к сервису не подключены, обучение не запускалось.
+[Architecture.md](Architecture.md) описывает текущий и будущий пути; [docs/CODE_GUIDE.md](docs/CODE_GUIDE.md) — реальные модули и сущности. Windows-набор для двух независимых YOLO-профилей: [training/windows/README.md](training/windows/README.md). Оригинальные веса `artifacts/Models/{apoce,kaggle}.pt` подключаются только для чтения. Их SHA-256, исходные классы и отображение фиксирует `backend/app/data/yolo-manifest.json`. Качество не подтверждается техническим запуском; [гибридный runbook](docs/HYBRID_PHOTO_SIGNALS.md).
 
 ```sh
 uv run --project backend --extra test pytest backend/tests/test_deepseek.py -q

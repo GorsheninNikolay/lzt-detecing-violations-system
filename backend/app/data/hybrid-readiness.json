@@ -1,0 +1,37 @@
+{
+  "status": "blocked",
+  "code": "quality_acceptance_not_met",
+  "verified_at": "2026-09-27",
+  "profile_sha256": "2953f641a593f7fdbc6df92d34dcd2434bce9a1fce0d0f4522f5ff66555265a8",
+  "detector_manifest_sha256": "cba5bbcdac16c41845cd55e29d9c52c9a987640d2e6d1cb5f6c374054e9d0256",
+  "criteria": {
+    "independently_reviewed": false,
+    "required_cases_complete": false,
+    "zero_false_warnings": false
+  },
+  "blocking_reasons": [
+    "Контрольный набор ещё не подтверждён человеком: разметка кандидатов не является эталоном.",
+    "Нет подтверждённых примеров бульдозера и крана-манипулятора, а также сопоставимых временных серий простоя.",
+    "Реальный CPU-прогон выявил пропуски и ошибочные классы YOLO; требуется адресная доразметка и дообучение.",
+    "Сценарии качества для земляных, бетонных и дорожных работ проверены не полностью."
+  ],
+  "measured": {
+    "cpu_images": 15,
+    "checkpoints_loaded": 2,
+    "initial_load_ms": 24340.53716697963,
+    "warm_pair_median_ms": 111.33943803724833,
+    "queued_control_images": 15,
+    "agent_reviewed_images": 14,
+    "candidate_boxes": 36,
+    "confident_candidate_class_count": 6,
+    "human_adjudicated_images": 0,
+    "false_warning_rate": null,
+    "per_class_precision_recall": null
+  },
+  "evidence": {
+    "review_queue": "evaluation/hybrid/control-review-queue.json",
+    "independent_candidate_review": "evaluation/hybrid/independent-visual-review.json",
+    "cpu_runs": "evaluation/hybrid/yolo-smoke-summary.json",
+    "method_and_retraining": "evaluation/hybrid/README.md"
+  }
+}

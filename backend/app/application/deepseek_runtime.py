@@ -12,8 +12,9 @@ from app.profiles.deepseek import DeepSeek, EQUIPMENT, REVISION, snapshot, orien
 from app.shared.cloud import canonical_bytes, digest
 
 
-def provision(store, folder_id):
-    profile = snapshot(folder_id)
+def provision(store, folder_id, hybrid=False):
+    from app.profiles.hybrid import snapshot as hybrid_snapshot
+    profile = hybrid_snapshot(folder_id) if hybrid else snapshot(folder_id)
     identity = digest(canonical_bytes(profile))
     parent_id = uuid.uuid5(uuid.NAMESPACE_URL, 'deepseek-draft/' + identity)
     profile_id = uuid.uuid5(uuid.NAMESPACE_URL, 'deepseek/' + identity)
@@ -77,6 +78,23 @@ def save_result(store, work, call_id, result):
             db.execute(text("UPDATE analysis_stages SET state='running' WHERE run_id=:run AND ordinal=3 AND state='pending'"), {'run':work['id']})
 
 
+def class_state(value, name, detector_evidence=None):
+    if name not in EQUIPMENT:
+        return 'not_analyzed'
+    objects = value.get('objects', value.get('observations', []))
+    if any(o.get('catalog_class') == name and o.get('status') == 'identified' for o in objects):
+        return 'detected'
+    unresolved = {d['detection_id'] for d in value.get('detection_dispositions', []) if d['status'] == 'unresolved'}
+    detectors = detector_evidence or value.get('detectors', {})
+    unresolved_class = any(d['id'] in unresolved and d.get('catalog_class') in (None, name)
+                           for model in detectors.get('models', []) for d in model['detections'])
+    if (unresolved_class or not value.get('frame_usability', {'usable': True})['usable']
+            or value.get('class_assessability', {}).get(name, 'assessable') != 'assessable'
+            or any(o.get('status') == 'uncertain' and o.get('catalog_class') in (None, name) for o in objects)):
+        return 'insufficient_data'
+    return 'not_detected_in_frame'
+
+
 def observation_context(frame, result):
     value = result['value']
     observations = [{**item, 'id': str(uuid.uuid5(uuid.NAMESPACE_URL, f"{frame['input_id']}/object/{i}")),
@@ -85,7 +103,9 @@ def observation_context(frame, result):
                       'state': state, 'visible': state == 'present'} for name, state in value['scenes'].items()]
     return {'input_id': str(frame['input_id']), 'ordinal': frame['ordinal'],
             'sha256': frame['sha256'], 'source_artifact_id': str(frame['artifact_id']),
-            'observations': observations, 'stage': value['stage'], 'stage_reason': value['stage_reason']}
+            'observations': observations, 'stage': value['stage'], 'stage_reason': value['stage_reason'],
+            **{key: value[key] for key in ('frame_usability', 'class_assessability', 'detection_dispositions') if key in value},
+            **({'detectors': result['detectors']} if 'detectors' in result else {})}
 
 
 def freeze_context(store, work, frames):
@@ -136,12 +156,26 @@ def freeze_context(store, work, frames):
             for old in candidates:
                 history.append({'run_id': str(old['id']), 'last_capture': old['last_capture'].isoformat(),
                                 'assessment': old['result']['value']})
-        return {'frames': frames, 'plan': plan, 'history': history, 'zone_id': context.get('zone_id'),
+        rules = []
+        if plan:
+            entries = [{**e, 'starts_at': datetime.fromisoformat(e['starts_at']), 'ends_at': datetime.fromisoformat(e['ends_at'])} for e in plan['entries']]
+            obs = []
+            for frame in frames:
+                for name in EQUIPMENT:
+                    obs.append({'input_id': frame['input_id'], 'class_name': name, 'state': class_state(frame, name)})
+            rules = compare_equipment(entries, [f['captured_at'] for f in frames], obs, [f['input_id'] for f in frames], set(EQUIPMENT), frames=frames)
+        return {'frames': frames, 'rule_results': rules,
+                'comparison_method': 'same_zone_independent_timed_frames' if reliable and len({f['sha256'] for f in frames}) > 1 else 'individual_frames_only', 'plan': plan, 'history': history, 'zone_id': context.get('zone_id'),
                 'declared_context':dict(context), 'history_eligible':reliable,
-                'instruction_version': REVISION, 'schema_version': REVISION}
+                'instruction_version': row.profile_snapshot['instruction_version'], 'schema_version': row.profile_snapshot['schema_version']}
 
 
 def complete(store, work, frame_results, assessment, frozen):
+    if work['profile_snapshot'].get('observation_contract') == 'hybrid-photo-signals-v1':
+        from app.profiles.hybrid import validate_assessment, validate_frame
+        validate_assessment(assessment['value'], frozen)
+        for frame, _, result in frame_results:
+            validate_frame(result['value'], {'detectors': result['detectors']})
     with store.engine.begin() as db:
         lease(db, work)
         expected = db.execute(text('SELECT count(*) FROM deepseek_calls WHERE run_id=:run'), {'run': work['id']}).scalar_one()
@@ -150,6 +184,7 @@ def complete(store, work, frame_results, assessment, frozen):
         if expected != len(work['frames']) + 1 or expected != completed:
             raise ValueError('observation_incomplete')
         observations = []
+        hybrid = work['profile_snapshot'].get('observation_contract') == 'hybrid-photo-signals-v1'
         for frame, call_id, result in frame_results:
             db.execute(text('''INSERT INTO observer_invocations
                 (id,run_id,input_id,fence,profile_id,authorization_revision,stage_ordinal,input_sha256,
@@ -167,10 +202,8 @@ def complete(store, work, frame_results, assessment, frozen):
                     {'id': identity, 'run': work['id'], 'input': frame['input_id'], 'call': call_id, 'ordinal': ordinal,
                      'class': obj['catalog_class'] or 'unknown', 'box': json.dumps(obj['box']),
                      'size': json.dumps(result['image_size']), 'details': json.dumps(obj)})
-            detected = {obj['catalog_class'] for obj in result['value']['objects'] if obj['status']=='identified'}
-            uncertain = {obj['catalog_class'] for obj in result['value']['objects'] if obj['status']=='uncertain'}
             for name in work['requested_classes']:
-                state = 'detected' if name in detected else 'insufficient_data' if name in uncertain else 'not_detected_in_frame' if name in EQUIPMENT else 'not_analyzed'
+                state = class_state(result['value'], name, result.get('detectors'))
                 item = {'class_name': name, 'state': state, 'reason': 'unsupported_class' if name not in EQUIPMENT else 'uncertain_identification' if state=='insufficient_data' else None,
                         'input_id': str(frame['input_id']), 'ordinal': frame['ordinal'],
                         'source_artifact_id': str(frame['artifact_id']), 'invocation_id': str(call_id)}
@@ -180,34 +213,61 @@ def complete(store, work, frame_results, assessment, frozen):
                     {'run': work['id'], 'sha': frame['sha256'], **item})
                 observations.append(item)
         ids = [str(frame['input_id']) for frame in work['frames']]
+        usable_ids = [frame['input_id'] for frame in frozen['frames'] if frame.get('frame_usability', {'usable': True})['usable']]
         projection = {'outcome': 'observations_only', 'frames': observations,
-                      'ai_assessment': assessment['value'], 'series': {'usable_count': len(ids), 'usable_input_ids': ids,
+                      'ai_assessment': assessment['value'], 'series': {'usable_count': len(usable_ids), 'usable_input_ids': usable_ids,
                       'input_order': ids, 'excavator_supporting_input_ids': [o['input_id'] for o in observations if o['class_name'] == 'excavator' and o['state'] == 'detected'], 'dump_truck_persistence_input_ids': [], 'declared_observation_area': frozen.get('zone_id'), 'dump_truck_persistence_text': None},
                       'stage_hypotheses': [], 'source': 'Yandex AI Studio DeepSeek',
                       'limitations': ['Фотография не доказывает отсутствие техники; выводы требуют проверки человеком.']}
         projection['context'] = frozen['declared_context']
         projection['series']['declared_observation_area'] = frozen['declared_context'].get('observation_area')
-        if frozen['plan']:
-            plan = frozen['plan']
-            entries = [{**entry,'starts_at':datetime.fromisoformat(entry['starts_at']),
-                        'ends_at':datetime.fromisoformat(entry['ends_at'])} for entry in plan['entries']]
-            signals = compare_equipment(entries, [frame['captured_at'] for frame in frozen['frames']],
-                                        observations, ids, set(EQUIPMENT))
+        projection['hybrid_frames'] = frozen['frames'] if hybrid else []
+        projection['stage_hypotheses'] = assessment['value'].get('stage_hypotheses', [])
+        projection['created_signals'] = []
+        projection['rule_results'] = frozen.get('rule_results', [])
+        plan = frozen['plan']
+        if plan:
             projection['plan_revision_id'] = plan['revision_id']
-            projection['rule_results'] = signals
-            for signal in signals:
-                supporting = [item for item in observations if not signal.get('class_name')
-                              or item['class_name']==signal['class_name']]
-                basis = {'rule_revision':'site-equipment-v1','supporting_input_ids':ids,
-                         'observations':supporting,**signal}
-                fingerprint = digest(canonical_bytes({'run':str(work['id']),**signal}))
-                db.execute(text('''INSERT INTO site_signals
-                    (id,fingerprint,run_id,zone_id,revision_id,work_entry_id,kind,basis)
-                    VALUES (:id,:fingerprint,:run,:zone,:revision,:entry,:kind,CAST(:basis AS jsonb))
-                    ON CONFLICT (fingerprint) DO NOTHING'''),
-                    {'id':uuid.uuid4(),'fingerprint':fingerprint,'run':work['id'],'zone':plan['zone_id'],
-                     'revision':plan['revision_id'],'entry':signal['entry_id'],'kind':signal['kind'],
-                     'basis':json.dumps(basis)})
+        candidates = list(frozen.get('rule_results', []))
+        for risk in assessment['value']['risks'] if hybrid else []:
+            matching = next((r for r in candidates if r['kind'] == risk['cause'] and r['entry_id'] == risk['work_entry_id']
+                             and set(r.get('supporting_input_ids', [])) == set(risk['frame_ids'])), None)
+            if matching is not None:
+                matching['risk'] = risk
+            else:
+                candidates.append({'kind': risk['cause'], 'entry_id': risk['work_entry_id'],
+                                   'supporting_input_ids': risk['frame_ids'], 'risk': risk})
+        frame_by_id = {f['input_id']: f for f in frozen['frames']}
+        for signal in candidates:
+            if not frozen.get('zone_id'):
+                continue
+            supporting_ids = signal.get('supporting_input_ids', ids)
+            supporting = [o for o in observations if o['input_id'] in supporting_ids and
+                          (not signal.get('class_name') or o['class_name'] == signal['class_name'])]
+            evidence_frames = [frame_by_id[key] for key in supporting_ids]
+            basis = {'rule_revision': 'site-equipment-v2', 'supporting_input_ids': supporting_ids,
+                     'observations': supporting, 'frames': evidence_frames, 'plan': plan, **signal}
+            source = sorted({frame_by_id[key]['sha256'] for key in supporting_ids})
+            cited = (set(signal.get('risk', {}).get('observation_ids', []))
+                     if not signal.get('class_name') and signal['kind'] != 'stage_plan_mismatch' else set())
+            evidence = sorted([{'sha256': f['sha256'], 'kind': o['kind'],
+                                'class': o.get('catalog_class', o.get('name')),
+                                'detections': sorted(ref.split('/', 1)[1] for ref in o.get('detection_ids', []))}
+                               for f in evidence_frames for o in f['observations'] if o['id'] in cited],
+                              key=lambda item: canonical_bytes(item))
+            fingerprint = digest(canonical_bytes({'zone': frozen['zone_id'],
+                'revision': plan['revision_id'] if plan else None, 'cause': signal['kind'],
+                'work': signal['entry_id'], 'class': signal.get('class_name'), 'source': source, 'evidence': evidence}))
+            db.execute(text('''INSERT INTO site_signals
+                (id,fingerprint,run_id,zone_id,revision_id,work_entry_id,kind,basis)
+                VALUES (:id,:fingerprint,:run,:zone,:revision,:entry,:kind,CAST(:basis AS jsonb))
+                ON CONFLICT (fingerprint) DO NOTHING'''),
+                {'id': uuid.uuid4(), 'fingerprint': fingerprint, 'run': work['id'], 'zone': frozen['zone_id'],
+                 'revision': plan['revision_id'] if plan else None, 'entry': signal['entry_id'],
+                 'kind': signal['kind'], 'basis': json.dumps(basis)})
+            stored = db.execute(text('SELECT id,state FROM site_signals WHERE fingerprint=:fingerprint'),
+                                {'fingerprint': fingerprint}).one()
+            projection['created_signals'].append({'id': str(stored.id), 'state': stored.state, **signal})
         db.execute(text('''INSERT INTO result_projections(run_id,outcome,snapshot)
             VALUES (:run,'observations_only',CAST(:snapshot AS jsonb))'''),
             {'run': work['id'], 'snapshot': json.dumps(projection)})
@@ -231,31 +291,43 @@ async def execute(runner, work, revision):
                 raise ValueError('ordinary_lease_rejected')
         observer = DeepSeek(work['profile_snapshot'], Config.from_env().cloud_api_key)
         deadline = monotonic() + work['profile_snapshot']['runtime']['batch_timeout_seconds']
-        results, frames = [], []
+        results, frames, images = [], [], []
+        hybrid = work['profile_snapshot'].get('observation_contract') == 'hybrid-photo-signals-v1'
+        prepared = []
         for frame in work['frames']:
+            check_renewal()
             image = await asyncio.to_thread(runner.artifacts.read_verified, frame['key'], frame['sha256'], frame['size'])
             await asyncio.to_thread(oriented_image, image)
             context = {'input_id': str(frame['input_id']), 'sha256': frame['sha256'], 'ordinal': frame['ordinal'],
-                       'instruction_version': REVISION, 'schema_version': REVISION}
+                       'instruction_version': work['profile_snapshot']['instruction_version'],
+                       'schema_version': work['profile_snapshot']['schema_version']}
+            if hybrid:
+                from app.profiles.yolo import detectors
+                context['detectors'] = await asyncio.to_thread(detectors().detect, image, str(frame['input_id']))
+            prepared.append((frame, image, context))
+        for frame, image, context in prepared:
             timeout = min(120, deadline - monotonic())
             if timeout <= 0:
                 raise ValueError('observer_timeout')
             check_renewal()
             call_id = await asyncio.to_thread(reserve, runner.store, work, 'frame', context, frame)
             result = await asyncio.to_thread(observer.call, 'frame', context, image, timeout)
+            if hybrid:
+                result['detectors'] = context['detectors']
             check_renewal()
             await asyncio.to_thread(save_result, runner.store, work, call_id, result)
             if result.get('valid') is not True:
                 raise ValueError('deepseek_response_invalid')
             results.append((frame, call_id, result))
             frames.append(observation_context(frame, result))
+            images.append((str(frame['input_id']), image))
         frozen = await asyncio.to_thread(freeze_context, runner.store, work, frames)
         timeout = min(120, deadline - monotonic())
         if timeout <= 0:
             raise ValueError('observer_timeout')
         check_renewal()
         call_id = await asyncio.to_thread(reserve, runner.store, work, 'assessment', frozen)
-        assessment = await asyncio.to_thread(observer.call, 'assessment', frozen, None, timeout)
+        assessment = await asyncio.to_thread(observer.call, 'assessment', frozen, None, timeout, **({'images': images} if hybrid else {}))
         check_renewal()
         await asyncio.to_thread(save_result, runner.store, work, call_id, assessment)
         if assessment.get('valid') is not True:
@@ -278,7 +350,7 @@ def main():
     from app.adapters.postgres import PostgresStore
     store = PostgresStore(Config.database_url_from_env())
     try:
-        print(provision(store, os.environ['YANDEX_CLOUD_FOLDER_ID']))
+        print(provision(store, os.environ['YANDEX_CLOUD_FOLDER_ID'], hybrid=os.getenv('HYBRID_PHOTO_SIGNALS') == '1'))
     finally:
         store.close()
 

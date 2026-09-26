@@ -1,0 +1,76 @@
+{
+  "models": [
+    {
+      "id": "apoce",
+      "owner_supplied_path": "artifacts/Models/apoce.pt",
+      "sha256": "db44473297767157a13a3d534668a16b336ab18c54bd1814e39f8eab1874c705",
+      "checkpoint_version": "8.4.163",
+      "checkpoint_epoch": -1,
+      "checkpoint_date": "2026-09-26T21:51:28.743909+03:00",
+      "architecture": "yolo26s.yaml",
+      "scale": "s",
+      "training_request": {
+        "epochs": 100,
+        "imgsz": 640,
+        "batch": 10,
+        "seed": 42,
+        "optimizer": "auto",
+        "pretrained": true
+      },
+      "original_classes": [
+        "bulldozer",
+        "concrete-mixer",
+        "dump-truck",
+        "excavator",
+        "lifting-equipment",
+        "piling-machine",
+        "tower-crane"
+      ],
+      "limitations": [
+        "Checkpoint metadata does not independently verify training data rights, full training completion or accuracy.",
+        "User originals were loaded without modification."
+      ]
+    },
+    {
+      "id": "kaggle",
+      "owner_supplied_path": "artifacts/Models/kaggle.pt",
+      "sha256": "0e86af081bd71dc4c9cd9a07bb151949781d8ec86442a0fe334f1bca11be3622",
+      "checkpoint_version": "8.4.163",
+      "checkpoint_epoch": 4,
+      "checkpoint_date": "2026-09-26T23:07:33.088520+03:00",
+      "architecture": "yolo26s.yaml",
+      "scale": "s",
+      "training_request": {
+        "epochs": 100,
+        "imgsz": 640,
+        "batch": 10,
+        "seed": 42,
+        "optimizer": "auto",
+        "pretrained": true
+      },
+      "original_classes": [
+        "Dump truck",
+        "Excavator",
+        "Motor grader",
+        "Roller",
+        "Crane manipulator",
+        "Gazelle",
+        "Forklift Standart",
+        "Bucket loader Big",
+        "Mixer",
+        "Tanker",
+        "Bulldozer",
+        "Cleaning equipment",
+        "Truck",
+        "Trailer",
+        "Forklift Giraffe",
+        "Bucket loader Standart",
+        "Autocran"
+      ],
+      "limitations": [
+        "Checkpoint metadata does not independently verify training data rights, full training completion or accuracy.",
+        "User originals were loaded without modification."
+      ]
+    }
+  ]
+}

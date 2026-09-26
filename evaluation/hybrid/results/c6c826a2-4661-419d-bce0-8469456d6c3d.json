@@ -1,0 +1,3073 @@
+{
+  "ai_assessment": {
+    "risks": [
+      {
+        "text": "Возможное несоответствие видимой стадии (земляные работы) активной записи плана roadwork.",
+        "cause": "stage_plan_mismatch",
+        "impact": "На кадре в 12:00 27.09.2026 в активной зоне видна погрузка грунта экскаватором в самосвал, что не соответствует содержанию активной записи плана (устройство асфальтобетонного покрытия, ожидаемое оборудование — каток, экскаватор исключён). Это возможное расхождение видимой сцены с планом, требующее проверки человеком; вывод о задержке или нарушении срока из одного кадра не делается.",
+        "category": "plan",
+        "frame_ids": [
+          "c10deca6-2a5f-4d16-9baf-38b972c84059"
+        ],
+        "limitations": [
+          "Один пригодный кадр; правило плана вернуло insufficient_observations (нужно ≥3 оцениваемых кадров активной зоны).",
+          "Плановая стадия — контекст, а не доказательство видимой стадии; границы времени проверялись только на 12:00 27.09.2026.",
+          "Отсутствие данных о других работах в зоне не исключается; вывод требует подтверждения человеком."
+        ],
+        "work_entry_id": "87303cf1-048d-41f6-a0e1-5e6cb3caa6f7",
+        "observation_ids": [
+          "eedacf0b-99da-5dfd-84a5-ece4c7a6d98f",
+          "63d0411b-e511-5286-a08b-3ae2b3fa1be9"
+        ],
+        "recommended_check": "Сопоставить видимый характер работ (земляные, погрузка грунта) с активной записью плана 87303cf1-048d-41f6-a0e1-5e6cb3caa6f7 на 12:00 27.09.2026 и уточнить у ответственного за производство работ фактическую стадию и основание нахождения экскаватора в зоне."
+      },
+      {
+        "text": "Возможная зона повышенной опасности у выемки и в зоне работы экскаватора с ковшом.",
+        "cause": "visible_safety_risk",
+        "impact": "В зоне видна выемка/котлован и работа экскаватора с ковшом над кузовом самосвала; это возможный источник опасности для находящихся рядом людей и техники, требующий осмотра и подтверждения человеком.",
+        "category": "safety",
+        "frame_ids": [
+          "c10deca6-2a5f-4d16-9baf-38b972c84059"
+        ],
+        "limitations": [
+          "Расстояния и нормативные требования по фотографии не измеряются и не подтверждаются.",
+          "Люди вне кадра и подземные коммуникации не наблюдаются и не предполагаются.",
+          "Формулировка описывает возможный риск для проверки человеком, а не установленное нарушение."
+        ],
+        "work_entry_id": null,
+        "observation_ids": [
+          "eedacf0b-99da-5dfd-84a5-ece4c7a6d98f",
+          "63d0411b-e511-5286-a08b-3ae2b3fa1be9",
+          "c10deca6-2a5f-4d16-9baf-38b972c84059/scene/excavation_or_trench"
+        ],
+        "recommended_check": "Проверить наличие ограждений и знаков у выемки, отсутствие людей в опасной зоне работы экскаватора и соблюдение безопасных расстояний; при необходимости — остановить работы до осмотра ответственным лицом."
+      }
+    ],
+    "summary": "На единственном пригодном кадре (12:00 27.09.2026, зона c77e6448-0cee-4de1-ade4-f64d58816bd7) видна активная погрузка грунта: гусеничный экскаватор Sunward стрелой с ковшом грузит грунт в кузов самосвала FAW; рядом находятся автобетономешалка с барабаном и ещё два экскаватора Sunward, видна выемка/котлован и грунтовые отвалы. Видимые работы относятся к земляным (excavation), тогда как привязанный план на этот интервал описывает устройство асфальтобетонного покрытия (roadwork) с ожидаемым катком и исключённым экскаватором. Правило плана вернуло insufficient_observations (нужно не менее трёх оцениваемых кадров активной зоны), поэтому выводы о соблюдении графика, задержках и нарушениях по плану сделать нельзя. Все формулировки — гипотезы, требующие проверки человеком; фотография не даёт измерений расстояний, норм и подтверждённых нарушений.",
+    "activity": [
+      {
+        "state": "working_signs",
+        "reason": "На кадре видна стрела экскаватора с ковшом над кузовом самосвала и грунт в кузове — это видимое рабочее действие (погрузка грунта).",
+        "grounds": "visible_work_action",
+        "frame_ids": [
+          "c10deca6-2a5f-4d16-9baf-38b972c84059"
+        ],
+        "comparison": null,
+        "uncertainty": "Один кадр; динамика и длительность не оцениваются, видимое действие фиксируется только на момент съёмки.",
+        "observation_ids": [
+          "eedacf0b-99da-5dfd-84a5-ece4c7a6d98f",
+          "63d0411b-e511-5286-a08b-3ae2b3fa1be9"
+        ]
+      },
+      {
+        "state": "insufficient_data",
+        "reason": "Автобетономешалка видна с барабаном, но активного действия не наблюдается; независимых сопоставимых кадров той же зоны с надёжной привязкой времени нет, поэтому состояние простоя не подтверждается.",
+        "grounds": "insufficient_evidence",
+        "frame_ids": [
+          "c10deca6-2a5f-4d16-9baf-38b972c84059"
+        ],
+        "comparison": null,
+        "uncertainty": "Отсутствие видимого действия на одном кадре не доказывает простой; нет независимых сопоставимых кадров и данных о времени.",
+        "observation_ids": [
+          "b7f36ebf-7c7f-5e1f-99ec-5e6b9f043126"
+        ]
+      },
+      {
+        "state": "insufficient_data",
+        "reason": "Второй и третий экскаваторы видны, но их действие не оценивается (стрела поднята/ковш не виден); независимых сопоставимых кадров нет.",
+        "grounds": "insufficient_evidence",
+        "frame_ids": [
+          "c10deca6-2a5f-4d16-9baf-38b972c84059"
+        ],
+        "comparison": null,
+        "uncertainty": "Один кадр, действие не читается; состояние простоя не подтверждается.",
+        "observation_ids": [
+          "f7f38c1d-5257-595a-907a-cb7690fa459e",
+          "02283611-ab7d-5937-b24b-f08283fb4b6a"
+        ]
+      }
+    ],
+    "limitations": [
+      "Использован только один пригодный кадр; правило плана вернуло insufficient_observations.",
+      "Фотография не позволяет измерить расстояния, уклоны, глубины и подтвердить нормативные требования.",
+      "Отсутствие видимых объектов (людей, коммуникаций, ограждений) не доказывает их отсутствие.",
+      "История пуста и не использовалась как доказательство текущей видимости.",
+      "Стадия и риски — гипотезы, требующие подтверждения человеком; задержки и нарушения сроков не устанавливаются."
+    ],
+    "recommendations": [
+      "Проверить фактическую стадию работ в зоне c77e6448-0cee-4de1-ade4-f64d58816bd7 на 12:00 27.09.2026 и сопоставить её с активной записью плана 87303cf1-048d-41f6-a0e1-5e6cb3caa6f7.",
+      "Собрать дополнительные независимые кадры активной зоны (не менее трёх оцениваемых) для корректной проверки по правилам плана.",
+      "Осмотреть зону работы экскаватора и выемки на предмет ограждений, знаков и отсутствия людей в опасной зоне.",
+      "Уточнить у ответственного лица основания нахождения экскаватора в зоне, где планом предусмотрено дорожное покрытие и каток."
+    ],
+    "stage_hypotheses": [
+      {
+        "stage": "excavation",
+        "reason": "Видна погрузка грунта экскаватором в самосвал, выемка/котлован и грунтовые отвалы — признаки земляных работ.",
+        "frame_ids": [
+          "c10deca6-2a5f-4d16-9baf-38b972c84059"
+        ],
+        "work_entry_id": null,
+        "observation_ids": [
+          "eedacf0b-99da-5dfd-84a5-ece4c7a6d98f",
+          "63d0411b-e511-5286-a08b-3ae2b3fa1be9",
+          "c10deca6-2a5f-4d16-9baf-38b972c84059/scene/excavation_or_trench"
+        ]
+      },
+      {
+        "stage": "roadwork",
+        "reason": "Активная запись плана на 12:00 27.09.2026 описывает устройство асфальтобетонного покрытия (roadwork), однако видимых признаков дорожных работ (основание, покрытие, каток) на кадре нет; гипотеза приводится только как плановый контекст.",
+        "frame_ids": [
+          "c10deca6-2a5f-4d16-9baf-38b972c84059"
+        ],
+        "work_entry_id": "87303cf1-048d-41f6-a0e1-5e6cb3caa6f7",
+        "observation_ids": [
+          "c10deca6-2a5f-4d16-9baf-38b972c84059/scene/road_base_or_surface",
+          "c10deca6-2a5f-4d16-9baf-38b972c84059/scene/concrete_surface"
+        ]
+      }
+    ],
+    "stage_hypothesis": {
+      "stage": "excavation",
+      "reason": "На кадре видны земляные работы: экскаватор грузит грунт в самосвал, рядом выемка/котлован и грунтовые отвалы. Это наиболее согласованная с видимым гипотеза стадии; плановая стадия roadwork является контекстом, а не доказательством."
+    }
+  },
+  "ai_evidence": [
+    {
+      "id": "b0007b5a-3520-462d-812b-2c9c976fafb6",
+      "kind": "frame",
+      "input_id": "c10deca6-2a5f-4d16-9baf-38b972c84059",
+      "context": {
+        "sha256": "c4d2cede161a85e29bb81ff751a9cd2fbe108f07ed397dfe170eceec8085da46",
+        "ordinal": 0,
+        "input_id": "c10deca6-2a5f-4d16-9baf-38b972c84059",
+        "detectors": {
+          "models": [
+            {
+              "model_id": "apoce",
+              "detections": [],
+              "image_size": [
+                1216,
+                813
+              ],
+              "latency_ms": 939.3823750433512,
+              "weights_sha256": "db44473297767157a13a3d534668a16b336ab18c54bd1814e39f8eab1874c705"
+            },
+            {
+              "model_id": "kaggle",
+              "detections": [
+                {
+                  "id": "c10deca6-2a5f-4d16-9baf-38b972c84059/kaggle/0",
+                  "box": [
+                    0.12659578025341034,
+                    0.4132043421268463,
+                    0.9366452097892761,
+                    0.8024616837501526
+                  ],
+                  "score": 0.4929337203502655,
+                  "class_id": 13,
+                  "input_id": "c10deca6-2a5f-4d16-9baf-38b972c84059",
+                  "model_id": "kaggle",
+                  "raw_class": "Trailer",
+                  "catalog_class": null
+                },
+                {
+                  "id": "c10deca6-2a5f-4d16-9baf-38b972c84059/kaggle/1",
+                  "box": [
+                    0.15534608066082,
+                    0.4196549355983734,
+                    0.8902698159217834,
+                    0.8049150705337524
+                  ],
+                  "score": 0.417077898979187,
+                  "class_id": 8,
+                  "input_id": "c10deca6-2a5f-4d16-9baf-38b972c84059",
+                  "model_id": "kaggle",
+                  "raw_class": "Mixer",
+                  "catalog_class": "concrete_mixer_truck"
+                }
+              ],
+              "image_size": [
+                1216,
+                813
+              ],
+              "latency_ms": 97.1962499897927,
+              "weights_sha256": "0e86af081bd71dc4c9cd9a07bb151949781d8ec86442a0fe334f1bca11be3622"
+            }
+          ],
+          "manifest": {
+            "models": [
+              {
+                "id": "apoce",
+                "sha256": "db44473297767157a13a3d534668a16b336ab18c54bd1814e39f8eab1874c705",
+                "classes": [
+                  "bulldozer",
+                  "concrete-mixer",
+                  "dump-truck",
+                  "excavator",
+                  "lifting-equipment",
+                  "piling-machine",
+                  "tower-crane"
+                ],
+                "mapping": {
+                  "bulldozer": "bulldozer",
+                  "excavator": "excavator",
+                  "dump-truck": "dump_truck",
+                  "tower-crane": null,
+                  "concrete-mixer": "concrete_mixer_truck",
+                  "piling-machine": null,
+                  "lifting-equipment": null
+                },
+                "filename": "apoce.pt"
+              },
+              {
+                "id": "kaggle",
+                "sha256": "0e86af081bd71dc4c9cd9a07bb151949781d8ec86442a0fe334f1bca11be3622",
+                "classes": [
+                  "Dump truck",
+                  "Excavator",
+                  "Motor grader",
+                  "Roller",
+                  "Crane manipulator",
+                  "Gazelle",
+                  "Forklift Standart",
+                  "Bucket loader Big",
+                  "Mixer",
+                  "Tanker",
+                  "Bulldozer",
+                  "Cleaning equipment",
+                  "Truck",
+                  "Trailer",
+                  "Forklift Giraffe",
+                  "Bucket loader Standart",
+                  "Autocran"
+                ],
+                "mapping": {
+                  "Mixer": "concrete_mixer_truck",
+                  "Truck": "truck",
+                  "Roller": "road_roller",
+                  "Tanker": null,
+                  "Gazelle": null,
+                  "Trailer": null,
+                  "Autocran": "mobile_crane",
+                  "Bulldozer": "bulldozer",
+                  "Excavator": "excavator",
+                  "Dump truck": "dump_truck",
+                  "Motor grader": null,
+                  "Forklift Giraffe": null,
+                  "Bucket loader Big": null,
+                  "Crane manipulator": "truck_mounted_crane",
+                  "Forklift Standart": null,
+                  "Cleaning equipment": null,
+                  "Bucket loader Standart": null
+                },
+                "filename": "kaggle.pt"
+              }
+            ],
+            "revision": "hybrid-yolo-v1",
+            "settings": {
+              "iou": 0.7,
+              "conf": 0.25,
+              "half": false,
+              "save": false,
+              "imgsz": 640,
+              "device": "cpu",
+              "augment": false,
+              "max_det": 100,
+              "verbose": false
+            },
+            "dependencies": {
+              "torch": "2.10.0",
+              "torchvision": "0.25.0",
+              "ultralytics": "8.4.163"
+            },
+            "preprocessing": "exif-oriented-rgb-v1"
+          },
+          "oriented_sha256": "eff8d0c875c4ae3cefa648ca92977b0736cef2fa39e44a81b2e6784274c28df9"
+        },
+        "schema_version": "hybrid-photo-signals-v1",
+        "instruction_version": "hybrid-photo-signals-v1"
+      },
+      "result": {
+        "raw": {
+          "id": "31bce94b-d9f5-4c90-a04a-03ff3fe1e21b",
+          "text": {
+            "valid": true,
+            "format": {
+              "name": "frame",
+              "type": "json_schema",
+              "valid": true,
+              "schema": {
+                "type": "object",
+                "required": [
+                  "objects",
+                  "scenes",
+                  "stage",
+                  "stage_reason",
+                  "detection_dispositions",
+                  "frame_usability",
+                  "class_assessability"
+                ],
+                "properties": {
+                  "stage": {
+                    "enum": [
+                      "unknown",
+                      "ambiguous",
+                      "preparation",
+                      "demolition",
+                      "excavation",
+                      "concreting",
+                      "installation",
+                      "roadwork",
+                      "utilities",
+                      "landscaping"
+                    ],
+                    "type": "string"
+                  },
+                  "scenes": {
+                    "type": "object",
+                    "required": [
+                      "excavation_or_trench",
+                      "formwork",
+                      "rebar",
+                      "concrete_surface",
+                      "road_base_or_surface"
+                    ],
+                    "properties": {
+                      "rebar": {
+                        "enum": [
+                          "present",
+                          "absent",
+                          "uncertain",
+                          "unassessable"
+                        ],
+                        "type": "string"
+                      },
+                      "formwork": {
+                        "enum": [
+                          "present",
+                          "absent",
+                          "uncertain",
+                          "unassessable"
+                        ],
+                        "type": "string"
+                      },
+                      "concrete_surface": {
+                        "enum": [
+                          "present",
+                          "absent",
+                          "uncertain",
+                          "unassessable"
+                        ],
+                        "type": "string"
+                      },
+                      "excavation_or_trench": {
+                        "enum": [
+                          "present",
+                          "absent",
+                          "uncertain",
+                          "unassessable"
+                        ],
+                        "type": "string"
+                      },
+                      "road_base_or_surface": {
+                        "enum": [
+                          "present",
+                          "absent",
+                          "uncertain",
+                          "unassessable"
+                        ],
+                        "type": "string"
+                      }
+                    },
+                    "additionalProperties": false
+                  },
+                  "objects": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "type_ru",
+                        "type_en",
+                        "catalog_class",
+                        "status",
+                        "evidence",
+                        "box",
+                        "missing_localization_reason",
+                        "detection_ids",
+                        "disagreements",
+                        "visual_action",
+                        "action_evidence",
+                        "idle_indicator"
+                      ],
+                      "properties": {
+                        "box": {
+                          "anyOf": [
+                            {
+                              "type": "null"
+                            },
+                            {
+                              "type": "array",
+                              "items": {
+                                "type": "number",
+                                "maximum": 1,
+                                "minimum": 0
+                              },
+                              "maxItems": 4,
+                              "minItems": 4
+                            }
+                          ]
+                        },
+                        "status": {
+                          "enum": [
+                            "identified",
+                            "uncertain"
+                          ],
+                          "type": "string"
+                        },
+                        "type_en": {
+                          "type": "string",
+                          "maxLength": 1000,
+                          "minLength": 1
+                        },
+                        "type_ru": {
+                          "type": "string",
+                          "maxLength": 1000,
+                          "minLength": 1
+                        },
+                        "evidence": {
+                          "type": "string",
+                          "maxLength": 1000,
+                          "minLength": 1
+                        },
+                        "catalog_class": {
+                          "enum": [
+                            "excavator",
+                            "dump_truck",
+                            "road_roller",
+                            "truck_mounted_crane",
+                            "concrete_mixer_truck",
+                            "bulldozer",
+                            "truck",
+                            "mobile_crane",
+                            null
+                          ],
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "detection_ids": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "maxItems": 100
+                        },
+                        "disagreements": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "maxLength": 1000,
+                            "minLength": 1
+                          },
+                          "maxItems": 20
+                        },
+                        "visual_action": {
+                          "enum": [
+                            "digging",
+                            "loading",
+                            "compacting",
+                            "pouring",
+                            "lifting",
+                            "moving_material",
+                            "no_visible_action",
+                            "unknown"
+                          ],
+                          "type": "string"
+                        },
+                        "idle_indicator": {
+                          "enum": [
+                            "stowed_work_attachment",
+                            "parked_outside_work_area",
+                            "none"
+                          ],
+                          "type": "string"
+                        },
+                        "action_evidence": {
+                          "type": "string",
+                          "maxLength": 1000,
+                          "minLength": 1
+                        },
+                        "missing_localization_reason": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "maxLength": 1000,
+                              "minLength": 1
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      },
+                      "additionalProperties": false
+                    },
+                    "maxItems": 100
+                  },
+                  "stage_reason": {
+                    "type": "string",
+                    "maxLength": 1000,
+                    "minLength": 1
+                  },
+                  "frame_usability": {
+                    "type": "object",
+                    "required": [
+                      "usable",
+                      "reason"
+                    ],
+                    "properties": {
+                      "reason": {
+                        "type": "string",
+                        "maxLength": 1000,
+                        "minLength": 1
+                      },
+                      "usable": {
+                        "type": "boolean"
+                      }
+                    },
+                    "additionalProperties": false
+                  },
+                  "class_assessability": {
+                    "type": "object",
+                    "required": [
+                      "excavator",
+                      "dump_truck",
+                      "road_roller",
+                      "truck_mounted_crane",
+                      "concrete_mixer_truck",
+                      "bulldozer",
+                      "truck",
+                      "mobile_crane"
+                    ],
+                    "properties": {
+                      "truck": {
+                        "enum": [
+                          "assessable",
+                          "unassessable",
+                          "uncertain"
+                        ],
+                        "type": "string"
+                      },
+                      "bulldozer": {
+                        "enum": [
+                          "assessable",
+                          "unassessable",
+                          "uncertain"
+                        ],
+                        "type": "string"
+                      },
+                      "excavator": {
+                        "enum": [
+                          "assessable",
+                          "unassessable",
+                          "uncertain"
+                        ],
+                        "type": "string"
+                      },
+                      "dump_truck": {
+                        "enum": [
+                          "assessable",
+                          "unassessable",
+                          "uncertain"
+                        ],
+                        "type": "string"
+                      },
+                      "road_roller": {
+                        "enum": [
+                          "assessable",
+                          "unassessable",
+                          "uncertain"
+                        ],
+                        "type": "string"
+                      },
+                      "mobile_crane": {
+                        "enum": [
+                          "assessable",
+                          "unassessable",
+                          "uncertain"
+                        ],
+                        "type": "string"
+                      },
+                      "truck_mounted_crane": {
+                        "enum": [
+                          "assessable",
+                          "unassessable",
+                          "uncertain"
+                        ],
+                        "type": "string"
+                      },
+                      "concrete_mixer_truck": {
+                        "enum": [
+                          "assessable",
+                          "unassessable",
+                          "uncertain"
+                        ],
+                        "type": "string"
+                      }
+                    },
+                    "additionalProperties": false
+                  },
+                  "detection_dispositions": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "detection_id",
+                        "status",
+                        "reason"
+                      ],
+                      "properties": {
+                        "reason": {
+                          "type": "string",
+                          "maxLength": 1000,
+                          "minLength": 1
+                        },
+                        "status": {
+                          "enum": [
+                            "accepted",
+                            "dismissed",
+                            "unresolved"
+                          ],
+                          "type": "string"
+                        },
+                        "detection_id": {
+                          "type": "string"
+                        }
+                      },
+                      "additionalProperties": false
+                    },
+                    "maxItems": 200
+                  }
+                },
+                "additionalProperties": false
+              },
+              "strict": true,
+              "description": null
+            },
+            "verbosity": null
+          },
+          "error": null,
+          "model": "gpt://b1gcpjp9nc4hhoffpf3a/deepseek-v4.1-flash/latest",
+          "tools": [],
+          "top_p": 1.0,
+          "usage": {
+            "valid": true,
+            "input_tokens": 4010,
+            "total_tokens": 5101,
+            "output_tokens": 1091,
+            "input_tokens_details": {
+              "valid": true,
+              "tool_tokens": 0,
+              "cached_tokens": 0
+            },
+            "output_tokens_details": {
+              "valid": true,
+              "reasoning_tokens": 0
+            }
+          },
+          "valid": true,
+          "object": "response",
+          "output": [
+            {
+              "id": "62b82e20-2b4d-4a1a-b5ae-8e5665a0e757",
+              "role": "assistant",
+              "type": "message",
+              "valid": true,
+              "status": "completed",
+              "content": [
+                {
+                  "text": "{\"stage_reason\":\"Видны земляные работы: экскаватор грузит грунт в самосвал, рядом бетономешалка и траншея/котлован.\",\"stage\":\"excavation\",\"objects\":[{\"action_evidence\":\"Стрела с ковшом опущена к кузову самосвала, ковш над грунтом; видимая погрузка грунта.\",\"evidence\":\"Гусеничный экскаватор Sunward с кабиной и стрелой, ковш над кузовом самосвала.\",\"catalog_class\":\"excavator\",\"idle_indicator\":\"none\",\"missing_localization_reason\":null,\"type_en\":\"excavator\",\"box\":[0.42,0.42,0.72,0.78],\"type_ru\":\"экскаватор\",\"visual_action\":\"loading\",\"detection_ids\":[],\"disagreements\":[],\"status\":\"identified\"},{\"action_evidence\":\"Кузов самосвала виден под ковшом экскаватора, признаков движения нет.\",\"evidence\":\"Самосвал FAW с откидным кузовом, кабина слева, кузов заполняется грунтом.\",\"catalog_class\":\"dump_truck\",\"idle_indicator\":\"none\",\"missing_localization_reason\":null,\"type_en\":\"dump truck\",\"box\":[0.12,0.50,0.55,0.78],\"type_ru\":\"самосвал\",\"visual_action\":\"loading\",\"detection_ids\":[],\"disagreements\":[],\"status\":\"identified\"},{\"action_evidence\":\"Видна бетономешалка с барабаном, активного действия не видно.\",\"evidence\":\"Бетономешалка с белым вращающимся барабаном за самосвалом.\",\"catalog_class\":\"concrete_mixer_truck\",\"idle_indicator\":\"none\",\"missing_localization_reason\":null,\"type_en\":\"concrete mixer truck\",\"box\":[0.45,0.48,0.68,0.72],\"type_ru\":\"автобетономешалка\",\"visual_action\":\"no_visible_action\",\"detection_ids\":[\"c10deca6-2a5f-4d16-9baf-38b972c84059/kaggle/1\"],\"disagreements\":[\"kaggle Mixer принят как автобетономешалка\"],\"status\":\"identified\"},{\"action_evidence\":\"Стрела поднята, ковш не виден; действие не оценивается.\",\"evidence\":\"Второй гусеничный экскаватор Sunward слева, стрела поднята.\",\"catalog_class\":\"excavator\",\"idle_indicator\":\"none\",\"missing_localization_reason\":null,\"type_en\":\"excavator\",\"box\":[0.00,0.40,0.22,0.62],\"type_ru\":\"экскаватор\",\"visual_action\":\"unknown\",\"detection_ids\":[],\"disagreements\":[],\"status\":\"identified\"},{\"action_evidence\":\"Видна стрела экскаватора справа, действие не оценивается.\",\"evidence\":\"Третий экскаватор Sunward справа, видна стрела и кабина.\",\"catalog_class\":\"excavator\",\"idle_indicator\":\"none\",\"missing_localization_reason\":null,\"type_en\":\"excavator\",\"box\":[0.68,0.38,0.95,0.72],\"type_ru\":\"экскаватор\",\"visual_action\":\"unknown\",\"detection_ids\":[],\"disagreements\":[],\"status\":\"identified\"}],\"scenes\":{\"rebar\":\"uncertain\",\"road_base_or_surface\":\"absent\",\"concrete_surface\":\"absent\",\"excavation_or_trench\":\"present\",\"formwork\":\"uncertain\"},\"frame_usability\":{\"reason\":\"Кадр пригоден для обзора строительной площадки.\",\"usable\":true},\"class_assessability\":{\"concrete_mixer_truck\":\"assessable\",\"dump_truck\":\"assessable\",\"excavator\":\"assessable\",\"road_roller\":\"unassessable\",\"bulldozer\":\"unassessable\",\"truck\":\"assessable\",\"mobile_crane\":\"unassessable\",\"truck_mounted_crane\":\"unassessable\"},\"detection_dispositions\":[{\"reason\":\"Обнаруженный объект соответствует видимому самосвалу/прицепу, но класс Trailer не подтверждён; это кузов самосвала.\",\"detection_id\":\"c10deca6-2a5f-4d16-9baf-38b972c84059/kaggle/0\",\"status\":\"dismissed\"},{\"reason\":\"Обнаружение соответствует видимой автобетономешалке с барабаном.\",\"detection_id\":\"c10deca6-2a5f-4d16-9baf-38b972c84059/kaggle/1\",\"status\":\"accepted\"}]}",
+                  "type": "output_text",
+                  "valid": true,
+                  "annotations": []
+                }
+              ]
+            }
+          ],
+          "prompt": null,
+          "status": "completed",
+          "metadata": {},
+          "reasoning": {
+            "valid": true,
+            "effort": "none",
+            "summary": null,
+            "generate_summary": null
+          },
+          "background": false,
+          "created_at": 1790462465.0,
+          "truncation": null,
+          "temperature": 0.0,
+          "tool_choice": "auto",
+          "instructions": null,
+          "service_tier": "default",
+          "max_tool_calls": null,
+          "max_output_tokens": 8192,
+          "incomplete_details": null,
+          "parallel_tool_calls": false,
+          "previous_response_id": null
+        },
+        "model": "gpt://b1gcpjp9nc4hhoffpf3a/deepseek-v4.1-flash/latest",
+        "usage": {
+          "valid": true,
+          "input_tokens": 4010,
+          "total_tokens": 5101,
+          "output_tokens": 1091,
+          "input_tokens_details": {
+            "valid": true,
+            "tool_tokens": 0,
+            "cached_tokens": 0
+          },
+          "output_tokens_details": {
+            "valid": true,
+            "reasoning_tokens": 0
+          }
+        },
+        "valid": true,
+        "value": {
+          "stage": "excavation",
+          "scenes": {
+            "rebar": "uncertain",
+            "formwork": "uncertain",
+            "concrete_surface": "absent",
+            "excavation_or_trench": "present",
+            "road_base_or_surface": "absent"
+          },
+          "objects": [
+            {
+              "box": [
+                0.42,
+                0.42,
+                0.72,
+                0.78
+              ],
+              "status": "identified",
+              "type_en": "excavator",
+              "type_ru": "экскаватор",
+              "evidence": "Гусеничный экскаватор Sunward с кабиной и стрелой, ковш над кузовом самосвала.",
+              "catalog_class": "excavator",
+              "detection_ids": [],
+              "disagreements": [],
+              "visual_action": "loading",
+              "idle_indicator": "none",
+              "action_evidence": "Стрела с ковшом опущена к кузову самосвала, ковш над грунтом; видимая погрузка грунта.",
+              "missing_localization_reason": null
+            },
+            {
+              "box": [
+                0.12,
+                0.5,
+                0.55,
+                0.78
+              ],
+              "status": "identified",
+              "type_en": "dump truck",
+              "type_ru": "самосвал",
+              "evidence": "Самосвал FAW с откидным кузовом, кабина слева, кузов заполняется грунтом.",
+              "catalog_class": "dump_truck",
+              "detection_ids": [],
+              "disagreements": [],
+              "visual_action": "loading",
+              "idle_indicator": "none",
+              "action_evidence": "Кузов самосвала виден под ковшом экскаватора, признаков движения нет.",
+              "missing_localization_reason": null
+            },
+            {
+              "box": [
+                0.45,
+                0.48,
+                0.68,
+                0.72
+              ],
+              "status": "identified",
+              "type_en": "concrete mixer truck",
+              "type_ru": "автобетономешалка",
+              "evidence": "Бетономешалка с белым вращающимся барабаном за самосвалом.",
+              "catalog_class": "concrete_mixer_truck",
+              "detection_ids": [
+                "c10deca6-2a5f-4d16-9baf-38b972c84059/kaggle/1"
+              ],
+              "disagreements": [
+                "kaggle Mixer принят как автобетономешалка"
+              ],
+              "visual_action": "no_visible_action",
+              "idle_indicator": "none",
+              "action_evidence": "Видна бетономешалка с барабаном, активного действия не видно.",
+              "missing_localization_reason": null
+            },
+            {
+              "box": [
+                0.0,
+                0.4,
+                0.22,
+                0.62
+              ],
+              "status": "identified",
+              "type_en": "excavator",
+              "type_ru": "экскаватор",
+              "evidence": "Второй гусеничный экскаватор Sunward слева, стрела поднята.",
+              "catalog_class": "excavator",
+              "detection_ids": [],
+              "disagreements": [],
+              "visual_action": "unknown",
+              "idle_indicator": "none",
+              "action_evidence": "Стрела поднята, ковш не виден; действие не оценивается.",
+              "missing_localization_reason": null
+            },
+            {
+              "box": [
+                0.68,
+                0.38,
+                0.95,
+                0.72
+              ],
+              "status": "identified",
+              "type_en": "excavator",
+              "type_ru": "экскаватор",
+              "evidence": "Третий экскаватор Sunward справа, видна стрела и кабина.",
+              "catalog_class": "excavator",
+              "detection_ids": [],
+              "disagreements": [],
+              "visual_action": "unknown",
+              "idle_indicator": "none",
+              "action_evidence": "Видна стрела экскаватора справа, действие не оценивается.",
+              "missing_localization_reason": null
+            }
+          ],
+          "stage_reason": "Видны земляные работы: экскаватор грузит грунт в самосвал, рядом бетономешалка и траншея/котлован.",
+          "frame_usability": {
+            "reason": "Кадр пригоден для обзора строительной площадки.",
+            "usable": true
+          },
+          "class_assessability": {
+            "truck": "assessable",
+            "bulldozer": "unassessable",
+            "excavator": "assessable",
+            "dump_truck": "assessable",
+            "road_roller": "unassessable",
+            "mobile_crane": "unassessable",
+            "truck_mounted_crane": "unassessable",
+            "concrete_mixer_truck": "assessable"
+          },
+          "detection_dispositions": [
+            {
+              "reason": "Обнаруженный объект соответствует видимому самосвалу/прицепу, но класс Trailer не подтверждён; это кузов самосвала.",
+              "status": "dismissed",
+              "detection_id": "c10deca6-2a5f-4d16-9baf-38b972c84059/kaggle/0"
+            },
+            {
+              "reason": "Обнаружение соответствует видимой автобетономешалке с барабаном.",
+              "status": "accepted",
+              "detection_id": "c10deca6-2a5f-4d16-9baf-38b972c84059/kaggle/1"
+            }
+          ]
+        },
+        "detectors": {
+          "models": [
+            {
+              "model_id": "apoce",
+              "detections": [],
+              "image_size": [
+                1216,
+                813
+              ],
+              "latency_ms": 939.3823750433512,
+              "weights_sha256": "db44473297767157a13a3d534668a16b336ab18c54bd1814e39f8eab1874c705"
+            },
+            {
+              "model_id": "kaggle",
+              "detections": [
+                {
+                  "id": "c10deca6-2a5f-4d16-9baf-38b972c84059/kaggle/0",
+                  "box": [
+                    0.12659578025341034,
+                    0.4132043421268463,
+                    0.9366452097892761,
+                    0.8024616837501526
+                  ],
+                  "score": 0.4929337203502655,
+                  "class_id": 13,
+                  "input_id": "c10deca6-2a5f-4d16-9baf-38b972c84059",
+                  "model_id": "kaggle",
+                  "raw_class": "Trailer",
+                  "catalog_class": null
+                },
+                {
+                  "id": "c10deca6-2a5f-4d16-9baf-38b972c84059/kaggle/1",
+                  "box": [
+                    0.15534608066082,
+                    0.4196549355983734,
+                    0.8902698159217834,
+                    0.8049150705337524
+                  ],
+                  "score": 0.417077898979187,
+                  "class_id": 8,
+                  "input_id": "c10deca6-2a5f-4d16-9baf-38b972c84059",
+                  "model_id": "kaggle",
+                  "raw_class": "Mixer",
+                  "catalog_class": "concrete_mixer_truck"
+                }
+              ],
+              "image_size": [
+                1216,
+                813
+              ],
+              "latency_ms": 97.1962499897927,
+              "weights_sha256": "0e86af081bd71dc4c9cd9a07bb151949781d8ec86442a0fe334f1bca11be3622"
+            }
+          ],
+          "manifest": {
+            "models": [
+              {
+                "id": "apoce",
+                "sha256": "db44473297767157a13a3d534668a16b336ab18c54bd1814e39f8eab1874c705",
+                "classes": [
+                  "bulldozer",
+                  "concrete-mixer",
+                  "dump-truck",
+                  "excavator",
+                  "lifting-equipment",
+                  "piling-machine",
+                  "tower-crane"
+                ],
+                "mapping": {
+                  "bulldozer": "bulldozer",
+                  "excavator": "excavator",
+                  "dump-truck": "dump_truck",
+                  "tower-crane": null,
+                  "concrete-mixer": "concrete_mixer_truck",
+                  "piling-machine": null,
+                  "lifting-equipment": null
+                },
+                "filename": "apoce.pt"
+              },
+              {
+                "id": "kaggle",
+                "sha256": "0e86af081bd71dc4c9cd9a07bb151949781d8ec86442a0fe334f1bca11be3622",
+                "classes": [
+                  "Dump truck",
+                  "Excavator",
+                  "Motor grader",
+                  "Roller",
+                  "Crane manipulator",
+                  "Gazelle",
+                  "Forklift Standart",
+                  "Bucket loader Big",
+                  "Mixer",
+                  "Tanker",
+                  "Bulldozer",
+                  "Cleaning equipment",
+                  "Truck",
+                  "Trailer",
+                  "Forklift Giraffe",
+                  "Bucket loader Standart",
+                  "Autocran"
+                ],
+                "mapping": {
+                  "Mixer": "concrete_mixer_truck",
+                  "Truck": "truck",
+                  "Roller": "road_roller",
+                  "Tanker": null,
+                  "Gazelle": null,
+                  "Trailer": null,
+                  "Autocran": "mobile_crane",
+                  "Bulldozer": "bulldozer",
+                  "Excavator": "excavator",
+                  "Dump truck": "dump_truck",
+                  "Motor grader": null,
+                  "Forklift Giraffe": null,
+                  "Bucket loader Big": null,
+                  "Crane manipulator": "truck_mounted_crane",
+                  "Forklift Standart": null,
+                  "Cleaning equipment": null,
+                  "Bucket loader Standart": null
+                },
+                "filename": "kaggle.pt"
+              }
+            ],
+            "revision": "hybrid-yolo-v1",
+            "settings": {
+              "iou": 0.7,
+              "conf": 0.25,
+              "half": false,
+              "save": false,
+              "imgsz": 640,
+              "device": "cpu",
+              "augment": false,
+              "max_det": 100,
+              "verbose": false
+            },
+            "dependencies": {
+              "torch": "2.10.0",
+              "torchvision": "0.25.0",
+              "ultralytics": "8.4.163"
+            },
+            "preprocessing": "exif-oriented-rgb-v1"
+          },
+          "oriented_sha256": "eff8d0c875c4ae3cefa648ca92977b0736cef2fa39e44a81b2e6784274c28df9"
+        },
+        "rejection": null,
+        "image_size": [
+          1216,
+          813
+        ],
+        "latency_ms": 9878.930292034056,
+        "schema_version": "hybrid-photo-signals-v1",
+        "instruction_version": "hybrid-photo-signals-v1"
+      },
+      "state": "completed"
+    },
+    {
+      "id": "49e88cd9-c286-4f7c-b307-b674d980ae70",
+      "kind": "assessment",
+      "input_id": null,
+      "context": {
+        "plan": {
+          "entries": [
+            {
+              "id": "87303cf1-048d-41f6-a0e1-5e6cb3caa6f7",
+              "state": "active",
+              "title": "Устройство асфальтобетонного покрытия проездов, тротуаров, площадок с установкой бортового камня",
+              "ends_at": "2026-09-27T15:00:00+00:00",
+              "stage_key": "roadwork",
+              "starts_at": "2026-09-27T05:00:00+00:00",
+              "allowed_equipment": [
+                "dump_truck",
+                "truck"
+              ],
+              "excluded_equipment": [
+                "excavator"
+              ],
+              "expected_equipment": [
+                "road_roller"
+              ]
+            }
+          ],
+          "zone_id": "c77e6448-0cee-4de1-ade4-f64d58816bd7",
+          "revision_id": "f3e2fdad-f874-42d6-9802-2e3977bf8e8c"
+        },
+        "frames": [
+          {
+            "stage": "excavation",
+            "sha256": "c4d2cede161a85e29bb81ff751a9cd2fbe108f07ed397dfe170eceec8085da46",
+            "ordinal": 0,
+            "input_id": "c10deca6-2a5f-4d16-9baf-38b972c84059",
+            "detectors": {
+              "models": [
+                {
+                  "model_id": "apoce",
+                  "detections": [],
+                  "image_size": [
+                    1216,
+                    813
+                  ],
+                  "latency_ms": 939.3823750433512,
+                  "weights_sha256": "db44473297767157a13a3d534668a16b336ab18c54bd1814e39f8eab1874c705"
+                },
+                {
+                  "model_id": "kaggle",
+                  "detections": [
+                    {
+                      "id": "c10deca6-2a5f-4d16-9baf-38b972c84059/kaggle/0",
+                      "box": [
+                        0.12659578025341034,
+                        0.4132043421268463,
+                        0.9366452097892761,
+                        0.8024616837501526
+                      ],
+                      "score": 0.4929337203502655,
+                      "class_id": 13,
+                      "input_id": "c10deca6-2a5f-4d16-9baf-38b972c84059",
+                      "model_id": "kaggle",
+                      "raw_class": "Trailer",
+                      "catalog_class": null
+                    },
+                    {
+                      "id": "c10deca6-2a5f-4d16-9baf-38b972c84059/kaggle/1",
+                      "box": [
+                        0.15534608066082,
+                        0.4196549355983734,
+                        0.8902698159217834,
+                        0.8049150705337524
+                      ],
+                      "score": 0.417077898979187,
+                      "class_id": 8,
+                      "input_id": "c10deca6-2a5f-4d16-9baf-38b972c84059",
+                      "model_id": "kaggle",
+                      "raw_class": "Mixer",
+                      "catalog_class": "concrete_mixer_truck"
+                    }
+                  ],
+                  "image_size": [
+                    1216,
+                    813
+                  ],
+                  "latency_ms": 97.1962499897927,
+                  "weights_sha256": "0e86af081bd71dc4c9cd9a07bb151949781d8ec86442a0fe334f1bca11be3622"
+                }
+              ],
+              "manifest": {
+                "models": [
+                  {
+                    "id": "apoce",
+                    "sha256": "db44473297767157a13a3d534668a16b336ab18c54bd1814e39f8eab1874c705",
+                    "classes": [
+                      "bulldozer",
+                      "concrete-mixer",
+                      "dump-truck",
+                      "excavator",
+                      "lifting-equipment",
+                      "piling-machine",
+                      "tower-crane"
+                    ],
+                    "mapping": {
+                      "bulldozer": "bulldozer",
+                      "excavator": "excavator",
+                      "dump-truck": "dump_truck",
+                      "tower-crane": null,
+                      "concrete-mixer": "concrete_mixer_truck",
+                      "piling-machine": null,
+                      "lifting-equipment": null
+                    },
+                    "filename": "apoce.pt"
+                  },
+                  {
+                    "id": "kaggle",
+                    "sha256": "0e86af081bd71dc4c9cd9a07bb151949781d8ec86442a0fe334f1bca11be3622",
+                    "classes": [
+                      "Dump truck",
+                      "Excavator",
+                      "Motor grader",
+                      "Roller",
+                      "Crane manipulator",
+                      "Gazelle",
+                      "Forklift Standart",
+                      "Bucket loader Big",
+                      "Mixer",
+                      "Tanker",
+                      "Bulldozer",
+                      "Cleaning equipment",
+                      "Truck",
+                      "Trailer",
+                      "Forklift Giraffe",
+                      "Bucket loader Standart",
+                      "Autocran"
+                    ],
+                    "mapping": {
+                      "Mixer": "concrete_mixer_truck",
+                      "Truck": "truck",
+                      "Roller": "road_roller",
+                      "Tanker": null,
+                      "Gazelle": null,
+                      "Trailer": null,
+                      "Autocran": "mobile_crane",
+                      "Bulldozer": "bulldozer",
+                      "Excavator": "excavator",
+                      "Dump truck": "dump_truck",
+                      "Motor grader": null,
+                      "Forklift Giraffe": null,
+                      "Bucket loader Big": null,
+                      "Crane manipulator": "truck_mounted_crane",
+                      "Forklift Standart": null,
+                      "Cleaning equipment": null,
+                      "Bucket loader Standart": null
+                    },
+                    "filename": "kaggle.pt"
+                  }
+                ],
+                "revision": "hybrid-yolo-v1",
+                "settings": {
+                  "iou": 0.7,
+                  "conf": 0.25,
+                  "half": false,
+                  "save": false,
+                  "imgsz": 640,
+                  "device": "cpu",
+                  "augment": false,
+                  "max_det": 100,
+                  "verbose": false
+                },
+                "dependencies": {
+                  "torch": "2.10.0",
+                  "torchvision": "0.25.0",
+                  "ultralytics": "8.4.163"
+                },
+                "preprocessing": "exif-oriented-rgb-v1"
+              },
+              "oriented_sha256": "eff8d0c875c4ae3cefa648ca92977b0736cef2fa39e44a81b2e6784274c28df9"
+            },
+            "captured_at": "2026-09-27T12:00:00+03:00",
+            "observations": [
+              {
+                "id": "eedacf0b-99da-5dfd-84a5-ece4c7a6d98f",
+                "box": [
+                  0.42,
+                  0.42,
+                  0.72,
+                  0.78
+                ],
+                "kind": "equipment",
+                "status": "identified",
+                "type_en": "excavator",
+                "type_ru": "экскаватор",
+                "visible": true,
+                "evidence": "Гусеничный экскаватор Sunward с кабиной и стрелой, ковш над кузовом самосвала.",
+                "catalog_class": "excavator",
+                "detection_ids": [],
+                "disagreements": [],
+                "visual_action": "loading",
+                "idle_indicator": "none",
+                "action_evidence": "Стрела с ковшом опущена к кузову самосвала, ковш над грунтом; видимая погрузка грунта.",
+                "missing_localization_reason": null
+              },
+              {
+                "id": "63d0411b-e511-5286-a08b-3ae2b3fa1be9",
+                "box": [
+                  0.12,
+                  0.5,
+                  0.55,
+                  0.78
+                ],
+                "kind": "equipment",
+                "status": "identified",
+                "type_en": "dump truck",
+                "type_ru": "самосвал",
+                "visible": true,
+                "evidence": "Самосвал FAW с откидным кузовом, кабина слева, кузов заполняется грунтом.",
+                "catalog_class": "dump_truck",
+                "detection_ids": [],
+                "disagreements": [],
+                "visual_action": "loading",
+                "idle_indicator": "none",
+                "action_evidence": "Кузов самосвала виден под ковшом экскаватора, признаков движения нет.",
+                "missing_localization_reason": null
+              },
+              {
+                "id": "b7f36ebf-7c7f-5e1f-99ec-5e6b9f043126",
+                "box": [
+                  0.45,
+                  0.48,
+                  0.68,
+                  0.72
+                ],
+                "kind": "equipment",
+                "status": "identified",
+                "type_en": "concrete mixer truck",
+                "type_ru": "автобетономешалка",
+                "visible": true,
+                "evidence": "Бетономешалка с белым вращающимся барабаном за самосвалом.",
+                "catalog_class": "concrete_mixer_truck",
+                "detection_ids": [
+                  "c10deca6-2a5f-4d16-9baf-38b972c84059/kaggle/1"
+                ],
+                "disagreements": [
+                  "kaggle Mixer принят как автобетономешалка"
+                ],
+                "visual_action": "no_visible_action",
+                "idle_indicator": "none",
+                "action_evidence": "Видна бетономешалка с барабаном, активного действия не видно.",
+                "missing_localization_reason": null
+              },
+              {
+                "id": "f7f38c1d-5257-595a-907a-cb7690fa459e",
+                "box": [
+                  0.0,
+                  0.4,
+                  0.22,
+                  0.62
+                ],
+                "kind": "equipment",
+                "status": "identified",
+                "type_en": "excavator",
+                "type_ru": "экскаватор",
+                "visible": true,
+                "evidence": "Второй гусеничный экскаватор Sunward слева, стрела поднята.",
+                "catalog_class": "excavator",
+                "detection_ids": [],
+                "disagreements": [],
+                "visual_action": "unknown",
+                "idle_indicator": "none",
+                "action_evidence": "Стрела поднята, ковш не виден; действие не оценивается.",
+                "missing_localization_reason": null
+              },
+              {
+                "id": "02283611-ab7d-5937-b24b-f08283fb4b6a",
+                "box": [
+                  0.68,
+                  0.38,
+                  0.95,
+                  0.72
+                ],
+                "kind": "equipment",
+                "status": "identified",
+                "type_en": "excavator",
+                "type_ru": "экскаватор",
+                "visible": true,
+                "evidence": "Третий экскаватор Sunward справа, видна стрела и кабина.",
+                "catalog_class": "excavator",
+                "detection_ids": [],
+                "disagreements": [],
+                "visual_action": "unknown",
+                "idle_indicator": "none",
+                "action_evidence": "Видна стрела экскаватора справа, действие не оценивается.",
+                "missing_localization_reason": null
+              },
+              {
+                "id": "c10deca6-2a5f-4d16-9baf-38b972c84059/scene/rebar",
+                "kind": "scene",
+                "name": "rebar",
+                "state": "uncertain",
+                "visible": false
+              },
+              {
+                "id": "c10deca6-2a5f-4d16-9baf-38b972c84059/scene/road_base_or_surface",
+                "kind": "scene",
+                "name": "road_base_or_surface",
+                "state": "absent",
+                "visible": false
+              },
+              {
+                "id": "c10deca6-2a5f-4d16-9baf-38b972c84059/scene/concrete_surface",
+                "kind": "scene",
+                "name": "concrete_surface",
+                "state": "absent",
+                "visible": false
+              },
+              {
+                "id": "c10deca6-2a5f-4d16-9baf-38b972c84059/scene/excavation_or_trench",
+                "kind": "scene",
+                "name": "excavation_or_trench",
+                "state": "present",
+                "visible": true
+              },
+              {
+                "id": "c10deca6-2a5f-4d16-9baf-38b972c84059/scene/formwork",
+                "kind": "scene",
+                "name": "formwork",
+                "state": "uncertain",
+                "visible": false
+              }
+            ],
+            "stage_reason": "Видны земляные работы: экскаватор грузит грунт в самосвал, рядом бетономешалка и траншея/котлован.",
+            "frame_usability": {
+              "reason": "Кадр пригоден для обзора строительной площадки.",
+              "usable": true
+            },
+            "source_artifact_id": "7bb3a633-fdb3-48fd-af4c-f678dfe032aa",
+            "class_assessability": {
+              "truck": "assessable",
+              "bulldozer": "unassessable",
+              "excavator": "assessable",
+              "dump_truck": "assessable",
+              "road_roller": "unassessable",
+              "mobile_crane": "unassessable",
+              "truck_mounted_crane": "unassessable",
+              "concrete_mixer_truck": "assessable"
+            },
+            "detection_dispositions": [
+              {
+                "reason": "Обнаруженный объект соответствует видимому самосвалу/прицепу, но класс Trailer не подтверждён; это кузов самосвала.",
+                "status": "dismissed",
+                "detection_id": "c10deca6-2a5f-4d16-9baf-38b972c84059/kaggle/0"
+              },
+              {
+                "reason": "Обнаружение соответствует видимой автобетономешалке с барабаном.",
+                "status": "accepted",
+                "detection_id": "c10deca6-2a5f-4d16-9baf-38b972c84059/kaggle/1"
+              }
+            ]
+          }
+        ],
+        "history": [],
+        "zone_id": "c77e6448-0cee-4de1-ade4-f64d58816bd7",
+        "rule_results": [
+          {
+            "kind": "insufficient_observations",
+            "reason": "At least three assessable frames of the active zone are required.",
+            "entry_id": "87303cf1-048d-41f6-a0e1-5e6cb3caa6f7",
+            "supporting_input_ids": [
+              "c10deca6-2a5f-4d16-9baf-38b972c84059"
+            ]
+          }
+        ],
+        "schema_version": "hybrid-photo-signals-v1",
+        "declared_context": {
+          "period": "2026-09-27T12:00:00+03:00",
+          "zone_id": "c77e6448-0cee-4de1-ade4-f64d58816bd7",
+          "scenario": "Учебная симуляция: план применяется к этому снимку в 12:00 27.09.2026. Сравнить видимую сцену с учебным планом. Реальные сроки объекта не оцениваются.",
+          "project_id": "ce575eca-8b2c-47f8-8dd7-f6373313a627",
+          "capture_times": [
+            "2026-09-27T12:00:00+03:00"
+          ],
+          "observation_area": "Учебный участок сравнения с графиком",
+          "plan_revision_id": "f3e2fdad-f874-42d6-9802-2e3977bf8e8c",
+          "cloud_processing_consent": true
+        },
+        "history_eligible": true,
+        "comparison_method": "individual_frames_only",
+        "instruction_version": "hybrid-photo-signals-v1"
+      },
+      "result": {
+        "raw": {
+          "id": "482e7c19-294a-486a-b22b-ecf702de62e0",
+          "text": {
+            "valid": true,
+            "format": {
+              "name": "assessment",
+              "type": "json_schema",
+              "valid": true,
+              "schema": {
+                "type": "object",
+                "required": [
+                  "summary",
+                  "stage_hypothesis",
+                  "risks",
+                  "recommendations",
+                  "limitations",
+                  "activity",
+                  "stage_hypotheses"
+                ],
+                "properties": {
+                  "risks": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "category",
+                        "text",
+                        "frame_ids",
+                        "observation_ids",
+                        "cause",
+                        "work_entry_id",
+                        "impact",
+                        "recommended_check",
+                        "limitations"
+                      ],
+                      "properties": {
+                        "text": {
+                          "type": "string",
+                          "maxLength": 1000,
+                          "minLength": 1
+                        },
+                        "cause": {
+                          "enum": [
+                            "visible_process_risk",
+                            "visible_safety_risk",
+                            "stage_plan_mismatch"
+                          ],
+                          "type": "string"
+                        },
+                        "impact": {
+                          "type": "string",
+                          "maxLength": 1000,
+                          "minLength": 1
+                        },
+                        "category": {
+                          "enum": [
+                            "process",
+                            "plan",
+                            "safety"
+                          ],
+                          "type": "string"
+                        },
+                        "frame_ids": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          },
+                          "minItems": 1
+                        },
+                        "limitations": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "maxLength": 1000,
+                            "minLength": 1
+                          },
+                          "maxItems": 20,
+                          "minItems": 1
+                        },
+                        "work_entry_id": {
+                          "enum": [
+                            "87303cf1-048d-41f6-a0e1-5e6cb3caa6f7",
+                            null
+                          ],
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "observation_ids": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          },
+                          "minItems": 1
+                        },
+                        "recommended_check": {
+                          "type": "string",
+                          "maxLength": 1000,
+                          "minLength": 1
+                        }
+                      },
+                      "additionalProperties": false
+                    },
+                    "maxItems": 30
+                  },
+                  "summary": {
+                    "type": "string",
+                    "maxLength": 1000,
+                    "minLength": 1
+                  },
+                  "activity": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "state",
+                        "reason",
+                        "uncertainty",
+                        "comparison",
+                        "frame_ids",
+                        "observation_ids",
+                        "grounds"
+                      ],
+                      "properties": {
+                        "state": {
+                          "enum": [
+                            "working_signs",
+                            "insufficient_data"
+                          ],
+                          "type": "string"
+                        },
+                        "reason": {
+                          "type": "string",
+                          "maxLength": 1000,
+                          "minLength": 1
+                        },
+                        "grounds": {
+                          "enum": [
+                            "visible_work_action",
+                            "comparable_series_without_work_signs",
+                            "insufficient_evidence"
+                          ],
+                          "type": "string"
+                        },
+                        "frame_ids": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "maxItems": 100
+                        },
+                        "comparison": {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "required": [
+                                "same_view",
+                                "view_reason",
+                                "object_observation_ids",
+                                "identity_reason",
+                                "non_work_evidence"
+                              ],
+                              "properties": {
+                                "same_view": {
+                                  "type": "boolean"
+                                },
+                                "view_reason": {
+                                  "type": "string",
+                                  "maxLength": 1000,
+                                  "minLength": 1
+                                },
+                                "identity_reason": {
+                                  "type": "string",
+                                  "maxLength": 1000,
+                                  "minLength": 1
+                                },
+                                "non_work_evidence": {
+                                  "type": "string",
+                                  "maxLength": 1000,
+                                  "minLength": 1
+                                },
+                                "object_observation_ids": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "string",
+                                    "minLength": 1
+                                  },
+                                  "maxItems": 100
+                                }
+                              },
+                              "additionalProperties": false
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "uncertainty": {
+                          "type": "string",
+                          "maxLength": 1000,
+                          "minLength": 1
+                        },
+                        "observation_ids": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "maxItems": 100
+                        }
+                      },
+                      "additionalProperties": false
+                    },
+                    "maxItems": 100,
+                    "minItems": 1
+                  },
+                  "limitations": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "maxLength": 1000,
+                      "minLength": 1
+                    },
+                    "maxItems": 30,
+                    "minItems": 1
+                  },
+                  "recommendations": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "maxLength": 1000,
+                      "minLength": 1
+                    },
+                    "maxItems": 30
+                  },
+                  "stage_hypotheses": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "frame_ids",
+                        "observation_ids",
+                        "stage",
+                        "reason",
+                        "work_entry_id"
+                      ],
+                      "properties": {
+                        "stage": {
+                          "enum": [
+                            "unknown",
+                            "ambiguous",
+                            "preparation",
+                            "demolition",
+                            "excavation",
+                            "concreting",
+                            "installation",
+                            "roadwork",
+                            "utilities",
+                            "landscaping"
+                          ],
+                          "type": "string"
+                        },
+                        "reason": {
+                          "type": "string",
+                          "maxLength": 1000,
+                          "minLength": 1
+                        },
+                        "frame_ids": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "maxItems": 100
+                        },
+                        "work_entry_id": {
+                          "enum": [
+                            "87303cf1-048d-41f6-a0e1-5e6cb3caa6f7",
+                            null
+                          ],
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "observation_ids": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "maxItems": 100
+                        }
+                      },
+                      "additionalProperties": false
+                    },
+                    "maxItems": 100
+                  },
+                  "stage_hypothesis": {
+                    "type": "object",
+                    "required": [
+                      "stage",
+                      "reason"
+                    ],
+                    "properties": {
+                      "stage": {
+                        "enum": [
+                          "unknown",
+                          "ambiguous",
+                          "preparation",
+                          "demolition",
+                          "excavation",
+                          "concreting",
+                          "installation",
+                          "roadwork",
+                          "utilities",
+                          "landscaping"
+                        ],
+                        "type": "string"
+                      },
+                      "reason": {
+                        "type": "string",
+                        "maxLength": 1000,
+                        "minLength": 1
+                      }
+                    },
+                    "additionalProperties": false
+                  }
+                },
+                "additionalProperties": false
+              },
+              "strict": true,
+              "description": null
+            },
+            "verbosity": null
+          },
+          "error": null,
+          "model": "gpt://b1gcpjp9nc4hhoffpf3a/deepseek-v4.1-flash/latest",
+          "tools": [],
+          "top_p": 1.0,
+          "usage": {
+            "valid": true,
+            "input_tokens": 5741,
+            "total_tokens": 8273,
+            "output_tokens": 2532,
+            "input_tokens_details": {
+              "valid": true,
+              "tool_tokens": 0,
+              "cached_tokens": 0
+            },
+            "output_tokens_details": {
+              "valid": true,
+              "reasoning_tokens": 0
+            }
+          },
+          "valid": true,
+          "object": "response",
+          "output": [
+            {
+              "id": "00a9379a-e943-4e9a-a9a1-67d73cf6501a",
+              "role": "assistant",
+              "type": "message",
+              "valid": true,
+              "status": "completed",
+              "content": [
+                {
+                  "text": "{\"summary\":\"На единственном пригодном кадре (12:00 27.09.2026, зона c77e6448-0cee-4de1-ade4-f64d58816bd7) видна активная погрузка грунта: гусеничный экскаватор Sunward стрелой с ковшом грузит грунт в кузов самосвала FAW; рядом находятся автобетономешалка с барабаном и ещё два экскаватора Sunward, видна выемка/котлован и грунтовые отвалы. Видимые работы относятся к земляным (excavation), тогда как привязанный план на этот интервал описывает устройство асфальтобетонного покрытия (roadwork) с ожидаемым катком и исключённым экскаватором. Правило плана вернуло insufficient_observations (нужно не менее трёх оцениваемых кадров активной зоны), поэтому выводы о соблюдении графика, задержках и нарушениях по плану сделать нельзя. Все формулировки — гипотезы, требующие проверки человеком; фотография не даёт измерений расстояний, норм и подтверждённых нарушений.\",\"risks\":[{\"observation_ids\":[\"eedacf0b-99da-5dfd-84a5-ece4c7a6d98f\",\"63d0411b-e511-5286-a08b-3ae2b3fa1be9\"],\"frame_ids\":[\"c10deca6-2a5f-4d16-9baf-38b972c84059\"],\"work_entry_id\":\"87303cf1-048d-41f6-a0e1-5e6cb3caa6f7\",\"impact\":\"На кадре в 12:00 27.09.2026 в активной зоне видна погрузка грунта экскаватором в самосвал, что не соответствует содержанию активной записи плана (устройство асфальтобетонного покрытия, ожидаемое оборудование — каток, экскаватор исключён). Это возможное расхождение видимой сцены с планом, требующее проверки человеком; вывод о задержке или нарушении срока из одного кадра не делается.\",\"cause\":\"stage_plan_mismatch\",\"recommended_check\":\"Сопоставить видимый характер работ (земляные, погрузка грунта) с активной записью плана 87303cf1-048d-41f6-a0e1-5e6cb3caa6f7 на 12:00 27.09.2026 и уточнить у ответственного за производство работ фактическую стадию и основание нахождения экскаватора в зоне.\",\"text\":\"Возможное несоответствие видимой стадии (земляные работы) активной записи плана roadwork.\",\"category\":\"plan\",\"limitations\":[\"Один пригодный кадр; правило плана вернуло insufficient_observations (нужно ≥3 оцениваемых кадров активной зоны).\",\"Плановая стадия — контекст, а не доказательство видимой стадии; границы времени проверялись только на 12:00 27.09.2026.\",\"Отсутствие данных о других работах в зоне не исключается; вывод требует подтверждения человеком.\"]},{\"observation_ids\":[\"eedacf0b-99da-5dfd-84a5-ece4c7a6d98f\",\"63d0411b-e511-5286-a08b-3ae2b3fa1be9\",\"c10deca6-2a5f-4d16-9baf-38b972c84059/scene/excavation_or_trench\"],\"frame_ids\":[\"c10deca6-2a5f-4d16-9baf-38b972c84059\"],\"work_entry_id\":null,\"impact\":\"В зоне видна выемка/котлован и работа экскаватора с ковшом над кузовом самосвала; это возможный источник опасности для находящихся рядом людей и техники, требующий осмотра и подтверждения человеком.\",\"cause\":\"visible_safety_risk\",\"recommended_check\":\"Проверить наличие ограждений и знаков у выемки, отсутствие людей в опасной зоне работы экскаватора и соблюдение безопасных расстояний; при необходимости — остановить работы до осмотра ответственным лицом.\",\"text\":\"Возможная зона повышенной опасности у выемки и в зоне работы экскаватора с ковшом.\",\"category\":\"safety\",\"limitations\":[\"Расстояния и нормативные требования по фотографии не измеряются и не подтверждаются.\",\"Люди вне кадра и подземные коммуникации не наблюдаются и не предполагаются.\",\"Формулировка описывает возможный риск для проверки человеком, а не установленное нарушение.\"]}],\"activity\":[{\"grounds\":\"visible_work_action\",\"reason\":\"На кадре видна стрела экскаватора с ковшом над кузовом самосвала и грунт в кузове — это видимое рабочее действие (погрузка грунта).\",\"observation_ids\":[\"eedacf0b-99da-5dfd-84a5-ece4c7a6d98f\",\"63d0411b-e511-5286-a08b-3ae2b3fa1be9\"],\"comparison\":null,\"frame_ids\":[\"c10deca6-2a5f-4d16-9baf-38b972c84059\"],\"state\":\"working_signs\",\"uncertainty\":\"Один кадр; динамика и длительность не оцениваются, видимое действие фиксируется только на момент съёмки.\"},{\"grounds\":\"insufficient_evidence\",\"reason\":\"Автобетономешалка видна с барабаном, но активного действия не наблюдается; независимых сопоставимых кадров той же зоны с надёжной привязкой времени нет, поэтому состояние простоя не подтверждается.\",\"observation_ids\":[\"b7f36ebf-7c7f-5e1f-99ec-5e6b9f043126\"],\"comparison\":null,\"frame_ids\":[\"c10deca6-2a5f-4d16-9baf-38b972c84059\"],\"state\":\"insufficient_data\",\"uncertainty\":\"Отсутствие видимого действия на одном кадре не доказывает простой; нет независимых сопоставимых кадров и данных о времени.\"},{\"grounds\":\"insufficient_evidence\",\"reason\":\"Второй и третий экскаваторы видны, но их действие не оценивается (стрела поднята/ковш не виден); независимых сопоставимых кадров нет.\",\"observation_ids\":[\"f7f38c1d-5257-595a-907a-cb7690fa459e\",\"02283611-ab7d-5937-b24b-f08283fb4b6a\"],\"comparison\":null,\"frame_ids\":[\"c10deca6-2a5f-4d16-9baf-38b972c84059\"],\"state\":\"insufficient_data\",\"uncertainty\":\"Один кадр, действие не читается; состояние простоя не подтверждается.\"}],\"stage_hypothesis\":{\"reason\":\"На кадре видны земляные работы: экскаватор грузит грунт в самосвал, рядом выемка/котлован и грунтовые отвалы. Это наиболее согласованная с видимым гипотеза стадии; плановая стадия roadwork является контекстом, а не доказательством.\",\"stage\":\"excavation\"},\"stage_hypotheses\":[{\"reason\":\"Видна погрузка грунта экскаватором в самосвал, выемка/котлован и грунтовые отвалы — признаки земляных работ.\",\"observation_ids\":[\"eedacf0b-99da-5dfd-84a5-ece4c7a6d98f\",\"63d0411b-e511-5286-a08b-3ae2b3fa1be9\",\"c10deca6-2a5f-4d16-9baf-38b972c84059/scene/excavation_or_trench\"],\"frame_ids\":[\"c10deca6-2a5f-4d16-9baf-38b972c84059\"],\"stage\":\"excavation\",\"work_entry_id\":null},{\"reason\":\"Активная запись плана на 12:00 27.09.2026 описывает устройство асфальтобетонного покрытия (roadwork), однако видимых признаков дорожных работ (основание, покрытие, каток) на кадре нет; гипотеза приводится только как плановый контекст.\",\"observation_ids\":[\"c10deca6-2a5f-4d16-9baf-38b972c84059/scene/road_base_or_surface\",\"c10deca6-2a5f-4d16-9baf-38b972c84059/scene/concrete_surface\"],\"frame_ids\":[\"c10deca6-2a5f-4d16-9baf-38b972c84059\"],\"stage\":\"roadwork\",\"work_entry_id\":\"87303cf1-048d-41f6-a0e1-5e6cb3caa6f7\"}],\"recommendations\":[\"Проверить фактическую стадию работ в зоне c77e6448-0cee-4de1-ade4-f64d58816bd7 на 12:00 27.09.2026 и сопоставить её с активной записью плана 87303cf1-048d-41f6-a0e1-5e6cb3caa6f7.\",\"Собрать дополнительные независимые кадры активной зоны (не менее трёх оцениваемых) для корректной проверки по правилам плана.\",\"Осмотреть зону работы экскаватора и выемки на предмет ограждений, знаков и отсутствия людей в опасной зоне.\",\"Уточнить у ответственного лица основания нахождения экскаватора в зоне, где планом предусмотрено дорожное покрытие и каток.\"],\"limitations\":[\"Использован только один пригодный кадр; правило плана вернуло insufficient_observations.\",\"Фотография не позволяет измерить расстояния, уклоны, глубины и подтвердить нормативные требования.\",\"Отсутствие видимых объектов (людей, коммуникаций, ограждений) не доказывает их отсутствие.\",\"История пуста и не использовалась как доказательство текущей видимости.\",\"Стадия и риски — гипотезы, требующие подтверждения человеком; задержки и нарушения сроков не устанавливаются.\"]}",
+                  "type": "output_text",
+                  "valid": true,
+                  "annotations": []
+                }
+              ]
+            }
+          ],
+          "prompt": null,
+          "status": "completed",
+          "metadata": {},
+          "reasoning": {
+            "valid": true,
+            "effort": "none",
+            "summary": null,
+            "generate_summary": null
+          },
+          "background": false,
+          "created_at": 1790462476.0,
+          "truncation": null,
+          "temperature": 0.0,
+          "tool_choice": "auto",
+          "instructions": null,
+          "service_tier": "default",
+          "max_tool_calls": null,
+          "max_output_tokens": 8192,
+          "incomplete_details": null,
+          "parallel_tool_calls": false,
+          "previous_response_id": null
+        },
+        "model": "gpt://b1gcpjp9nc4hhoffpf3a/deepseek-v4.1-flash/latest",
+        "usage": {
+          "valid": true,
+          "input_tokens": 5741,
+          "total_tokens": 8273,
+          "output_tokens": 2532,
+          "input_tokens_details": {
+            "valid": true,
+            "tool_tokens": 0,
+            "cached_tokens": 0
+          },
+          "output_tokens_details": {
+            "valid": true,
+            "reasoning_tokens": 0
+          }
+        },
+        "valid": true,
+        "value": {
+          "risks": [
+            {
+              "text": "Возможное несоответствие видимой стадии (земляные работы) активной записи плана roadwork.",
+              "cause": "stage_plan_mismatch",
+              "impact": "На кадре в 12:00 27.09.2026 в активной зоне видна погрузка грунта экскаватором в самосвал, что не соответствует содержанию активной записи плана (устройство асфальтобетонного покрытия, ожидаемое оборудование — каток, экскаватор исключён). Это возможное расхождение видимой сцены с планом, требующее проверки человеком; вывод о задержке или нарушении срока из одного кадра не делается.",
+              "category": "plan",
+              "frame_ids": [
+                "c10deca6-2a5f-4d16-9baf-38b972c84059"
+              ],
+              "limitations": [
+                "Один пригодный кадр; правило плана вернуло insufficient_observations (нужно ≥3 оцениваемых кадров активной зоны).",
+                "Плановая стадия — контекст, а не доказательство видимой стадии; границы времени проверялись только на 12:00 27.09.2026.",
+                "Отсутствие данных о других работах в зоне не исключается; вывод требует подтверждения человеком."
+              ],
+              "work_entry_id": "87303cf1-048d-41f6-a0e1-5e6cb3caa6f7",
+              "observation_ids": [
+                "eedacf0b-99da-5dfd-84a5-ece4c7a6d98f",
+                "63d0411b-e511-5286-a08b-3ae2b3fa1be9"
+              ],
+              "recommended_check": "Сопоставить видимый характер работ (земляные, погрузка грунта) с активной записью плана 87303cf1-048d-41f6-a0e1-5e6cb3caa6f7 на 12:00 27.09.2026 и уточнить у ответственного за производство работ фактическую стадию и основание нахождения экскаватора в зоне."
+            },
+            {
+              "text": "Возможная зона повышенной опасности у выемки и в зоне работы экскаватора с ковшом.",
+              "cause": "visible_safety_risk",
+              "impact": "В зоне видна выемка/котлован и работа экскаватора с ковшом над кузовом самосвала; это возможный источник опасности для находящихся рядом людей и техники, требующий осмотра и подтверждения человеком.",
+              "category": "safety",
+              "frame_ids": [
+                "c10deca6-2a5f-4d16-9baf-38b972c84059"
+              ],
+              "limitations": [
+                "Расстояния и нормативные требования по фотографии не измеряются и не подтверждаются.",
+                "Люди вне кадра и подземные коммуникации не наблюдаются и не предполагаются.",
+                "Формулировка описывает возможный риск для проверки человеком, а не установленное нарушение."
+              ],
+              "work_entry_id": null,
+              "observation_ids": [
+                "eedacf0b-99da-5dfd-84a5-ece4c7a6d98f",
+                "63d0411b-e511-5286-a08b-3ae2b3fa1be9",
+                "c10deca6-2a5f-4d16-9baf-38b972c84059/scene/excavation_or_trench"
+              ],
+              "recommended_check": "Проверить наличие ограждений и знаков у выемки, отсутствие людей в опасной зоне работы экскаватора и соблюдение безопасных расстояний; при необходимости — остановить работы до осмотра ответственным лицом."
+            }
+          ],
+          "summary": "На единственном пригодном кадре (12:00 27.09.2026, зона c77e6448-0cee-4de1-ade4-f64d58816bd7) видна активная погрузка грунта: гусеничный экскаватор Sunward стрелой с ковшом грузит грунт в кузов самосвала FAW; рядом находятся автобетономешалка с барабаном и ещё два экскаватора Sunward, видна выемка/котлован и грунтовые отвалы. Видимые работы относятся к земляным (excavation), тогда как привязанный план на этот интервал описывает устройство асфальтобетонного покрытия (roadwork) с ожидаемым катком и исключённым экскаватором. Правило плана вернуло insufficient_observations (нужно не менее трёх оцениваемых кадров активной зоны), поэтому выводы о соблюдении графика, задержках и нарушениях по плану сделать нельзя. Все формулировки — гипотезы, требующие проверки человеком; фотография не даёт измерений расстояний, норм и подтверждённых нарушений.",
+          "activity": [
+            {
+              "state": "working_signs",
+              "reason": "На кадре видна стрела экскаватора с ковшом над кузовом самосвала и грунт в кузове — это видимое рабочее действие (погрузка грунта).",
+              "grounds": "visible_work_action",
+              "frame_ids": [
+                "c10deca6-2a5f-4d16-9baf-38b972c84059"
+              ],
+              "comparison": null,
+              "uncertainty": "Один кадр; динамика и длительность не оцениваются, видимое действие фиксируется только на момент съёмки.",
+              "observation_ids": [
+                "eedacf0b-99da-5dfd-84a5-ece4c7a6d98f",
+                "63d0411b-e511-5286-a08b-3ae2b3fa1be9"
+              ]
+            },
+            {
+              "state": "insufficient_data",
+              "reason": "Автобетономешалка видна с барабаном, но активного действия не наблюдается; независимых сопоставимых кадров той же зоны с надёжной привязкой времени нет, поэтому состояние простоя не подтверждается.",
+              "grounds": "insufficient_evidence",
+              "frame_ids": [
+                "c10deca6-2a5f-4d16-9baf-38b972c84059"
+              ],
+              "comparison": null,
+              "uncertainty": "Отсутствие видимого действия на одном кадре не доказывает простой; нет независимых сопоставимых кадров и данных о времени.",
+              "observation_ids": [
+                "b7f36ebf-7c7f-5e1f-99ec-5e6b9f043126"
+              ]
+            },
+            {
+              "state": "insufficient_data",
+              "reason": "Второй и третий экскаваторы видны, но их действие не оценивается (стрела поднята/ковш не виден); независимых сопоставимых кадров нет.",
+              "grounds": "insufficient_evidence",
+              "frame_ids": [
+                "c10deca6-2a5f-4d16-9baf-38b972c84059"
+              ],
+              "comparison": null,
+              "uncertainty": "Один кадр, действие не читается; состояние простоя не подтверждается.",
+              "observation_ids": [
+                "f7f38c1d-5257-595a-907a-cb7690fa459e",
+                "02283611-ab7d-5937-b24b-f08283fb4b6a"
+              ]
+            }
+          ],
+          "limitations": [
+            "Использован только один пригодный кадр; правило плана вернуло insufficient_observations.",
+            "Фотография не позволяет измерить расстояния, уклоны, глубины и подтвердить нормативные требования.",
+            "Отсутствие видимых объектов (людей, коммуникаций, ограждений) не доказывает их отсутствие.",
+            "История пуста и не использовалась как доказательство текущей видимости.",
+            "Стадия и риски — гипотезы, требующие подтверждения человеком; задержки и нарушения сроков не устанавливаются."
+          ],
+          "recommendations": [
+            "Проверить фактическую стадию работ в зоне c77e6448-0cee-4de1-ade4-f64d58816bd7 на 12:00 27.09.2026 и сопоставить её с активной записью плана 87303cf1-048d-41f6-a0e1-5e6cb3caa6f7.",
+            "Собрать дополнительные независимые кадры активной зоны (не менее трёх оцениваемых) для корректной проверки по правилам плана.",
+            "Осмотреть зону работы экскаватора и выемки на предмет ограждений, знаков и отсутствия людей в опасной зоне.",
+            "Уточнить у ответственного лица основания нахождения экскаватора в зоне, где планом предусмотрено дорожное покрытие и каток."
+          ],
+          "stage_hypotheses": [
+            {
+              "stage": "excavation",
+              "reason": "Видна погрузка грунта экскаватором в самосвал, выемка/котлован и грунтовые отвалы — признаки земляных работ.",
+              "frame_ids": [
+                "c10deca6-2a5f-4d16-9baf-38b972c84059"
+              ],
+              "work_entry_id": null,
+              "observation_ids": [
+                "eedacf0b-99da-5dfd-84a5-ece4c7a6d98f",
+                "63d0411b-e511-5286-a08b-3ae2b3fa1be9",
+                "c10deca6-2a5f-4d16-9baf-38b972c84059/scene/excavation_or_trench"
+              ]
+            },
+            {
+              "stage": "roadwork",
+              "reason": "Активная запись плана на 12:00 27.09.2026 описывает устройство асфальтобетонного покрытия (roadwork), однако видимых признаков дорожных работ (основание, покрытие, каток) на кадре нет; гипотеза приводится только как плановый контекст.",
+              "frame_ids": [
+                "c10deca6-2a5f-4d16-9baf-38b972c84059"
+              ],
+              "work_entry_id": "87303cf1-048d-41f6-a0e1-5e6cb3caa6f7",
+              "observation_ids": [
+                "c10deca6-2a5f-4d16-9baf-38b972c84059/scene/road_base_or_surface",
+                "c10deca6-2a5f-4d16-9baf-38b972c84059/scene/concrete_surface"
+              ]
+            }
+          ],
+          "stage_hypothesis": {
+            "stage": "excavation",
+            "reason": "На кадре видны земляные работы: экскаватор грузит грунт в самосвал, рядом выемка/котлован и грунтовые отвалы. Это наиболее согласованная с видимым гипотеза стадии; плановая стадия roadwork является контекстом, а не доказательством."
+          }
+        },
+        "rejection": null,
+        "image_size": null,
+        "latency_ms": 13933.632457978092,
+        "schema_version": "hybrid-photo-signals-v1",
+        "instruction_version": "hybrid-photo-signals-v1"
+      },
+      "state": "completed"
+    }
+  ],
+  "cloud_processing_consent": true,
+  "run_id": "c6c826a2-4661-419d-bce0-8469456d6c3d",
+  "purpose": "ordinary",
+  "state": "succeeded",
+  "error_code": null,
+  "created_at": "2026-09-26T22:40:59.432078+00:00",
+  "context": {
+    "period": "2026-09-27T12:00:00+03:00",
+    "zone_id": "c77e6448-0cee-4de1-ade4-f64d58816bd7",
+    "scenario": "Учебная симуляция: план применяется к этому снимку в 12:00 27.09.2026. Сравнить видимую сцену с учебным планом. Реальные сроки объекта не оцениваются.",
+    "project_id": "ce575eca-8b2c-47f8-8dd7-f6373313a627",
+    "capture_times": [
+      "2026-09-27T12:00:00+03:00"
+    ],
+    "observation_area": "Учебный участок сравнения с графиком",
+    "plan_revision_id": "f3e2fdad-f874-42d6-9802-2e3977bf8e8c",
+    "cloud_processing_consent": true
+  },
+  "requested_classes": [
+    "excavator",
+    "dump_truck",
+    "road_roller",
+    "truck_mounted_crane",
+    "concrete_mixer_truck",
+    "bulldozer",
+    "truck",
+    "mobile_crane"
+  ],
+  "project_id": "ce575eca-8b2c-47f8-8dd7-f6373313a627",
+  "zone_id": "c77e6448-0cee-4de1-ade4-f64d58816bd7",
+  "profile_id": "bcbcfa74-e451-5052-a607-9b27c5eeb8ef",
+  "authorization_revision": 1,
+  "binding_kind": "admitted_profile",
+  "profile_snapshot": {
+    "kind": "deepseek",
+    "store": false,
+    "adapter": {
+      "code": "yandex_deepseek",
+      "version": "hybrid-photo-signals-v1"
+    },
+    "runtime": {
+      "sdk_retries": 0,
+      "batch_timeout_seconds": 1200,
+      "per_image_timeout_seconds": 120
+    },
+    "folder_id": "b1gcpjp9nc4hhoffpf3a",
+    "temperature": 0,
+    "schema_sha256": "1c632d9e2dc208871381dd68e52ba274093795a02167e9f1bffd6d1fe79bb32a",
+    "schema_version": "hybrid-photo-signals-v1",
+    "reasoning_effort": "none",
+    "max_output_tokens": 8192,
+    "instruction_sha256": "8273a373faf5862da87529cd7e0f1ad4a70535f7a3af0ca44c88c537e43cec2d",
+    "instruction_version": "hybrid-photo-signals-v1",
+    "data_logging_enabled": false,
+    "observation_contract": "hybrid-photo-signals-v1",
+    "detector_manifest_sha256": "cba5bbcdac16c41845cd55e29d9c52c9a987640d2e6d1cb5f6c374054e9d0256",
+    "requested_model_identity": {
+      "id": "gpt://b1gcpjp9nc4hhoffpf3a/deepseek-v4.1-flash/latest"
+    }
+  },
+  "taxonomy_snapshot": {
+    "revision": "presence-only-v1",
+    "portable_classes": [
+      "excavator",
+      "dump_truck"
+    ]
+  },
+  "intent": "observation_only",
+  "stage": null,
+  "retry_predecessor_id": null,
+  "retry_successor_id": null,
+  "retry_of_run_id": null,
+  "successor_run_id": null,
+  "policy_snapshot": {
+    "intent": "observation_only",
+    "revision": "observations-only-v1"
+  },
+  "rule_snapshot": null,
+  "stages": [
+    {
+      "name": "input_registration",
+      "state": "succeeded",
+      "reason": null
+    },
+    {
+      "name": "yolo_detection",
+      "state": "succeeded",
+      "reason": null
+    },
+    {
+      "name": "hybrid_reconciliation",
+      "state": "succeeded",
+      "reason": null
+    },
+    {
+      "name": "series_aggregation",
+      "state": "succeeded",
+      "reason": null
+    },
+    {
+      "name": "rule_evaluation",
+      "state": "succeeded",
+      "reason": null
+    },
+    {
+      "name": "result_projection",
+      "state": "succeeded",
+      "reason": null
+    }
+  ],
+  "inputs": [
+    {
+      "input_id": "c10deca6-2a5f-4d16-9baf-38b972c84059",
+      "ordinal": 0,
+      "sha256": "c4d2cede161a85e29bb81ff751a9cd2fbe108f07ed397dfe170eceec8085da46",
+      "size": 3036894,
+      "artifact_id": "7bb3a633-fdb3-48fd-af4c-f678dfe032aa",
+      "media_type": "image/png"
+    }
+  ],
+  "observations": [
+    {
+      "class_name": "bulldozer",
+      "state": "insufficient_data",
+      "reason": "uncertain_identification",
+      "input_sha256": "c4d2cede161a85e29bb81ff751a9cd2fbe108f07ed397dfe170eceec8085da46",
+      "source_artifact_id": "7bb3a633-fdb3-48fd-af4c-f678dfe032aa",
+      "input_id": "c10deca6-2a5f-4d16-9baf-38b972c84059",
+      "ordinal": 0,
+      "invocation_id": "b0007b5a-3520-462d-812b-2c9c976fafb6"
+    },
+    {
+      "class_name": "concrete_mixer_truck",
+      "state": "detected",
+      "reason": null,
+      "input_sha256": "c4d2cede161a85e29bb81ff751a9cd2fbe108f07ed397dfe170eceec8085da46",
+      "source_artifact_id": "7bb3a633-fdb3-48fd-af4c-f678dfe032aa",
+      "input_id": "c10deca6-2a5f-4d16-9baf-38b972c84059",
+      "ordinal": 0,
+      "invocation_id": "b0007b5a-3520-462d-812b-2c9c976fafb6"
+    },
+    {
+      "class_name": "dump_truck",
+      "state": "detected",
+      "reason": null,
+      "input_sha256": "c4d2cede161a85e29bb81ff751a9cd2fbe108f07ed397dfe170eceec8085da46",
+      "source_artifact_id": "7bb3a633-fdb3-48fd-af4c-f678dfe032aa",
+      "input_id": "c10deca6-2a5f-4d16-9baf-38b972c84059",
+      "ordinal": 0,
+      "invocation_id": "b0007b5a-3520-462d-812b-2c9c976fafb6"
+    },
+    {
+      "class_name": "excavator",
+      "state": "detected",
+      "reason": null,
+      "input_sha256": "c4d2cede161a85e29bb81ff751a9cd2fbe108f07ed397dfe170eceec8085da46",
+      "source_artifact_id": "7bb3a633-fdb3-48fd-af4c-f678dfe032aa",
+      "input_id": "c10deca6-2a5f-4d16-9baf-38b972c84059",
+      "ordinal": 0,
+      "invocation_id": "b0007b5a-3520-462d-812b-2c9c976fafb6"
+    },
+    {
+      "class_name": "mobile_crane",
+      "state": "insufficient_data",
+      "reason": "uncertain_identification",
+      "input_sha256": "c4d2cede161a85e29bb81ff751a9cd2fbe108f07ed397dfe170eceec8085da46",
+      "source_artifact_id": "7bb3a633-fdb3-48fd-af4c-f678dfe032aa",
+      "input_id": "c10deca6-2a5f-4d16-9baf-38b972c84059",
+      "ordinal": 0,
+      "invocation_id": "b0007b5a-3520-462d-812b-2c9c976fafb6"
+    },
+    {
+      "class_name": "road_roller",
+      "state": "insufficient_data",
+      "reason": "uncertain_identification",
+      "input_sha256": "c4d2cede161a85e29bb81ff751a9cd2fbe108f07ed397dfe170eceec8085da46",
+      "source_artifact_id": "7bb3a633-fdb3-48fd-af4c-f678dfe032aa",
+      "input_id": "c10deca6-2a5f-4d16-9baf-38b972c84059",
+      "ordinal": 0,
+      "invocation_id": "b0007b5a-3520-462d-812b-2c9c976fafb6"
+    },
+    {
+      "class_name": "truck",
+      "state": "not_detected_in_frame",
+      "reason": null,
+      "input_sha256": "c4d2cede161a85e29bb81ff751a9cd2fbe108f07ed397dfe170eceec8085da46",
+      "source_artifact_id": "7bb3a633-fdb3-48fd-af4c-f678dfe032aa",
+      "input_id": "c10deca6-2a5f-4d16-9baf-38b972c84059",
+      "ordinal": 0,
+      "invocation_id": "b0007b5a-3520-462d-812b-2c9c976fafb6"
+    },
+    {
+      "class_name": "truck_mounted_crane",
+      "state": "insufficient_data",
+      "reason": "uncertain_identification",
+      "input_sha256": "c4d2cede161a85e29bb81ff751a9cd2fbe108f07ed397dfe170eceec8085da46",
+      "source_artifact_id": "7bb3a633-fdb3-48fd-af4c-f678dfe032aa",
+      "input_id": "c10deca6-2a5f-4d16-9baf-38b972c84059",
+      "ordinal": 0,
+      "invocation_id": "b0007b5a-3520-462d-812b-2c9c976fafb6"
+    }
+  ],
+  "objects": [
+    {
+      "id": "eedacf0b-99da-5dfd-84a5-ece4c7a6d98f",
+      "input_id": "c10deca6-2a5f-4d16-9baf-38b972c84059",
+      "invocation_id": "b0007b5a-3520-462d-812b-2c9c976fafb6",
+      "class_name": "excavator",
+      "score": null,
+      "box": [
+        0.42,
+        0.42,
+        0.72,
+        0.78
+      ],
+      "image_size": [
+        1216,
+        813
+      ],
+      "details": {
+        "box": [
+          0.42,
+          0.42,
+          0.72,
+          0.78
+        ],
+        "status": "identified",
+        "type_en": "excavator",
+        "type_ru": "экскаватор",
+        "evidence": "Гусеничный экскаватор Sunward с кабиной и стрелой, ковш над кузовом самосвала.",
+        "catalog_class": "excavator",
+        "detection_ids": [],
+        "disagreements": [],
+        "visual_action": "loading",
+        "idle_indicator": "none",
+        "action_evidence": "Стрела с ковшом опущена к кузову самосвала, ковш над грунтом; видимая погрузка грунта.",
+        "missing_localization_reason": null
+      }
+    },
+    {
+      "id": "63d0411b-e511-5286-a08b-3ae2b3fa1be9",
+      "input_id": "c10deca6-2a5f-4d16-9baf-38b972c84059",
+      "invocation_id": "b0007b5a-3520-462d-812b-2c9c976fafb6",
+      "class_name": "dump_truck",
+      "score": null,
+      "box": [
+        0.12,
+        0.5,
+        0.55,
+        0.78
+      ],
+      "image_size": [
+        1216,
+        813
+      ],
+      "details": {
+        "box": [
+          0.12,
+          0.5,
+          0.55,
+          0.78
+        ],
+        "status": "identified",
+        "type_en": "dump truck",
+        "type_ru": "самосвал",
+        "evidence": "Самосвал FAW с откидным кузовом, кабина слева, кузов заполняется грунтом.",
+        "catalog_class": "dump_truck",
+        "detection_ids": [],
+        "disagreements": [],
+        "visual_action": "loading",
+        "idle_indicator": "none",
+        "action_evidence": "Кузов самосвала виден под ковшом экскаватора, признаков движения нет.",
+        "missing_localization_reason": null
+      }
+    },
+    {
+      "id": "b7f36ebf-7c7f-5e1f-99ec-5e6b9f043126",
+      "input_id": "c10deca6-2a5f-4d16-9baf-38b972c84059",
+      "invocation_id": "b0007b5a-3520-462d-812b-2c9c976fafb6",
+      "class_name": "concrete_mixer_truck",
+      "score": null,
+      "box": [
+        0.45,
+        0.48,
+        0.68,
+        0.72
+      ],
+      "image_size": [
+        1216,
+        813
+      ],
+      "details": {
+        "box": [
+          0.45,
+          0.48,
+          0.68,
+          0.72
+        ],
+        "status": "identified",
+        "type_en": "concrete mixer truck",
+        "type_ru": "автобетономешалка",
+        "evidence": "Бетономешалка с белым вращающимся барабаном за самосвалом.",
+        "catalog_class": "concrete_mixer_truck",
+        "detection_ids": [
+          "c10deca6-2a5f-4d16-9baf-38b972c84059/kaggle/1"
+        ],
+        "disagreements": [
+          "kaggle Mixer принят как автобетономешалка"
+        ],
+        "visual_action": "no_visible_action",
+        "idle_indicator": "none",
+        "action_evidence": "Видна бетономешалка с барабаном, активного действия не видно.",
+        "missing_localization_reason": null
+      }
+    },
+    {
+      "id": "f7f38c1d-5257-595a-907a-cb7690fa459e",
+      "input_id": "c10deca6-2a5f-4d16-9baf-38b972c84059",
+      "invocation_id": "b0007b5a-3520-462d-812b-2c9c976fafb6",
+      "class_name": "excavator",
+      "score": null,
+      "box": [
+        0.0,
+        0.4,
+        0.22,
+        0.62
+      ],
+      "image_size": [
+        1216,
+        813
+      ],
+      "details": {
+        "box": [
+          0.0,
+          0.4,
+          0.22,
+          0.62
+        ],
+        "status": "identified",
+        "type_en": "excavator",
+        "type_ru": "экскаватор",
+        "evidence": "Второй гусеничный экскаватор Sunward слева, стрела поднята.",
+        "catalog_class": "excavator",
+        "detection_ids": [],
+        "disagreements": [],
+        "visual_action": "unknown",
+        "idle_indicator": "none",
+        "action_evidence": "Стрела поднята, ковш не виден; действие не оценивается.",
+        "missing_localization_reason": null
+      }
+    },
+    {
+      "id": "02283611-ab7d-5937-b24b-f08283fb4b6a",
+      "input_id": "c10deca6-2a5f-4d16-9baf-38b972c84059",
+      "invocation_id": "b0007b5a-3520-462d-812b-2c9c976fafb6",
+      "class_name": "excavator",
+      "score": null,
+      "box": [
+        0.68,
+        0.38,
+        0.95,
+        0.72
+      ],
+      "image_size": [
+        1216,
+        813
+      ],
+      "details": {
+        "box": [
+          0.68,
+          0.38,
+          0.95,
+          0.72
+        ],
+        "status": "identified",
+        "type_en": "excavator",
+        "type_ru": "экскаватор",
+        "evidence": "Третий экскаватор Sunward справа, видна стрела и кабина.",
+        "catalog_class": "excavator",
+        "detection_ids": [],
+        "disagreements": [],
+        "visual_action": "unknown",
+        "idle_indicator": "none",
+        "action_evidence": "Видна стрела экскаватора справа, действие не оценивается.",
+        "missing_localization_reason": null
+      }
+    }
+  ],
+  "scene_features": [],
+  "plan_binding": {
+    "zone_id": "c77e6448-0cee-4de1-ade4-f64d58816bd7",
+    "revision_id": "f3e2fdad-f874-42d6-9802-2e3977bf8e8c",
+    "capture_times": [
+      "2026-09-27T12:00:00+03:00"
+    ]
+  },
+  "planned_works": [
+    {
+      "id": "87303cf1-048d-41f6-a0e1-5e6cb3caa6f7",
+      "title": "Устройство асфальтобетонного покрытия проездов, тротуаров, площадок с установкой бортового камня",
+      "stage_key": "roadwork",
+      "starts_at": "2026-09-27T05:00:00+00:00",
+      "ends_at": "2026-09-27T15:00:00+00:00",
+      "state": "active"
+    }
+  ],
+  "stage_confirmation": null,
+  "native_evidence": null,
+  "native_evidence_by_frame": [],
+  "outcome": "observations_only",
+  "result_projection": {
+    "frames": [
+      {
+        "state": "detected",
+        "reason": null,
+        "ordinal": 0,
+        "input_id": "c10deca6-2a5f-4d16-9baf-38b972c84059",
+        "class_name": "excavator",
+        "invocation_id": "b0007b5a-3520-462d-812b-2c9c976fafb6",
+        "source_artifact_id": "7bb3a633-fdb3-48fd-af4c-f678dfe032aa"
+      },
+      {
+        "state": "detected",
+        "reason": null,
+        "ordinal": 0,
+        "input_id": "c10deca6-2a5f-4d16-9baf-38b972c84059",
+        "class_name": "dump_truck",
+        "invocation_id": "b0007b5a-3520-462d-812b-2c9c976fafb6",
+        "source_artifact_id": "7bb3a633-fdb3-48fd-af4c-f678dfe032aa"
+      },
+      {
+        "state": "insufficient_data",
+        "reason": "uncertain_identification",
+        "ordinal": 0,
+        "input_id": "c10deca6-2a5f-4d16-9baf-38b972c84059",
+        "class_name": "road_roller",
+        "invocation_id": "b0007b5a-3520-462d-812b-2c9c976fafb6",
+        "source_artifact_id": "7bb3a633-fdb3-48fd-af4c-f678dfe032aa"
+      },
+      {
+        "state": "insufficient_data",
+        "reason": "uncertain_identification",
+        "ordinal": 0,
+        "input_id": "c10deca6-2a5f-4d16-9baf-38b972c84059",
+        "class_name": "truck_mounted_crane",
+        "invocation_id": "b0007b5a-3520-462d-812b-2c9c976fafb6",
+        "source_artifact_id": "7bb3a633-fdb3-48fd-af4c-f678dfe032aa"
+      },
+      {
+        "state": "detected",
+        "reason": null,
+        "ordinal": 0,
+        "input_id": "c10deca6-2a5f-4d16-9baf-38b972c84059",
+        "class_name": "concrete_mixer_truck",
+        "invocation_id": "b0007b5a-3520-462d-812b-2c9c976fafb6",
+        "source_artifact_id": "7bb3a633-fdb3-48fd-af4c-f678dfe032aa"
+      },
+      {
+        "state": "insufficient_data",
+        "reason": "uncertain_identification",
+        "ordinal": 0,
+        "input_id": "c10deca6-2a5f-4d16-9baf-38b972c84059",
+        "class_name": "bulldozer",
+        "invocation_id": "b0007b5a-3520-462d-812b-2c9c976fafb6",
+        "source_artifact_id": "7bb3a633-fdb3-48fd-af4c-f678dfe032aa"
+      },
+      {
+        "state": "not_detected_in_frame",
+        "reason": null,
+        "ordinal": 0,
+        "input_id": "c10deca6-2a5f-4d16-9baf-38b972c84059",
+        "class_name": "truck",
+        "invocation_id": "b0007b5a-3520-462d-812b-2c9c976fafb6",
+        "source_artifact_id": "7bb3a633-fdb3-48fd-af4c-f678dfe032aa"
+      },
+      {
+        "state": "insufficient_data",
+        "reason": "uncertain_identification",
+        "ordinal": 0,
+        "input_id": "c10deca6-2a5f-4d16-9baf-38b972c84059",
+        "class_name": "mobile_crane",
+        "invocation_id": "b0007b5a-3520-462d-812b-2c9c976fafb6",
+        "source_artifact_id": "7bb3a633-fdb3-48fd-af4c-f678dfe032aa"
+      }
+    ],
+    "series": {
+      "input_order": [
+        "c10deca6-2a5f-4d16-9baf-38b972c84059"
+      ],
+      "usable_count": 1,
+      "usable_input_ids": [
+        "c10deca6-2a5f-4d16-9baf-38b972c84059"
+      ],
+      "declared_observation_area": "Учебный участок сравнения с графиком",
+      "dump_truck_persistence_text": null,
+      "excavator_supporting_input_ids": [
+        "c10deca6-2a5f-4d16-9baf-38b972c84059"
+      ],
+      "dump_truck_persistence_input_ids": []
+    },
+    "source": "Yandex AI Studio DeepSeek",
+    "context": {
+      "period": "2026-09-27T12:00:00+03:00",
+      "zone_id": "c77e6448-0cee-4de1-ade4-f64d58816bd7",
+      "scenario": "Учебная симуляция: план применяется к этому снимку в 12:00 27.09.2026. Сравнить видимую сцену с учебным планом. Реальные сроки объекта не оцениваются.",
+      "project_id": "ce575eca-8b2c-47f8-8dd7-f6373313a627",
+      "capture_times": [
+        "2026-09-27T12:00:00+03:00"
+      ],
+      "observation_area": "Учебный участок сравнения с графиком",
+      "plan_revision_id": "f3e2fdad-f874-42d6-9802-2e3977bf8e8c",
+      "cloud_processing_consent": true
+    },
+    "outcome": "observations_only",
+    "limitations": [
+      "Фотография не доказывает отсутствие техники; выводы требуют проверки человеком."
+    ],
+    "rule_results": [
+      {
+        "kind": "insufficient_observations",
+        "reason": "At least three assessable frames of the active zone are required.",
+        "entry_id": "87303cf1-048d-41f6-a0e1-5e6cb3caa6f7",
+        "supporting_input_ids": [
+          "c10deca6-2a5f-4d16-9baf-38b972c84059"
+        ]
+      }
+    ],
+    "ai_assessment": {
+      "risks": [
+        {
+          "text": "Возможное несоответствие видимой стадии (земляные работы) активной записи плана roadwork.",
+          "cause": "stage_plan_mismatch",
+          "impact": "На кадре в 12:00 27.09.2026 в активной зоне видна погрузка грунта экскаватором в самосвал, что не соответствует содержанию активной записи плана (устройство асфальтобетонного покрытия, ожидаемое оборудование — каток, экскаватор исключён). Это возможное расхождение видимой сцены с планом, требующее проверки человеком; вывод о задержке или нарушении срока из одного кадра не делается.",
+          "category": "plan",
+          "frame_ids": [
+            "c10deca6-2a5f-4d16-9baf-38b972c84059"
+          ],
+          "limitations": [
+            "Один пригодный кадр; правило плана вернуло insufficient_observations (нужно ≥3 оцениваемых кадров активной зоны).",
+            "Плановая стадия — контекст, а не доказательство видимой стадии; границы времени проверялись только на 12:00 27.09.2026.",
+            "Отсутствие данных о других работах в зоне не исключается; вывод требует подтверждения человеком."
+          ],
+          "work_entry_id": "87303cf1-048d-41f6-a0e1-5e6cb3caa6f7",
+          "observation_ids": [
+            "eedacf0b-99da-5dfd-84a5-ece4c7a6d98f",
+            "63d0411b-e511-5286-a08b-3ae2b3fa1be9"
+          ],
+          "recommended_check": "Сопоставить видимый характер работ (земляные, погрузка грунта) с активной записью плана 87303cf1-048d-41f6-a0e1-5e6cb3caa6f7 на 12:00 27.09.2026 и уточнить у ответственного за производство работ фактическую стадию и основание нахождения экскаватора в зоне."
+        },
+        {
+          "text": "Возможная зона повышенной опасности у выемки и в зоне работы экскаватора с ковшом.",
+          "cause": "visible_safety_risk",
+          "impact": "В зоне видна выемка/котлован и работа экскаватора с ковшом над кузовом самосвала; это возможный источник опасности для находящихся рядом людей и техники, требующий осмотра и подтверждения человеком.",
+          "category": "safety",
+          "frame_ids": [
+            "c10deca6-2a5f-4d16-9baf-38b972c84059"
+          ],
+          "limitations": [
+            "Расстояния и нормативные требования по фотографии не измеряются и не подтверждаются.",
+            "Люди вне кадра и подземные коммуникации не наблюдаются и не предполагаются.",
+            "Формулировка описывает возможный риск для проверки человеком, а не установленное нарушение."
+          ],
+          "work_entry_id": null,
+          "observation_ids": [
+            "eedacf0b-99da-5dfd-84a5-ece4c7a6d98f",
+            "63d0411b-e511-5286-a08b-3ae2b3fa1be9",
+            "c10deca6-2a5f-4d16-9baf-38b972c84059/scene/excavation_or_trench"
+          ],
+          "recommended_check": "Проверить наличие ограждений и знаков у выемки, отсутствие людей в опасной зоне работы экскаватора и соблюдение безопасных расстояний; при необходимости — остановить работы до осмотра ответственным лицом."
+        }
+      ],
+      "summary": "На единственном пригодном кадре (12:00 27.09.2026, зона c77e6448-0cee-4de1-ade4-f64d58816bd7) видна активная погрузка грунта: гусеничный экскаватор Sunward стрелой с ковшом грузит грунт в кузов самосвала FAW; рядом находятся автобетономешалка с барабаном и ещё два экскаватора Sunward, видна выемка/котлован и грунтовые отвалы. Видимые работы относятся к земляным (excavation), тогда как привязанный план на этот интервал описывает устройство асфальтобетонного покрытия (roadwork) с ожидаемым катком и исключённым экскаватором. Правило плана вернуло insufficient_observations (нужно не менее трёх оцениваемых кадров активной зоны), поэтому выводы о соблюдении графика, задержках и нарушениях по плану сделать нельзя. Все формулировки — гипотезы, требующие проверки человеком; фотография не даёт измерений расстояний, норм и подтверждённых нарушений.",
+      "activity": [
+        {
+          "state": "working_signs",
+          "reason": "На кадре видна стрела экскаватора с ковшом над кузовом самосвала и грунт в кузове — это видимое рабочее действие (погрузка грунта).",
+          "grounds": "visible_work_action",
+          "frame_ids": [
+            "c10deca6-2a5f-4d16-9baf-38b972c84059"
+          ],
+          "comparison": null,
+          "uncertainty": "Один кадр; динамика и длительность не оцениваются, видимое действие фиксируется только на момент съёмки.",
+          "observation_ids": [
+            "eedacf0b-99da-5dfd-84a5-ece4c7a6d98f",
+            "63d0411b-e511-5286-a08b-3ae2b3fa1be9"
+          ]
+        },
+        {
+          "state": "insufficient_data",
+          "reason": "Автобетономешалка видна с барабаном, но активного действия не наблюдается; независимых сопоставимых кадров той же зоны с надёжной привязкой времени нет, поэтому состояние простоя не подтверждается.",
+          "grounds": "insufficient_evidence",
+          "frame_ids": [
+            "c10deca6-2a5f-4d16-9baf-38b972c84059"
+          ],
+          "comparison": null,
+          "uncertainty": "Отсутствие видимого действия на одном кадре не доказывает простой; нет независимых сопоставимых кадров и данных о времени.",
+          "observation_ids": [
+            "b7f36ebf-7c7f-5e1f-99ec-5e6b9f043126"
+          ]
+        },
+        {
+          "state": "insufficient_data",
+          "reason": "Второй и третий экскаваторы видны, но их действие не оценивается (стрела поднята/ковш не виден); независимых сопоставимых кадров нет.",
+          "grounds": "insufficient_evidence",
+          "frame_ids": [
+            "c10deca6-2a5f-4d16-9baf-38b972c84059"
+          ],
+          "comparison": null,
+          "uncertainty": "Один кадр, действие не читается; состояние простоя не подтверждается.",
+          "observation_ids": [
+            "f7f38c1d-5257-595a-907a-cb7690fa459e",
+            "02283611-ab7d-5937-b24b-f08283fb4b6a"
+          ]
+        }
+      ],
+      "limitations": [
+        "Использован только один пригодный кадр; правило плана вернуло insufficient_observations.",
+        "Фотография не позволяет измерить расстояния, уклоны, глубины и подтвердить нормативные требования.",
+        "Отсутствие видимых объектов (людей, коммуникаций, ограждений) не доказывает их отсутствие.",
+        "История пуста и не использовалась как доказательство текущей видимости.",
+        "Стадия и риски — гипотезы, требующие подтверждения человеком; задержки и нарушения сроков не устанавливаются."
+      ],
+      "recommendations": [
+        "Проверить фактическую стадию работ в зоне c77e6448-0cee-4de1-ade4-f64d58816bd7 на 12:00 27.09.2026 и сопоставить её с активной записью плана 87303cf1-048d-41f6-a0e1-5e6cb3caa6f7.",
+        "Собрать дополнительные независимые кадры активной зоны (не менее трёх оцениваемых) для корректной проверки по правилам плана.",
+        "Осмотреть зону работы экскаватора и выемки на предмет ограждений, знаков и отсутствия людей в опасной зоне.",
+        "Уточнить у ответственного лица основания нахождения экскаватора в зоне, где планом предусмотрено дорожное покрытие и каток."
+      ],
+      "stage_hypotheses": [
+        {
+          "stage": "excavation",
+          "reason": "Видна погрузка грунта экскаватором в самосвал, выемка/котлован и грунтовые отвалы — признаки земляных работ.",
+          "frame_ids": [
+            "c10deca6-2a5f-4d16-9baf-38b972c84059"
+          ],
+          "work_entry_id": null,
+          "observation_ids": [
+            "eedacf0b-99da-5dfd-84a5-ece4c7a6d98f",
+            "63d0411b-e511-5286-a08b-3ae2b3fa1be9",
+            "c10deca6-2a5f-4d16-9baf-38b972c84059/scene/excavation_or_trench"
+          ]
+        },
+        {
+          "stage": "roadwork",
+          "reason": "Активная запись плана на 12:00 27.09.2026 описывает устройство асфальтобетонного покрытия (roadwork), однако видимых признаков дорожных работ (основание, покрытие, каток) на кадре нет; гипотеза приводится только как плановый контекст.",
+          "frame_ids": [
+            "c10deca6-2a5f-4d16-9baf-38b972c84059"
+          ],
+          "work_entry_id": "87303cf1-048d-41f6-a0e1-5e6cb3caa6f7",
+          "observation_ids": [
+            "c10deca6-2a5f-4d16-9baf-38b972c84059/scene/road_base_or_surface",
+            "c10deca6-2a5f-4d16-9baf-38b972c84059/scene/concrete_surface"
+          ]
+        }
+      ],
+      "stage_hypothesis": {
+        "stage": "excavation",
+        "reason": "На кадре видны земляные работы: экскаватор грузит грунт в самосвал, рядом выемка/котлован и грунтовые отвалы. Это наиболее согласованная с видимым гипотеза стадии; плановая стадия roadwork является контекстом, а не доказательством."
+      }
+    },
+    "hybrid_frames": [
+      {
+        "stage": "excavation",
+        "sha256": "c4d2cede161a85e29bb81ff751a9cd2fbe108f07ed397dfe170eceec8085da46",
+        "ordinal": 0,
+        "input_id": "c10deca6-2a5f-4d16-9baf-38b972c84059",
+        "detectors": {
+          "models": [
+            {
+              "model_id": "apoce",
+              "detections": [],
+              "image_size": [
+                1216,
+                813
+              ],
+              "latency_ms": 939.3823750433512,
+              "weights_sha256": "db44473297767157a13a3d534668a16b336ab18c54bd1814e39f8eab1874c705"
+            },
+            {
+              "model_id": "kaggle",
+              "detections": [
+                {
+                  "id": "c10deca6-2a5f-4d16-9baf-38b972c84059/kaggle/0",
+                  "box": [
+                    0.12659578025341034,
+                    0.4132043421268463,
+                    0.9366452097892761,
+                    0.8024616837501526
+                  ],
+                  "score": 0.4929337203502655,
+                  "class_id": 13,
+                  "input_id": "c10deca6-2a5f-4d16-9baf-38b972c84059",
+                  "model_id": "kaggle",
+                  "raw_class": "Trailer",
+                  "catalog_class": null
+                },
+                {
+                  "id": "c10deca6-2a5f-4d16-9baf-38b972c84059/kaggle/1",
+                  "box": [
+                    0.15534608066082,
+                    0.4196549355983734,
+                    0.8902698159217834,
+                    0.8049150705337524
+                  ],
+                  "score": 0.417077898979187,
+                  "class_id": 8,
+                  "input_id": "c10deca6-2a5f-4d16-9baf-38b972c84059",
+                  "model_id": "kaggle",
+                  "raw_class": "Mixer",
+                  "catalog_class": "concrete_mixer_truck"
+                }
+              ],
+              "image_size": [
+                1216,
+                813
+              ],
+              "latency_ms": 97.1962499897927,
+              "weights_sha256": "0e86af081bd71dc4c9cd9a07bb151949781d8ec86442a0fe334f1bca11be3622"
+            }
+          ],
+          "manifest": {
+            "models": [
+              {
+                "id": "apoce",
+                "sha256": "db44473297767157a13a3d534668a16b336ab18c54bd1814e39f8eab1874c705",
+                "classes": [
+                  "bulldozer",
+                  "concrete-mixer",
+                  "dump-truck",
+                  "excavator",
+                  "lifting-equipment",
+                  "piling-machine",
+                  "tower-crane"
+                ],
+                "mapping": {
+                  "bulldozer": "bulldozer",
+                  "excavator": "excavator",
+                  "dump-truck": "dump_truck",
+                  "tower-crane": null,
+                  "concrete-mixer": "concrete_mixer_truck",
+                  "piling-machine": null,
+                  "lifting-equipment": null
+                },
+                "filename": "apoce.pt"
+              },
+              {
+                "id": "kaggle",
+                "sha256": "0e86af081bd71dc4c9cd9a07bb151949781d8ec86442a0fe334f1bca11be3622",
+                "classes": [
+                  "Dump truck",
+                  "Excavator",
+                  "Motor grader",
+                  "Roller",
+                  "Crane manipulator",
+                  "Gazelle",
+                  "Forklift Standart",
+                  "Bucket loader Big",
+                  "Mixer",
+                  "Tanker",
+                  "Bulldozer",
+                  "Cleaning equipment",
+                  "Truck",
+                  "Trailer",
+                  "Forklift Giraffe",
+                  "Bucket loader Standart",
+                  "Autocran"
+                ],
+                "mapping": {
+                  "Mixer": "concrete_mixer_truck",
+                  "Truck": "truck",
+                  "Roller": "road_roller",
+                  "Tanker": null,
+                  "Gazelle": null,
+                  "Trailer": null,
+                  "Autocran": "mobile_crane",
+                  "Bulldozer": "bulldozer",
+                  "Excavator": "excavator",
+                  "Dump truck": "dump_truck",
+                  "Motor grader": null,
+                  "Forklift Giraffe": null,
+                  "Bucket loader Big": null,
+                  "Crane manipulator": "truck_mounted_crane",
+                  "Forklift Standart": null,
+                  "Cleaning equipment": null,
+                  "Bucket loader Standart": null
+                },
+                "filename": "kaggle.pt"
+              }
+            ],
+            "revision": "hybrid-yolo-v1",
+            "settings": {
+              "iou": 0.7,
+              "conf": 0.25,
+              "half": false,
+              "save": false,
+              "imgsz": 640,
+              "device": "cpu",
+              "augment": false,
+              "max_det": 100,
+              "verbose": false
+            },
+            "dependencies": {
+              "torch": "2.10.0",
+              "torchvision": "0.25.0",
+              "ultralytics": "8.4.163"
+            },
+            "preprocessing": "exif-oriented-rgb-v1"
+          },
+          "oriented_sha256": "eff8d0c875c4ae3cefa648ca92977b0736cef2fa39e44a81b2e6784274c28df9"
+        },
+        "captured_at": "2026-09-27T12:00:00+03:00",
+        "observations": [
+          {
+            "id": "eedacf0b-99da-5dfd-84a5-ece4c7a6d98f",
+            "box": [
+              0.42,
+              0.42,
+              0.72,
+              0.78
+            ],
+            "kind": "equipment",
+            "status": "identified",
+            "type_en": "excavator",
+            "type_ru": "экскаватор",
+            "visible": true,
+            "evidence": "Гусеничный экскаватор Sunward с кабиной и стрелой, ковш над кузовом самосвала.",
+            "catalog_class": "excavator",
+            "detection_ids": [],
+            "disagreements": [],
+            "visual_action": "loading",
+            "idle_indicator": "none",
+            "action_evidence": "Стрела с ковшом опущена к кузову самосвала, ковш над грунтом; видимая погрузка грунта.",
+            "missing_localization_reason": null
+          },
+          {
+            "id": "63d0411b-e511-5286-a08b-3ae2b3fa1be9",
+            "box": [
+              0.12,
+              0.5,
+              0.55,
+              0.78
+            ],
+            "kind": "equipment",
+            "status": "identified",
+            "type_en": "dump truck",
+            "type_ru": "самосвал",
+            "visible": true,
+            "evidence": "Самосвал FAW с откидным кузовом, кабина слева, кузов заполняется грунтом.",
+            "catalog_class": "dump_truck",
+            "detection_ids": [],
+            "disagreements": [],
+            "visual_action": "loading",
+            "idle_indicator": "none",
+            "action_evidence": "Кузов самосвала виден под ковшом экскаватора, признаков движения нет.",
+            "missing_localization_reason": null
+          },
+          {
+            "id": "b7f36ebf-7c7f-5e1f-99ec-5e6b9f043126",
+            "box": [
+              0.45,
+              0.48,
+              0.68,
+              0.72
+            ],
+            "kind": "equipment",
+            "status": "identified",
+            "type_en": "concrete mixer truck",
+            "type_ru": "автобетономешалка",
+            "visible": true,
+            "evidence": "Бетономешалка с белым вращающимся барабаном за самосвалом.",
+            "catalog_class": "concrete_mixer_truck",
+            "detection_ids": [
+              "c10deca6-2a5f-4d16-9baf-38b972c84059/kaggle/1"
+            ],
+            "disagreements": [
+              "kaggle Mixer принят как автобетономешалка"
+            ],
+            "visual_action": "no_visible_action",
+            "idle_indicator": "none",
+            "action_evidence": "Видна бетономешалка с барабаном, активного действия не видно.",
+            "missing_localization_reason": null
+          },
+          {
+            "id": "f7f38c1d-5257-595a-907a-cb7690fa459e",
+            "box": [
+              0.0,
+              0.4,
+              0.22,
+              0.62
+            ],
+            "kind": "equipment",
+            "status": "identified",
+            "type_en": "excavator",
+            "type_ru": "экскаватор",
+            "visible": true,
+            "evidence": "Второй гусеничный экскаватор Sunward слева, стрела поднята.",
+            "catalog_class": "excavator",
+            "detection_ids": [],
+            "disagreements": [],
+            "visual_action": "unknown",
+            "idle_indicator": "none",
+            "action_evidence": "Стрела поднята, ковш не виден; действие не оценивается.",
+            "missing_localization_reason": null
+          },
+          {
+            "id": "02283611-ab7d-5937-b24b-f08283fb4b6a",
+            "box": [
+              0.68,
+              0.38,
+              0.95,
+              0.72
+            ],
+            "kind": "equipment",
+            "status": "identified",
+            "type_en": "excavator",
+            "type_ru": "экскаватор",
+            "visible": true,
+            "evidence": "Третий экскаватор Sunward справа, видна стрела и кабина.",
+            "catalog_class": "excavator",
+            "detection_ids": [],
+            "disagreements": [],
+            "visual_action": "unknown",
+            "idle_indicator": "none",
+            "action_evidence": "Видна стрела экскаватора справа, действие не оценивается.",
+            "missing_localization_reason": null
+          },
+          {
+            "id": "c10deca6-2a5f-4d16-9baf-38b972c84059/scene/rebar",
+            "kind": "scene",
+            "name": "rebar",
+            "state": "uncertain",
+            "visible": false
+          },
+          {
+            "id": "c10deca6-2a5f-4d16-9baf-38b972c84059/scene/road_base_or_surface",
+            "kind": "scene",
+            "name": "road_base_or_surface",
+            "state": "absent",
+            "visible": false
+          },
+          {
+            "id": "c10deca6-2a5f-4d16-9baf-38b972c84059/scene/concrete_surface",
+            "kind": "scene",
+            "name": "concrete_surface",
+            "state": "absent",
+            "visible": false
+          },
+          {
+            "id": "c10deca6-2a5f-4d16-9baf-38b972c84059/scene/excavation_or_trench",
+            "kind": "scene",
+            "name": "excavation_or_trench",
+            "state": "present",
+            "visible": true
+          },
+          {
+            "id": "c10deca6-2a5f-4d16-9baf-38b972c84059/scene/formwork",
+            "kind": "scene",
+            "name": "formwork",
+            "state": "uncertain",
+            "visible": false
+          }
+        ],
+        "stage_reason": "Видны земляные работы: экскаватор грузит грунт в самосвал, рядом бетономешалка и траншея/котлован.",
+        "frame_usability": {
+          "reason": "Кадр пригоден для обзора строительной площадки.",
+          "usable": true
+        },
+        "source_artifact_id": "7bb3a633-fdb3-48fd-af4c-f678dfe032aa",
+        "class_assessability": {
+          "truck": "assessable",
+          "bulldozer": "unassessable",
+          "excavator": "assessable",
+          "dump_truck": "assessable",
+          "road_roller": "unassessable",
+          "mobile_crane": "unassessable",
+          "truck_mounted_crane": "unassessable",
+          "concrete_mixer_truck": "assessable"
+        },
+        "detection_dispositions": [
+          {
+            "reason": "Обнаруженный объект соответствует видимому самосвалу/прицепу, но класс Trailer не подтверждён; это кузов самосвала.",
+            "status": "dismissed",
+            "detection_id": "c10deca6-2a5f-4d16-9baf-38b972c84059/kaggle/0"
+          },
+          {
+            "reason": "Обнаружение соответствует видимой автобетономешалке с барабаном.",
+            "status": "accepted",
+            "detection_id": "c10deca6-2a5f-4d16-9baf-38b972c84059/kaggle/1"
+          }
+        ]
+      }
+    ],
+    "created_signals": [
+      {
+        "id": "ba57ed0e-3c35-4411-9d92-87f62caf8dfb",
+        "kind": "insufficient_observations",
+        "state": "new",
+        "reason": "At least three assessable frames of the active zone are required.",
+        "entry_id": "87303cf1-048d-41f6-a0e1-5e6cb3caa6f7",
+        "supporting_input_ids": [
+          "c10deca6-2a5f-4d16-9baf-38b972c84059"
+        ]
+      },
+      {
+        "id": "7c1ab33e-6d36-48d1-a4e8-c90b23d3803c",
+        "kind": "stage_plan_mismatch",
+        "risk": {
+          "text": "Возможное несоответствие видимой стадии (земляные работы) активной записи плана roadwork.",
+          "cause": "stage_plan_mismatch",
+          "impact": "На кадре в 12:00 27.09.2026 в активной зоне видна погрузка грунта экскаватором в самосвал, что не соответствует содержанию активной записи плана (устройство асфальтобетонного покрытия, ожидаемое оборудование — каток, экскаватор исключён). Это возможное расхождение видимой сцены с планом, требующее проверки человеком; вывод о задержке или нарушении срока из одного кадра не делается.",
+          "category": "plan",
+          "frame_ids": [
+            "c10deca6-2a5f-4d16-9baf-38b972c84059"
+          ],
+          "limitations": [
+            "Один пригодный кадр; правило плана вернуло insufficient_observations (нужно ≥3 оцениваемых кадров активной зоны).",
+            "Плановая стадия — контекст, а не доказательство видимой стадии; границы времени проверялись только на 12:00 27.09.2026.",
+            "Отсутствие данных о других работах в зоне не исключается; вывод требует подтверждения человеком."
+          ],
+          "work_entry_id": "87303cf1-048d-41f6-a0e1-5e6cb3caa6f7",
+          "observation_ids": [
+            "eedacf0b-99da-5dfd-84a5-ece4c7a6d98f",
+            "63d0411b-e511-5286-a08b-3ae2b3fa1be9"
+          ],
+          "recommended_check": "Сопоставить видимый характер работ (земляные, погрузка грунта) с активной записью плана 87303cf1-048d-41f6-a0e1-5e6cb3caa6f7 на 12:00 27.09.2026 и уточнить у ответственного за производство работ фактическую стадию и основание нахождения экскаватора в зоне."
+        },
+        "state": "new",
+        "entry_id": "87303cf1-048d-41f6-a0e1-5e6cb3caa6f7",
+        "supporting_input_ids": [
+          "c10deca6-2a5f-4d16-9baf-38b972c84059"
+        ]
+      },
+      {
+        "id": "beac1179-d540-419c-a9bb-098ea75044fd",
+        "kind": "visible_safety_risk",
+        "risk": {
+          "text": "Возможная зона повышенной опасности у выемки и в зоне работы экскаватора с ковшом.",
+          "cause": "visible_safety_risk",
+          "impact": "В зоне видна выемка/котлован и работа экскаватора с ковшом над кузовом самосвала; это возможный источник опасности для находящихся рядом людей и техники, требующий осмотра и подтверждения человеком.",
+          "category": "safety",
+          "frame_ids": [
+            "c10deca6-2a5f-4d16-9baf-38b972c84059"
+          ],
+          "limitations": [
+            "Расстояния и нормативные требования по фотографии не измеряются и не подтверждаются.",
+            "Люди вне кадра и подземные коммуникации не наблюдаются и не предполагаются.",
+            "Формулировка описывает возможный риск для проверки человеком, а не установленное нарушение."
+          ],
+          "work_entry_id": null,
+          "observation_ids": [
+            "eedacf0b-99da-5dfd-84a5-ece4c7a6d98f",
+            "63d0411b-e511-5286-a08b-3ae2b3fa1be9",
+            "c10deca6-2a5f-4d16-9baf-38b972c84059/scene/excavation_or_trench"
+          ],
+          "recommended_check": "Проверить наличие ограждений и знаков у выемки, отсутствие людей в опасной зоне работы экскаватора и соблюдение безопасных расстояний; при необходимости — остановить работы до осмотра ответственным лицом."
+        },
+        "state": "new",
+        "entry_id": null,
+        "supporting_input_ids": [
+          "c10deca6-2a5f-4d16-9baf-38b972c84059"
+        ]
+      }
+    ],
+    "plan_revision_id": "f3e2fdad-f874-42d6-9802-2e3977bf8e8c",
+    "stage_hypotheses": [
+      {
+        "stage": "excavation",
+        "reason": "Видна погрузка грунта экскаватором в самосвал, выемка/котлован и грунтовые отвалы — признаки земляных работ.",
+        "frame_ids": [
+          "c10deca6-2a5f-4d16-9baf-38b972c84059"
+        ],
+        "work_entry_id": null,
+        "observation_ids": [
+          "eedacf0b-99da-5dfd-84a5-ece4c7a6d98f",
+          "63d0411b-e511-5286-a08b-3ae2b3fa1be9",
+          "c10deca6-2a5f-4d16-9baf-38b972c84059/scene/excavation_or_trench"
+        ]
+      },
+      {
+        "stage": "roadwork",
+        "reason": "Активная запись плана на 12:00 27.09.2026 описывает устройство асфальтобетонного покрытия (roadwork), однако видимых признаков дорожных работ (основание, покрытие, каток) на кадре нет; гипотеза приводится только как плановый контекст.",
+        "frame_ids": [
+          "c10deca6-2a5f-4d16-9baf-38b972c84059"
+        ],
+        "work_entry_id": "87303cf1-048d-41f6-a0e1-5e6cb3caa6f7",
+        "observation_ids": [
+          "c10deca6-2a5f-4d16-9baf-38b972c84059/scene/road_base_or_surface",
+          "c10deca6-2a5f-4d16-9baf-38b972c84059/scene/concrete_surface"
+        ]
+      }
+    ]
+  },
+  "retry_eligible": false
+}
