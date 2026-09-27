@@ -69,6 +69,29 @@ No intent gaps or irreversible actions. Footprint is frontend-only plus local do
 
 ## Review Triage Log
 
+All three code-review layers returned before classification. Duplicate findings retain individual verdicts below and share bounded repairs; no public API, backend schema, deployment or main-worktree action is added.
+
+| Finding | Verdict | Evidence and disposition |
+|---|---|---|
+| BH1 saved-plan/signal identities | medium | Demo submission accepts arbitrary revisions and keeps fixture work identities. Patch: resolve the selected zone's saved revision and derive immutable run/signal evidence from it; reject absent/cross-zone revisions. |
+| BH2 submitted stage | medium | server.ts merges context.stage_id but keeps top-level stage=excavation. Patch: persist the submitted context consistently. Fixed photo-derived hypotheses may remain explicitly illustrative rather than being relabeled as an observed requested stage. |
+| BH3 oldest-first runs | medium | Object.values(runs) uses insertion order and overview slices its first five entries. Patch: newest insertion first, deterministic for fixed timestamps. |
+| BH4 annotation route substring | medium | tail.includes(input_id) accepts a wrong frame segment containing the real identifier. Patch: capture and compare the complete route segment, with a negative regression test. |
+| BH5 hidden selected object on mobile | medium | Photo SourceImage only changes selectedObject while evidence mode hides object-list. Patch: selecting a box also selects findings; verify evidence-to-box interaction. |
+| BH6 OS override versus hidden preference | medium | Effective enabled is false under OS reduction, but the control still toggles allowed. Patch: explain system override and disable unavailable toggles while preserving the saved choice. |
+| BH7 target-size coverage | medium | Audit checks height only and omits field/checkbox/navigation target dimensions. Patch the existing audit to measure width and height, use checkbox label hit targets, and explicitly report intentional inline-link/geometry exceptions. |
+| BH8 marquee intent-only assertion | medium | data-moving is computed independently of actual rendered Motion transforms. Same repair as VG2: sample real transforms over time. |
+| BH9 onboarding/menu enlarged-text coverage | medium | Harness always skips onboarding and captures the shell menu closed. Targeted first-use and open-menu checks at enlarged text and a short viewport are required for changed shell compatibility. Fix only reproduced defects. |
+| BH10 harness portability/documented override | low | Harness intentionally uses the user-requested fixed experiment root/ports. The stale DEMO_URL instruction was already corrected in later docs commits to VARIANTS and fixed ports. Reject additional root configurability as unnecessary for this bounded local experiment. |
+| EC1 plan-derived signal identities | medium | Independently reproduced same defect as BH1; shared repair retains original revision after later plan edits. |
+| EC2 light annotation number contrast | medium | annotations.css uses background:var(--raised) with color:#fff. Dashboard raised surface is light. Patch foreground token and verify actual label contrast in editor. |
+| EC3 recent analysis ordering | medium | Same insertion-order issue as BH3; shared ordering repair. |
+| VG1 client preset reset untested | medium | Verified gap: all existing reset checks call the API directly. Add an actual panel-button journey with retained upload, annotation and IndexedDB state; verify cleanup, navigation, no old upload restoration, and unrelated preferences retained. |
+| VG2 actual animation pause untested | medium | Verified gap: no transform sampling exists. Strengthen existing marquee check for visible movement and offscreen/user-disabled stability. |
+
+Visual review separately found mobile navigation sibling overlap at doubled text. It was corrected using flexible normal-flow navigation and scored resolved by the same reviewer in finish-verdict.md. Mobile screenshots were refreshed. One broad photo redo timeout is retained with an unchanged-code successful narrow rerun; no cause is inferred.
+
+
 ## Verification
 
 Run npm run build and npm test -- --run per worktree. Record exact results. Use headless Playwright/Chromium via CLI, not browser GUI tools. Perform one batched visual inspection and one confirming pass after fixes. Do not claim physical device or GUI checks. Read-only live API checks are separate from deterministic demo tests. No backend source/schema/migration changes.
