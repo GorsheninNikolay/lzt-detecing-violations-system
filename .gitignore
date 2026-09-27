@@ -234,3 +234,5 @@ __marimo__/
 /training/windows/runtime/
 /training/windows/models/
 /training/windows/datasets/
+
+/web/node_modules

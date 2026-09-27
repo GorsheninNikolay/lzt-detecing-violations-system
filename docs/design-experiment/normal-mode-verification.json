@@ -1,0 +1,177 @@
+{
+  "checkedAt": "2026-09-27T22:07:42.160Z",
+  "scope": "Temporary normal Vite instances against existing backend, GET only; browser writes aborted. No real uploads or inference.",
+  "results": [
+    {
+      "variant": "project-dashboard",
+      "base": "http://127.0.0.1:5194",
+      "checks": [
+        {
+          "path": "/api/health/live",
+          "status": 200,
+          "keys": [
+            "live"
+          ]
+        },
+        {
+          "path": "/api/health/ready",
+          "status": 200,
+          "keys": [
+            "ready",
+            "code"
+          ]
+        },
+        {
+          "path": "/api/projects",
+          "status": 200,
+          "keys": [
+            "projects"
+          ],
+          "projectCount": 9
+        },
+        {
+          "path": "/api/analysis-choices",
+          "status": 200,
+          "keys": [
+            "stages"
+          ]
+        }
+      ],
+      "liveProjectCards": 9,
+      "demoPanelCount": 0,
+      "pageErrors": [],
+      "blockedWrites": [
+        {
+          "method": "POST",
+          "path": "/api/analytics/events"
+        },
+        {
+          "method": "POST",
+          "path": "/api/analytics/events"
+        },
+        {
+          "method": "POST",
+          "path": "/api/analytics/events"
+        },
+        {
+          "method": "POST",
+          "path": "/api/analytics/events"
+        }
+      ]
+    },
+    {
+      "variant": "photo-workspace",
+      "base": "http://127.0.0.1:5195",
+      "checks": [
+        {
+          "path": "/api/health/live",
+          "status": 200,
+          "keys": [
+            "live"
+          ]
+        },
+        {
+          "path": "/api/health/ready",
+          "status": 200,
+          "keys": [
+            "ready",
+            "code"
+          ]
+        },
+        {
+          "path": "/api/projects",
+          "status": 200,
+          "keys": [
+            "projects"
+          ],
+          "projectCount": 9
+        },
+        {
+          "path": "/api/analysis-choices",
+          "status": 200,
+          "keys": [
+            "stages"
+          ]
+        }
+      ],
+      "liveProjectCards": 9,
+      "demoPanelCount": 0,
+      "pageErrors": [],
+      "blockedWrites": [
+        {
+          "method": "POST",
+          "path": "/api/analytics/events"
+        },
+        {
+          "method": "POST",
+          "path": "/api/analytics/events"
+        },
+        {
+          "method": "POST",
+          "path": "/api/analytics/events"
+        },
+        {
+          "method": "POST",
+          "path": "/api/analytics/events"
+        }
+      ]
+    },
+    {
+      "variant": "3d-experience",
+      "base": "http://127.0.0.1:5196",
+      "checks": [
+        {
+          "path": "/api/health/live",
+          "status": 200,
+          "keys": [
+            "live"
+          ]
+        },
+        {
+          "path": "/api/health/ready",
+          "status": 200,
+          "keys": [
+            "ready",
+            "code"
+          ]
+        },
+        {
+          "path": "/api/projects",
+          "status": 200,
+          "keys": [
+            "projects"
+          ],
+          "projectCount": 9
+        },
+        {
+          "path": "/api/analysis-choices",
+          "status": 200,
+          "keys": [
+            "stages"
+          ]
+        }
+      ],
+      "liveProjectCards": 9,
+      "demoPanelCount": 0,
+      "pageErrors": [],
+      "blockedWrites": [
+        {
+          "method": "POST",
+          "path": "/api/analytics/events"
+        },
+        {
+          "method": "POST",
+          "path": "/api/analytics/events"
+        },
+        {
+          "method": "POST",
+          "path": "/api/analytics/events"
+        },
+        {
+          "method": "POST",
+          "path": "/api/analytics/events"
+        }
+      ]
+    }
+  ]
+}

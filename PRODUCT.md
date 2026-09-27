@@ -8,7 +8,7 @@ A project contains zones, plans and analyses. The user selects a zone, uploads p
 
 The hybrid profile runs both supplied YOLO checkpoints on the server CPU. The cloud service labelled «Мультимодальная модель» in the interface reconciles their detections for each photograph, then assesses the photographs and saved context together. Original detector outputs, reconciled boxes, uncertain activity estimates, per-frame stage and work hypotheses, and persistent review signals remain inspectable. The profile using only the multimodal model is also supported.
 
-The interface uses Onest typography, a plum palette and a shared project workflow. Visitor support, the interactive training tour and private administration should preserve this visual style and the separation between source evidence and user decisions.
+The selected 3D visual world uses local Onest typography and a dark plum palette. [DESIGN.md](DESIGN.md) and [.impeccable/design.json](.impeccable/design.json) record its tokens and presentation motion. Visitor support, training and private administration preserve the shared project workflow and evidence boundaries.
 
 ## Evidence and decisions
 

@@ -1,0 +1,406 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-09-27T22:44:21.683098+00:00",
+  "title": "Design System: Контроль строительства — 3D Experience",
+  "extensions": {
+    "colorMeta": {
+      "border": {
+        "role": "neutral",
+        "displayName": "Border",
+        "tonalRamp": [
+          "oklch(15.00% 0.0452 319.16)",
+          "oklch(26.43% 0.0452 319.16)",
+          "oklch(37.86% 0.0452 319.16)",
+          "oklch(49.29% 0.0452 319.16)",
+          "oklch(60.71% 0.0452 319.16)",
+          "oklch(72.14% 0.0452 319.16)",
+          "oklch(83.57% 0.0452 319.16)",
+          "oklch(95.00% 0.0452 319.16)"
+        ],
+        "rampSource": "Synthetic OKLCH lightness preview; not an implemented color scale."
+      },
+      "essential": {
+        "role": "neutral",
+        "displayName": "Essential",
+        "tonalRamp": [
+          "oklch(15.00% 0.0617 319.67)",
+          "oklch(26.43% 0.0617 319.67)",
+          "oklch(37.86% 0.0617 319.67)",
+          "oklch(49.29% 0.0617 319.67)",
+          "oklch(60.71% 0.0617 319.67)",
+          "oklch(72.14% 0.0617 319.67)",
+          "oklch(83.57% 0.0617 319.67)",
+          "oklch(95.00% 0.0617 319.67)"
+        ],
+        "rampSource": "Synthetic OKLCH lightness preview; not an implemented color scale."
+      },
+      "selected": {
+        "role": "neutral",
+        "displayName": "Selected",
+        "tonalRamp": [
+          "oklch(15.00% 0.0562 319.19)",
+          "oklch(26.43% 0.0562 319.19)",
+          "oklch(37.86% 0.0562 319.19)",
+          "oklch(49.29% 0.0562 319.19)",
+          "oklch(60.71% 0.0562 319.19)",
+          "oklch(72.14% 0.0562 319.19)",
+          "oklch(83.57% 0.0562 319.19)",
+          "oklch(95.00% 0.0562 319.19)"
+        ],
+        "rampSource": "Synthetic OKLCH lightness preview; not an implemented color scale."
+      },
+      "warning": {
+        "role": "neutral",
+        "displayName": "Warning",
+        "tonalRamp": [
+          "oklch(15.00% 0.0778 82.43)",
+          "oklch(26.43% 0.0778 82.43)",
+          "oklch(37.86% 0.0778 82.43)",
+          "oklch(49.29% 0.0778 82.43)",
+          "oklch(60.71% 0.0778 82.43)",
+          "oklch(72.14% 0.0778 82.43)",
+          "oklch(83.57% 0.0778 82.43)",
+          "oklch(95.00% 0.0778 82.43)"
+        ],
+        "rampSource": "Synthetic OKLCH lightness preview; not an implemented color scale."
+      },
+      "warning-surface": {
+        "role": "neutral",
+        "displayName": "Warning Surface",
+        "tonalRamp": [
+          "oklch(15.00% 0.0309 54.31)",
+          "oklch(26.43% 0.0309 54.31)",
+          "oklch(37.86% 0.0309 54.31)",
+          "oklch(49.29% 0.0309 54.31)",
+          "oklch(60.71% 0.0309 54.31)",
+          "oklch(72.14% 0.0309 54.31)",
+          "oklch(83.57% 0.0309 54.31)",
+          "oklch(95.00% 0.0309 54.31)"
+        ],
+        "rampSource": "Synthetic OKLCH lightness preview; not an implemented color scale."
+      },
+      "danger": {
+        "role": "neutral",
+        "displayName": "Danger",
+        "tonalRamp": [
+          "oklch(15.00% 0.0734 8.13)",
+          "oklch(26.43% 0.0734 8.13)",
+          "oklch(37.86% 0.0734 8.13)",
+          "oklch(49.29% 0.0734 8.13)",
+          "oklch(60.71% 0.0734 8.13)",
+          "oklch(72.14% 0.0734 8.13)",
+          "oklch(83.57% 0.0734 8.13)",
+          "oklch(95.00% 0.0734 8.13)"
+        ],
+        "rampSource": "Synthetic OKLCH lightness preview; not an implemented color scale."
+      },
+      "danger-surface": {
+        "role": "neutral",
+        "displayName": "Danger Surface",
+        "tonalRamp": [
+          "oklch(15.00% 0.0550 352.59)",
+          "oklch(26.43% 0.0550 352.59)",
+          "oklch(37.86% 0.0550 352.59)",
+          "oklch(49.29% 0.0550 352.59)",
+          "oklch(60.71% 0.0550 352.59)",
+          "oklch(72.14% 0.0550 352.59)",
+          "oklch(83.57% 0.0550 352.59)",
+          "oklch(95.00% 0.0550 352.59)"
+        ],
+        "rampSource": "Synthetic OKLCH lightness preview; not an implemented color scale."
+      },
+      "canvas": {
+        "role": "neutral",
+        "displayName": "Canvas",
+        "tonalRamp": [
+          "oklch(15.00% 0.0329 316.82)",
+          "oklch(26.43% 0.0329 316.82)",
+          "oklch(37.86% 0.0329 316.82)",
+          "oklch(49.29% 0.0329 316.82)",
+          "oklch(60.71% 0.0329 316.82)",
+          "oklch(72.14% 0.0329 316.82)",
+          "oklch(83.57% 0.0329 316.82)",
+          "oklch(95.00% 0.0329 316.82)"
+        ],
+        "rampSource": "Synthetic OKLCH lightness preview; not an implemented color scale."
+      },
+      "surface": {
+        "role": "neutral",
+        "displayName": "Surface",
+        "tonalRamp": [
+          "oklch(15.00% 0.0393 314.79)",
+          "oklch(26.43% 0.0393 314.79)",
+          "oklch(37.86% 0.0393 314.79)",
+          "oklch(49.29% 0.0393 314.79)",
+          "oklch(60.71% 0.0393 314.79)",
+          "oklch(72.14% 0.0393 314.79)",
+          "oklch(83.57% 0.0393 314.79)",
+          "oklch(95.00% 0.0393 314.79)"
+        ],
+        "rampSource": "Synthetic OKLCH lightness preview; not an implemented color scale."
+      },
+      "raised": {
+        "role": "neutral",
+        "displayName": "Raised",
+        "tonalRamp": [
+          "oklch(15.00% 0.0416 314.13)",
+          "oklch(26.43% 0.0416 314.13)",
+          "oklch(37.86% 0.0416 314.13)",
+          "oklch(49.29% 0.0416 314.13)",
+          "oklch(60.71% 0.0416 314.13)",
+          "oklch(72.14% 0.0416 314.13)",
+          "oklch(83.57% 0.0416 314.13)",
+          "oklch(95.00% 0.0416 314.13)"
+        ],
+        "rampSource": "Synthetic OKLCH lightness preview; not an implemented color scale."
+      },
+      "text": {
+        "role": "neutral",
+        "displayName": "Text",
+        "tonalRamp": [
+          "oklch(15.00% 0.0126 329.56)",
+          "oklch(26.43% 0.0126 329.56)",
+          "oklch(37.86% 0.0126 329.56)",
+          "oklch(49.29% 0.0126 329.56)",
+          "oklch(60.71% 0.0126 329.56)",
+          "oklch(72.14% 0.0126 329.56)",
+          "oklch(83.57% 0.0126 329.56)",
+          "oklch(95.00% 0.0126 329.56)"
+        ],
+        "rampSource": "Synthetic OKLCH lightness preview; not an implemented color scale."
+      },
+      "secondary": {
+        "role": "neutral",
+        "displayName": "Secondary",
+        "tonalRamp": [
+          "oklch(15.00% 0.0279 329.55)",
+          "oklch(26.43% 0.0279 329.55)",
+          "oklch(37.86% 0.0279 329.55)",
+          "oklch(49.29% 0.0279 329.55)",
+          "oklch(60.71% 0.0279 329.55)",
+          "oklch(72.14% 0.0279 329.55)",
+          "oklch(83.57% 0.0279 329.55)",
+          "oklch(95.00% 0.0279 329.55)"
+        ],
+        "rampSource": "Synthetic OKLCH lightness preview; not an implemented color scale."
+      },
+      "accent": {
+        "role": "primary",
+        "displayName": "Accent",
+        "tonalRamp": [
+          "oklch(15.00% 0.0599 334.27)",
+          "oklch(26.43% 0.0599 334.27)",
+          "oklch(37.86% 0.0599 334.27)",
+          "oklch(49.29% 0.0599 334.27)",
+          "oklch(60.71% 0.0599 334.27)",
+          "oklch(72.14% 0.0599 334.27)",
+          "oklch(83.57% 0.0599 334.27)",
+          "oklch(95.00% 0.0599 334.27)"
+        ],
+        "rampSource": "Synthetic OKLCH lightness preview; not an implemented color scale."
+      },
+      "focus": {
+        "role": "primary",
+        "displayName": "Focus",
+        "tonalRamp": [
+          "oklch(15.00% 0.0346 339.21)",
+          "oklch(26.43% 0.0346 339.21)",
+          "oklch(37.86% 0.0346 339.21)",
+          "oklch(49.29% 0.0346 339.21)",
+          "oklch(60.71% 0.0346 339.21)",
+          "oklch(72.14% 0.0346 339.21)",
+          "oklch(83.57% 0.0346 339.21)",
+          "oklch(95.00% 0.0346 339.21)"
+        ],
+        "rampSource": "Synthetic OKLCH lightness preview; not an implemented color scale."
+      },
+      "on-accent": {
+        "role": "primary",
+        "displayName": "On Accent",
+        "tonalRamp": [
+          "oklch(15.00% 0.0582 321.51)",
+          "oklch(26.43% 0.0582 321.51)",
+          "oklch(37.86% 0.0582 321.51)",
+          "oklch(49.29% 0.0582 321.51)",
+          "oklch(60.71% 0.0582 321.51)",
+          "oklch(72.14% 0.0582 321.51)",
+          "oklch(83.57% 0.0582 321.51)",
+          "oklch(95.00% 0.0582 321.51)"
+        ],
+        "rampSource": "Synthetic OKLCH lightness preview; not an implemented color scale."
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Display",
+        "purpose": "Entry or main-page headline; work screens may use smaller headings."
+      },
+      "title": {
+        "displayName": "Title",
+        "purpose": "Project-card title."
+      },
+      "panel-title": {
+        "displayName": "Panel Title",
+        "purpose": "Supporting work-section heading."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Paragraph text."
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "Field labels and supporting controls."
+      }
+    },
+    "shadows": [
+      {
+        "name": "menu",
+        "value": "0 16px 36px #10091b66",
+        "purpose": "Floating More menu only."
+      },
+      {
+        "name": "cover",
+        "value": "0 22px 42px #110b1838",
+        "purpose": "Decorative project covers."
+      },
+      {
+        "name": "overview",
+        "value": "0 20px 44px #110b1838",
+        "purpose": "Illustrated overview presentation."
+      }
+    ],
+    "motion": [
+      {
+        "name": "upload-hover",
+        "value": "background .18s ease, border-color .18s ease",
+        "purpose": "Upload drag affordance; disabled under reduced motion."
+      },
+      {
+        "name": "cover-spring",
+        "value": "stiffness:170; damping:24; rotateX range ±4deg; rotateY range ±5deg",
+        "purpose": "Fine pointer at min-width 900px only; decorative covers."
+      },
+      {
+        "name": "marquee",
+        "value": "12s / 15s easeInOut; y:-32px / 32px; reverse; repeat:Infinity",
+        "purpose": "Enabled, fine-pointer, onscreen decoration only."
+      },
+      {
+        "name": "overview-scroll",
+        "value": "progress:[0,.6]; rotateX:[14deg,0deg]; scale:[.94,1]",
+        "purpose": "Enabled, fine-pointer, onscreen illustrated presentation only."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "narrow-wrap",
+        "value": "360px"
+      },
+      {
+        "name": "mobile-max",
+        "value": "767px"
+      },
+      {
+        "name": "single-column-max",
+        "value": "1023px"
+      },
+      {
+        "name": "fine-pointer-motion-min",
+        "value": "900px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary action",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Existing action primitive; height is a minimum and labels may wrap.",
+      "html": "<button class=\"ds-button-primary\">Загрузить фото</button>",
+      "css": ".ds-button-primary{min-height:44px;padding:8px 16px;border-radius:8px;font-size:1rem;font-weight:600;cursor:pointer;font-family:Onest, system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif;background:var(--accent, #ddb6d4);color:var(--on-accent, #2e1732);border:1px solid var(--accent, #ddb6d4);}.ds-button-primary:hover{background:var(--focus, #f2d9e9)}.ds-button-primary:focus-visible{outline:3px solid var(--focus, #f2d9e9);outline-offset:2px;}.ds-button-primary:disabled{opacity:.62;cursor:not-allowed}"
+    },
+    {
+      "name": "Secondary action",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "Existing action primitive; height is a minimum and labels may wrap.",
+      "html": "<button class=\"ds-button-secondary\">Открыть кадр</button>",
+      "css": ".ds-button-secondary{min-height:44px;padding:8px 16px;border-radius:8px;font-size:1rem;font-weight:600;cursor:pointer;font-family:Onest, system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif;background:var(--raised, #35273c);color:var(--text, #f8f0f7);border:1px solid var(--essential, #a78aae);}.ds-button-secondary:hover{background:var(--selected, #523b58)}.ds-button-secondary:focus-visible{outline:3px solid var(--focus, #f2d9e9);outline-offset:2px;}.ds-button-secondary:disabled{opacity:.62;cursor:not-allowed}"
+    },
+    {
+      "name": "Labeled field",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "Project name field; invalid and focus styles retain explicit semantics.",
+      "html": "<label class=\"ds-field\">Название проекта<input class=\"ds-input\" placeholder=\"Новый проект\" /></label>",
+      "css": ".ds-field{display:grid;gap:8px;color:var(--text, #f8f0f7);font-size:.875rem;font-weight:600;font-family:Onest, system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif;}.ds-input{min-height:44px;padding:8px 12px;border-radius:8px;border:1px solid var(--essential, #a78aae);background:var(--raised, #35273c);color:var(--text, #f8f0f7);font-size:1rem;font-family:Onest, system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif;}.ds-input:focus-visible{outline:3px solid var(--focus, #f2d9e9);outline-offset:2px;}.ds-input[aria-invalid=true]{border-color:var(--danger, #ffc0ca)}"
+    },
+    {
+      "name": "Section navigation",
+      "kind": "nav",
+      "refersTo": "navigation-active",
+      "description": "Active and hover navigation states; layout illustration does not reproduce the whole header.",
+      "html": "<nav class=\"ds-nav\" aria-label=\"Разделы\"><a href=\"#overview\" aria-current=\"page\">Обзор</a><a href=\"#analyses\">Анализы</a></nav>",
+      "css": ".ds-nav{display:flex;flex-wrap:wrap;gap:8px;padding:8px;background:var(--canvas, #201524);font-family:Onest, system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif;}.ds-nav a{display:flex;align-items:center;min-height:44px;padding:8px 12px;border-radius:8px;color:var(--text, #f8f0f7);text-decoration:none;font-weight:600}.ds-nav a[aria-current]{background:var(--selected, #523b58)}.ds-nav a:hover{background:var(--raised, #35273c)}.ds-nav a:focus-visible{outline:3px solid var(--focus, #f2d9e9);outline-offset:2px;}"
+    },
+    {
+      "name": "Supporting panel",
+      "kind": "card",
+      "refersTo": "panel",
+      "description": "Shared supporting surface; open workspace containers use the documented overrides.",
+      "html": "<section class=\"ds-panel\"><h2>Последние анализы</h2><p>Выберите анализ, чтобы рассмотреть фотографии.</p></section>",
+      "css": ".ds-panel{padding:24px;border:1px solid var(--border, #604d65);border-radius:12px;background:var(--surface, #2a1d30);color:var(--text, #f8f0f7);font-family:Onest, system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif;}.ds-panel h2{margin:0 0 8px;font-size:22px;line-height:1.3}.ds-panel p{margin:0;line-height:1.65}"
+    },
+    {
+      "name": "Selected object",
+      "kind": "button",
+      "refersTo": "object-selection",
+      "description": "A selected object links the photograph geometry to its description.",
+      "html": "<button class=\"ds-object\" aria-pressed=\"true\">1. Экскаватор</button>",
+      "css": ".ds-object{min-height:44px;padding:8px 16px;border-radius:8px;font-size:1rem;font-weight:600;cursor:pointer;font-family:Onest, system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", sans-serif;text-align:left;width:100%;padding:10px 14px;border:1px solid var(--essential, #a78aae);background:var(--raised, #35273c);color:var(--text, #f8f0f7)}.ds-object[aria-pressed=true]{background:var(--selected, #523b58);border-color:var(--accent, #ddb6d4)}.ds-object:hover{background:var(--selected, #523b58)}.ds-object:focus-visible{outline:3px solid var(--focus, #f2d9e9);outline-offset:2px;}"
+    },
+    {
+      "name": "Dimensional architectural cover",
+      "kind": "custom",
+      "refersTo": "dimensional-cover",
+      "description": "Static decorative cover at rest. Runtime tilt remains governed by MotionPreference and fine-pointer gating in VariantDesign.tsx. Never use this container for evidence.",
+      "html": "<div class=\"ds-cover\" aria-hidden=\"true\"><svg viewBox=\"0 0 640 300\" fill=\"none\"><path d=\"M0 250L340 295L640 180M180 238V65L290 25L470 67V238L360 280L180 238Z\" fill=\"#805572\" stroke=\"#d9b5d6\" stroke-width=\"2\"/><path d=\"M180 65L360 107L470 67M360 107V280M215 90V218M250 98V226M285 108V237M320 118V245M380 124L450 98M380 154L450 128M380 184L450 158M380 214L450 188M380 244L450 218\" stroke=\"#f2d7ed\" stroke-width=\"2\"/><path d=\"M42 200V55H145M40 78H120M63 55V190M80 55V187M102 55V175\" stroke=\"#c9a7c4\" stroke-width=\"2\"/><path d=\"M30 210L155 238M486 237L608 190\" stroke=\"#6b506c\" stroke-width=\"2\"/></svg></div>",
+      "css": ".ds-cover{display:block;width:100%;height:240px;overflow:hidden;background:#38273c;border:1px solid #715775;border-radius:18px;box-shadow:0 22px 42px #110b1838;transform-style:preserve-3d;transform-origin:center}.ds-cover svg{display:block;width:100%;height:100%}@media(max-width:767px){.ds-cover{height:200px}}"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Architectural Introduction",
+    "overview": "Dark plum surfaces, large Onest headlines and illustrated architectural covers give project entry a spatial character. Depth belongs to introductory decoration and project presentation. The workflow settles into legible, stable surfaces when the user uploads photographs, inspects geometry or reviews evidence.\n\nThis is the implemented visual system of this approved experiment, extracted from source and saved headless renders. The metaphor names the approved direction; it does not introduce another concept decision. Product behavior remains governed by [PRODUCT.md](PRODUCT.md) and the approved [experiment brief](docs/design-experiment/SPEC.md).",
+    "keyCharacteristics": [
+      "Dark plum foundations with pale rose-plum actions.",
+      "Large project-entry typography and dimensional architectural covers.",
+      "Decorative motion gated by pointer, viewport, visibility and motion preference."
+    ],
+    "rules": [
+      {
+        "name": "Local Brand",
+        "body": "Preserve the Russian product name, team logo and locally served Onest fonts across screens.",
+        "section": "typography"
+      },
+      {
+        "name": "Stable Evidence Plane",
+        "body": "Keep the working photograph and its object geometry in an untransformed, non-animated container.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "Do keep Russian product and team branding and load Onest from the bundled Cyrillic and Latin WOFF2 files.",
+      "Do retain visible keyboard focus and allow long Russian labels to wrap.",
+      "Do let mobile section navigation occupy normal document flow and let the More menu scroll within the viewport.",
+      "Do preserve explicit selection between a photo object and its description, including on mobile.",
+      "Do respect both the operating-system motion setting and the saved user preference."
+    ],
+    "donts": [
+      "Don't use decorative imagery as evidence or label demo photographs as model-quality validation.",
+      "Don't transform or decoratively animate working photographs and their annotation geometry.",
+      "Don't add eyebrow labels as a recurring visual convention; the implemented variant hides them.",
+      "Don't delay API completion to finish a decorative animation.",
+      "Don't enable cover tilt or marquee travel on touch/coarse-pointer layouts."
+    ]
+  }
+}
