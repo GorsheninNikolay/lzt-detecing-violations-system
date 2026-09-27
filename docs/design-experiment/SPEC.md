@@ -2,7 +2,7 @@
 title: Three independent construction-control designs
 type: feature
 created: 2026-09-28
-status: in-review
+status: done
 route: dispatch
 baseline_commit: 620f3e9e8a940f8fa475ab0576d7ec855ba1a1ac
 review_loop_iteration: 0
@@ -97,3 +97,9 @@ Visual review separately found mobile navigation sibling overlap at doubled text
 Run npm run build and npm test -- --run per worktree. Record exact results. Use headless Playwright/Chromium via CLI, not browser GUI tools. Perform one batched visual inspection and one confirming pass after fixes. Do not claim physical device or GUI checks. Read-only live API checks are separate from deterministic demo tests. No backend source/schema/migration changes.
 
 Implementation submitted for independent review. See COMPARISON.md and the external experiment evidence directory for checked state, preserved failures and limitations.
+
+## Final acceptance
+
+All accepted review findings were repaired and verified; the requested fixed-path harness remains intentionally local. Immutable plan/signal provenance, exact frame identity, newest-first history, stage context and motion override have regression coverage. Photo box selection exposes its description. Focused browser evidence records 29 passing review scenarios, real preset cleanup, actual animation transforms, label contrast, expanded menus and 11 reachable rail actions at 1440x560/200% text. The independent visual reviewer scored navigation, menu/label and rail fixes resolved.
+
+Root final verification: **221 tests passed**, production build passed, checked code revision `a3bed3e7ce87a8281e5e26fbde089d6b136fc861`. See [final verification](../../../root-final-verification.json), [comparison](../../../COMPARISON.md), [targeted UI evidence](../../../evidence/review-fixes/report.json) and [rail verdict](../../../evidence/finish-rail-verdict.md). The only later changes are design/spec documentation. Production demo exclusion is checked separately. No real backend writes, GUI or physical-device verification are claimed.

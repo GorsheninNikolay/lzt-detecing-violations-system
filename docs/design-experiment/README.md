@@ -9,3 +9,5 @@ Verification: `npm test -- --run`, `npm run build`, `node scripts/verify-demo.mj
 Demo presets are available in the disclosure at the end of the page. Selecting a preset resets demo-owned pending submissions and annotation drafts on this origin. The recovery preset rejects the first upload with HTTP 503 and then accepts the exact idempotent retry. Analyzing holds an authoritative server stage for reproducible comparison. Ordinary uploads progress by server time.
 
 The fixed photography and manually prepared boxes demonstrate interaction and evidence presentation, not model quality. No real backend write is part of verification.
+
+Comparison, full commit manifest, screenshots and verification history are saved under `/private/tmp/lzt-design-experiment/`; start with [COMPARISON.md](../../../COMPARISON.md). Final source verification is recorded in [final-validation-summary.json](../../../final-validation-summary.json). Root DESIGN.md and .impeccable/design.json document this branch's approved visual world.
