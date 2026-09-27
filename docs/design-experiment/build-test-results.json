@@ -1,0 +1,32 @@
+[
+  {
+    "variant": "project-dashboard",
+    "check": "tests",
+    "exit_code": 0
+  },
+  {
+    "variant": "project-dashboard",
+    "check": "build",
+    "exit_code": 0
+  },
+  {
+    "variant": "photo-workspace",
+    "check": "tests",
+    "exit_code": 0
+  },
+  {
+    "variant": "photo-workspace",
+    "check": "build",
+    "exit_code": 0
+  },
+  {
+    "variant": "3d-experience",
+    "check": "tests",
+    "exit_code": 0
+  },
+  {
+    "variant": "3d-experience",
+    "check": "build",
+    "exit_code": 0
+  }
+]

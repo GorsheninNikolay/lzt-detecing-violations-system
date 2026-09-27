@@ -7,7 +7,7 @@
     "dev": "vite --host 127.0.0.1",
     "build": "tsc -b && vite build",
     "test": "vitest",
-    "dev:demo": "vite --mode demo --host 127.0.0.1 --port 5174 --strictPort"
+    "dev:demo": "vite --mode demo --host 127.0.0.1 --port 5176 --strictPort"
   },
   "dependencies": {
     "@radix-ui/themes": "3.3.0",

@@ -1,0 +1,32 @@
+[
+  {
+    "variant": "project-dashboard",
+    "demo_bundle_strings_absent": true,
+    "matches": {
+      "__demo/state": [],
+      "demo_endpoint_not_implemented": [],
+      "Демонстрация · локальные данные": [],
+      "11111111-1111-4111-8111-111111111111": []
+    }
+  },
+  {
+    "variant": "photo-workspace",
+    "demo_bundle_strings_absent": true,
+    "matches": {
+      "__demo/state": [],
+      "demo_endpoint_not_implemented": [],
+      "Демонстрация · локальные данные": [],
+      "11111111-1111-4111-8111-111111111111": []
+    }
+  },
+  {
+    "variant": "3d-experience",
+    "demo_bundle_strings_absent": true,
+    "matches": {
+      "__demo/state": [],
+      "demo_endpoint_not_implemented": [],
+      "Демонстрация · локальные данные": [],
+      "11111111-1111-4111-8111-111111111111": []
+    }
+  }
+]

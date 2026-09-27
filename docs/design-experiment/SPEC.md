@@ -2,7 +2,7 @@
 title: Three independent construction-control designs
 type: feature
 created: 2026-09-28
-status: in-progress
+status: in-review
 route: dispatch
 baseline_commit: 620f3e9e8a940f8fa475ab0576d7ec855ba1a1ac
 review_loop_iteration: 0
@@ -52,12 +52,12 @@ Reuse EvidenceViewer and AnnotationEditor including zoom, manual edits, drafts, 
 
 ## Tasks & Acceptance
 
-- [ ] Add shared fixtures and local Vite demo middleware supporting main-flow reads/writes, reset and states entirely in memory. Never forward any unknown demo API call to backend. Reuse fixtures in tests.
-- [ ] Add npm run dev:demo; normal dev retains API_PROXY_TARGET. Serve variants at 127.0.0.1:5174/5175/5176 with strictPort. Add persistent user motion preference and OS support.
-- [ ] Commit foundation and branch all variants before visual changes; implement three complete main flows and compatible secondary surfaces. Record source adaptation/licenses.
-- [ ] Add meaningful demo/interactions tests, retain all existing frontend tests, run full Vitest and production build in EACH worktree.
-- [ ] Add reproducible CLI headless verification and comparable screenshots: same main flow and empty/error/recovery states, 320/390/768/1440 widths, 200% text, long Russian names, keyboard/focus, overflow/overlap, text contrast and touch controls. Verify motion preference, offscreen pause, stable working photos. Check normal live API read connectivity separately, avoid unrequested real backend mutations; clearly state fixture-only operations.
-- [ ] Save commands, full commit IDs, test results, screenshots and comparison report with limitations and recommendations for specific navigation/overview/photo/presentation elements. Leave servers running simultaneously if feasible.
+- [x] Add shared fixtures and local Vite demo middleware supporting main-flow reads/writes, reset and states entirely in memory. Never forward any unknown demo API call to backend. Reuse fixtures in tests.
+- [x] Add npm run dev:demo; normal dev retains API_PROXY_TARGET. Serve variants at 127.0.0.1:5174/5175/5176 with strictPort. Add persistent user motion preference and OS support.
+- [x] Commit foundation and branch all variants before visual changes; implement three complete main flows and compatible secondary surfaces. Record source adaptation/licenses.
+- [x] Add meaningful demo/interactions tests, retain all existing frontend tests, run full Vitest and production build in EACH worktree.
+- [x] Add reproducible CLI headless verification and comparable screenshots: same main flow and empty/error/recovery states, 320/390/768/1440 widths, 200% text, long Russian names, keyboard/focus, overflow/overlap, text contrast and touch controls. Verify motion preference, offscreen pause, stable working photos. Check normal live API read connectivity separately, avoid unrequested real backend mutations; clearly state fixture-only operations.
+- [x] Save commands, full commit IDs, test results, screenshots and comparison report with limitations and recommendations for specific navigation/overview/photo/presentation elements. Leave servers running simultaneously if feasible.
 
 Acceptance: Given any variant, when the same fixture flow runs, then project ownership, results and signals agree. Given demo mode, when an unknown API request is made, then an explicit failure occurs without forwarding. Given normal mode or production, when loaded, then demo controls are absent. Given narrow width or doubled text, when navigating and reviewing, then actions remain reachable and the page does not overflow. Given reduced/disabled motion, then all decoration stops and work remains usable.
 
@@ -72,3 +72,5 @@ No intent gaps or irreversible actions. Footprint is frontend-only plus local do
 ## Verification
 
 Run npm run build and npm test -- --run per worktree. Record exact results. Use headless Playwright/Chromium via CLI, not browser GUI tools. Perform one batched visual inspection and one confirming pass after fixes. Do not claim physical device or GUI checks. Read-only live API checks are separate from deterministic demo tests. No backend source/schema/migration changes.
+
+Implementation submitted for independent review. See COMPARISON.md and the external experiment evidence directory for checked state, preserved failures and limitations.

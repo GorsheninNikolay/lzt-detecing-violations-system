@@ -1820,7 +1820,7 @@ describe('New Analysis', () => {
       const deadlines: Array<() => void> = []
       const realSetTimeout = globalThis.setTimeout
       vi.spyOn(globalThis, 'setTimeout').mockImplementation((callback, delay) => {
-        if (delay === 10000) { deadlines.push(callback as () => void); return 0 as ReturnType<typeof setTimeout> }
+        if (delay === 10000) { deadlines.push(callback as () => void); return 0 as unknown as ReturnType<typeof setTimeout> }
         return realSetTimeout(callback, delay)
       })
       await consentToCloud()
@@ -1872,7 +1872,7 @@ describe('New Analysis', () => {
     const deadlines: Array<() => void> = []
     const realSetTimeout = globalThis.setTimeout
     vi.spyOn(globalThis, 'setTimeout').mockImplementation((callback, delay) => {
-      if (delay === 10000) { deadlines.push(callback as () => void); return 0 as ReturnType<typeof setTimeout> }
+      if (delay === 10000) { deadlines.push(callback as () => void); return 0 as unknown as ReturnType<typeof setTimeout> }
       return realSetTimeout(callback, delay)
     })
     fireEvent.click(screen.getByRole('button', { name: 'Повторить отправку' }))

@@ -32,3 +32,19 @@ describe('isolated demonstration contract', () => {
     expect((await store.request('GET', `/api/runs/${RUN_A}`)).status).toBe(404)
   })
 })
+
+it('keeps retry projections tied to readable artifacts and annotation checksums', async () => {
+  let now = 0
+  const store = createDemoStore(() => now)
+  await store.request('POST', '/api/__demo/state', { state: 'error' })
+  const retry = await store.request('POST', `/api/runs/${RUN_A}/retry`)
+  const run = (await store.request('GET', `/api/runs/${retry.data.run_id}`)).data
+  now = 10000
+  const completed = (await store.request('GET', `/api/runs/${retry.data.run_id}`)).data
+  expect(completed.stages.every((stage: {state:string}) => stage.state === 'succeeded')).toBe(true)
+  expect(completed.result_projection.frames.map((frame: {source_artifact_id:string}) => frame.source_artifact_id)).toEqual(completed.inputs.map((input: {artifact_id:string}) => input.artifact_id))
+  for (const input of run.inputs) {
+    expect((await store.request('GET', `/api/runs/${retry.data.run_id}/artifacts/${input.artifact_id}`)).status).toBe(200)
+    expect((await store.request('POST', `/api/runs/${retry.data.run_id}/frames/${input.input_id}/annotations`, { input_sha256: input.sha256, objects: [] }, input.input_id)).status).toBe(201)
+  }
+})

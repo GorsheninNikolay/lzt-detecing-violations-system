@@ -8,5 +8,6 @@ import './styles.css'
 import './premium.css'
 import App from './App'
 import Admin from './Admin'
+import './variant.css'
 
 createRoot(document.getElementById('root')!).render(<React.StrictMode><MotionPreference><Theme appearance="dark" accentColor="purple">{location.pathname === '/admin' || location.pathname.startsWith('/admin/') ? <Admin /> : <App />}{DemoPanel && <Suspense><DemoPanel /></Suspense>}</Theme></MotionPreference></React.StrictMode>)

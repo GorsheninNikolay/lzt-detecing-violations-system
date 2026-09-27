@@ -1,9 +1,10 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
-import { MotionConfig, useReducedMotion } from 'motion/react'
+import { MotionConfig } from 'motion/react'
 const Preference = createContext({ enabled: true, toggle: () => {} })
 export function MotionPreference({ children }: { children: ReactNode }) {
   const [allowed, setAllowed] = useState(() => { try { return localStorage.getItem('analysis-motion') !== 'off' } catch { return false } })
-  const reduced = useReducedMotion()
+  const [reduced, setReduced] = useState(() => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches)
+  useEffect(() => { if (typeof matchMedia !== 'function') return; const query = matchMedia('(prefers-reduced-motion: reduce)'); const update = () => setReduced(query.matches); update(); query.addEventListener?.('change', update); return () => query.removeEventListener?.('change', update) }, [])
   const enabled = allowed && !reduced
   useEffect(() => { document.documentElement.dataset.motion = enabled ? 'on' : 'off'; document.documentElement.dataset.analysisMotion = enabled ? 'on' : 'off' }, [enabled])
   function toggle() { setAllowed(value => { try { localStorage.setItem('analysis-motion', value ? 'off' : 'on') } catch {} return !value }) }
