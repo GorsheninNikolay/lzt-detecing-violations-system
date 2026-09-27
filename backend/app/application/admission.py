@@ -250,4 +250,4 @@ def admit_cloud(manifest_path: Path, inventories: list[Path], evidence_path: Pat
 
 
 def main() -> None:
-    raise SystemExit("profile_retired: use evidence-profile for DeepSeek configuration")
+    raise SystemExit("profile_retired: используйте evidence-profile для настройки мультимодальной модели")

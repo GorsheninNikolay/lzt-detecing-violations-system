@@ -1,0 +1,38 @@
+{
+  "output/pdf/construction-monitoring-hybrid-accompanying.pdf": {
+    "sha256": "f7699844df8dd996924f800f0294419abf6304d5d1f7f3ae5f881785139dd4c7",
+    "bytes": 2585145,
+    "pages": 12,
+    "out_of_page_words": [],
+    "remaining_technical_tokens": [
+      "application/deepseek_runtime.py:",
+      "deepseek-v4.1-flash/latest,",
+      "deepseek_calls",
+      "deepseek_calls(run_id,",
+      "deepseek_results",
+      "kind=deepseek",
+      "profiles/deepseek.py:"
+    ]
+  },
+  "output/pdf/construction-monitoring-hybrid-presentation.pdf": {
+    "sha256": "9ca87de4cdaec8712aa2a8bdb9d7010c7901aceecbd07e0bbc3b35396f468c7f",
+    "bytes": 10605267,
+    "pages": 12,
+    "out_of_page_words": [],
+    "remaining_technical_tokens": []
+  },
+  "output/pdf/construction-monitoring-presentation.pdf": {
+    "sha256": "883ec2af76d4598afa5e14879d159b516faac45bc4a9fa2de4e580de312e79e4",
+    "bytes": 2128795,
+    "pages": 7,
+    "out_of_page_words": [],
+    "remaining_technical_tokens": []
+  },
+  "output/pdf/construction-monitoring-supporting-document.pdf": {
+    "sha256": "ffbd728d6d33a88b2a365fc26a55378d2731084964e9443f11683afc4817acac",
+    "bytes": 82148,
+    "pages": 3,
+    "out_of_page_words": [],
+    "remaining_technical_tokens": []
+  }
+}

@@ -101,7 +101,7 @@ RISK['properties'].update({key: value for key, value in HYBRID_ASSESSMENT_SCHEMA
                            if key not in RISK['properties']})
 INPUT = obj({'input_id':UUID,'ordinal':field('integer','Порядок кадра, начиная с 0.'),'sha256':field('string','SHA-256 исходных байтов.'),'artifact_id':NULL_UUID,'size':COUNT,'media_type':TEXT}, ('input_id','ordinal','sha256','artifact_id'))
 OBSERVATION = obj({'input_id':UUID,'class_name':TEXT,'state':field('string','Результат присутствия, не доказательство отсутствия.',enum=['detected','not_detected_in_frame','insufficient_data','not_analyzed']), 'source_artifact_id':NULL_UUID,'invocation_id':NULL_UUID,'reason':field(['string','null'],'Причина ограничения.')})
-DETECTION = obj({'id':UUID,'input_id':UUID,'invocation_id':UUID,'class_name':field('string','Один из восьми классов либо unknown.'),'score':field(['number','null'],'Оценка провайдера, если предоставлена; DeepSeek не придумывает число.',minimum=0,maximum=1),
+DETECTION = obj({'id':UUID,'input_id':UUID,'invocation_id':UUID,'class_name':field('string','Один из восьми классов либо unknown.'),'score':field(['number','null'],'Оценка провайдера, если предоставлена; мультимодальная модель не придумывает число.',minimum=0,maximum=1),
                  'box':{'anyOf':[BOX,{'type':'null'}],'description':'Рамка или null при отсутствии локализации.'},
                  'image_size':array(COUNT,'Ширина и высота ориентированного изображения.'),
                  'details':{'anyOf':[obj({'type_ru':field('string','Свободное название по-русски.'),'type_en':TEXT,'catalog_class':field(['string','null'],'Явное соответствие фиксированному каталогу.'),'status':TEXT,'evidence':field('string','Видимое основание.'),'missing_localization_reason':field(['string','null'],'Почему рамка отсутствует.')}),{'type':'null'}]}})
@@ -188,7 +188,7 @@ def install(app):
         if app.openapi_schema:
             return app.openapi_schema
         value = get_openapi(title='Контроль строительства', version='1.0.0', routes=app.routes,
-            description='Фотографии → наблюдения DeepSeek → аналитика → отдельная проверка человеком. '
+            description='Фотографии → наблюдения мультимодальной модели → аналитика → отдельная проверка человеком. '
             'Исторические данные доступны без новой аналитики (ai_assessment=null). '
             'Публичные операции не требуют входа. Административные операции требуют сессии, HTTPS (кроме loopback), Origin и CSRF.')
         value['servers'] = [{'url':app.root_path or '/', 'description':'Настроенный root_path'}]

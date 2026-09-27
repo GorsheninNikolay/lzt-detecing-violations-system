@@ -1,4 +1,4 @@
-"""Source-bound DeepSeek observations and one contextual assessment. No retries."""
+"""Наблюдения мультимодальной модели с привязкой к источнику и один контекстный анализ. Без повторов."""
 import base64
 import io
 import json

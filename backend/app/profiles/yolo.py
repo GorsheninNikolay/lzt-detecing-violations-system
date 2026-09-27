@@ -1,4 +1,4 @@
-"""Pinned, serialized CPU detectors over the same oriented pixels as DeepSeek."""
+"""Фиксированные CPU-детекторы: последовательная обработка тех же ориентированных пикселей, что и у мультимодальной модели."""
 import io
 import json
 import os

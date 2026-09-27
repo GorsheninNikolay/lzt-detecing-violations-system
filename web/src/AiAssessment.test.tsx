@@ -8,6 +8,7 @@ it('renders source-bound risks and limits without inventing confidence', () => {
   expect(screen.getByText('Кадры: 1')).toBeTruthy()
   expect(screen.getByText('object')).toBeTruthy()
   expect(screen.getByText('Плана нет')).toBeTruthy()
+  expect(screen.getByRole('heading', { name: 'Аналитика мультимодальной модели' })).toBeTruthy()
   expect(screen.queryByText(/\d+%/)).toBeNull()
 })
 it('preserves unknown unlocalized objects without trying to draw a box', async () => {
@@ -39,7 +40,24 @@ it('shows retained invalid and uncertain calls without a successful assessment',
   expect(screen.getByText('Наблюдение кадра · Ответ отклонён')).toBeTruthy()
   expect(screen.getByText('Итоговая аналитика · Результат неизвестен')).toBeTruthy()
   expect(screen.getByText(/Успешная аналитика отсутствует/)).toBeTruthy()
+  expect(screen.getByRole('heading', { name: 'Сохранённые вызовы мультимодальной модели' })).toBeTruthy()
   expect(screen.getByText(/"incomplete"/)).toBeTruthy()
+})
+
+it('labels historical evidence without rewriting the saved provider response', () => {
+  const evidence = [{id:'old-call',kind:'assessment',state:'completed',context:{},result:{
+    model:'gpt://folder/deepseek-v4.1-flash/latest',usage:null,instruction_version:'deepseek-service-v1',
+    schema_version:'deepseek-service-v1',raw:{provider:'DeepSeek'},
+  }}]
+  const saved = JSON.stringify(evidence)
+  render(<AiAssessmentPanel inputs={[]} evidence={evidence} assessment={{
+    summary:'Сохранённая аналитика',stage_hypothesis:{stage:'unknown',reason:'Мало данных'},
+    risks:[],recommendations:[],limitations:[],
+  }} />)
+  expect(screen.getByRole('heading', { name: 'Аналитика мультимодальной модели' })).toBeTruthy()
+  expect(screen.getByText(/Источник: Yandex AI Studio/)).toBeTruthy()
+  expect(screen.getByText(/"provider": "DeepSeek"/)).toBeTruthy()
+  expect(JSON.stringify(evidence)).toBe(saved)
 })
 
 it('shows hybrid activity, frame stage hypotheses and applicable plan links', () => {

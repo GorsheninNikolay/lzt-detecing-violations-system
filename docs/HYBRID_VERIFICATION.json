@@ -92,7 +92,7 @@
   "gaps": [
     "Quality acceptance not met: partial agent labels are not adjudicated ground truth; required eight-class and 3x4 scenario coverage is incomplete.",
     "Missing confident bulldozer/truck-mounted-crane controls and actual comparable timed idle sequences.",
-    "Supplied YOLO checkpoints show detection misses and false classes; DeepSeek outputs also vary and several development responses were rejected.",
+    "Supplied YOLO checkpoints show detection misses and false classes; «Мультимодальная модель» outputs also vary and several development responses were rejected.",
     "Historical real-archive acceptance test skipped because the separate source archive is unavailable.",
     "GUI/browser visual acceptance and Windows/CUDA training were not run.",
     "Final image build/profile verified; measured Linux CPU inference belongs to earlier image with unchanged detector adapter/dependencies.",
@@ -168,7 +168,7 @@
     "web/package-lock.json": "92c4a1cc76a43698f8ed1aa116c46d51f17e7d3698924ba01eec80cb1f9c30b1"
   },
   "pdf_checks_summary": "Backend: 300 passed, 1 архивный skip. Frontend: 203 passed. Web и Linux CPU-контейнер собраны. Отдельная DB-регрессия дедупликации пройдена.",
-  "pdf_http_summary": "Реальные фото, оба YOLO, DeepSeek и сохранённые сигналы проверены через HTTP. Пустой кадр дал недостаток данных. Повтор не создал новых сигналов, закрытый статус сохранился. План и время учебные.",
+  "pdf_http_summary": "Реальные фото, оба YOLO, мультимодальная модель и сохранённые сигналы проверены через HTTP. Пустой кадр дал недостаток данных. Повтор не создал новых сигналов, закрытый статус сохранился. План и время учебные.",
   "artifacts": [
     {
       "path": "output/pdf/construction-monitoring-hybrid-presentation.pdf",

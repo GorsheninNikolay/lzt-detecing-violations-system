@@ -9,7 +9,7 @@ export function AiAssessmentPanel({ assessment, evidence, inputs, workTitles = {
   const grounds = new Map(frames.flatMap(frame => frame.observations.map(item => [item.id, { ...item, input_id: frame.input_id }] as const)))
   const explain = (text: string) => explanationLabel(text, workTitles)
   return <section className="panel" aria-labelledby="ai-assessment">
-    <h2 id="ai-assessment">{assessment ? 'Аналитика DeepSeek' : 'Сохранённые вызовы DeepSeek'}</h2>
+    <h2 id="ai-assessment">{assessment ? 'Аналитика мультимодальной модели' : 'Сохранённые вызовы мультимодальной модели'}</h2>
     <p>Источник: Yandex AI Studio. Вывод модели, требующий проверки человеком.</p>
     {assessment ? <><p>{explain(assessment.summary)}</p>
       {!!assessment.activity?.length && <><h3>Признаки работы</h3><ul>{assessment.activity.map((item, index) => <li key={index}><strong>{{ working_signs: 'Видны признаки работы', possible_idle: 'Возможный простой', insufficient_data: 'Недостаточно данных' }[item.state] ?? 'Состояние не определено'}</strong>: {explain(item.reason)}<p>{explain(item.uncertainty)}</p>{item.frame_ids.map(id => <button key={id} type="button" className="secondary" onClick={() => onOpenFrame?.(id)}>Кадр {(inputs.find(input => input.input_id === id)?.ordinal ?? -1) + 1}</button>)}</li>)}</ul></>}

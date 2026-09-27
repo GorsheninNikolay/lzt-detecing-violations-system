@@ -1,5 +1,5 @@
 ---
-title: DeepSeek service transition and Russian service documentation
+title: «Мультимодальная модель» service transition and Russian service documentation
 type: feature
 created: '2026-09-26'
 status: done
@@ -13,7 +13,7 @@ context: []
 
 ## Intent
 
-Replace active recognition and analytics with a dedicated Yandex AI Studio DeepSeek adapter, and make the working service understandable to Russian-speaking judges and developers. Current photos go directly to DeepSeek; future two server-side YOLO profiles will provide explicitly mapped detections to DeepSeek. Do not connect trained weights, perform full training, make paid verification calls, or deploy to the live server.
+Replace active recognition and analytics with a dedicated Yandex AI Studio «Мультимодальная модель» adapter, and make the working service understandable to Russian-speaking judges and developers. Current photos go directly to «Мультимодальная модель»; future two server-side YOLO profiles will provide explicitly mapped detections to «Мультимодальная модель». Do not connect trained weights, perform full training, make paid verification calls, or deploy to the live server.
 
 ## Boundaries & Constraints
 
@@ -47,7 +47,7 @@ No GUI applications, remote deploy, paid calls, secrets in files/output, modifyi
 
 ## Code Map
 
-- `backend/app/profiles/cloud_api.py`: historical Qwen client and bounded HTTP; `evaluation/cloud_api.py` is old experiment. Reusable DeepSeek experiment and Windows training bundle may exist under `/private/tmp/run-lzt-deepseek-authorized.py`, `/private/tmp/run-lzt-deepseek-ab-authorized.py`, `/private/tmp/lzt-yolo-training-build`, `/private/tmp/lzt-yolo-training-extracted`; inspect source without exposing secrets and copy reusable non-secret source into repo.
+- `backend/app/profiles/cloud_api.py`: historical Qwen client and bounded HTTP; `evaluation/cloud_api.py` is old experiment. Reusable «Мультимодальная модель» experiment and Windows training bundle may exist under `/private/tmp/run-lzt-deepseek-authorized.py`, `/private/tmp/run-lzt-deepseek-ab-authorized.py`, `/private/tmp/lzt-yolo-training-build`, `/private/tmp/lzt-yolo-training-extracted`; inspect source without exposing secrets and copy reusable non-secret source into repo.
 - `backend/app/application/{submission,executor}.py`: image validation, idempotency, claim/reservation/provider execution; `backend/app/adapters/postgres.py`: immutable snapshots, profiles, finish/read/retry, leases/publication, comparison reads.
 - `backend/migrations/versions/0021_annotations.py`: current head; `backend/app/domain/observations.py`: normalized objects and stage hypotheses. `backend/app/application/{site,annotations,signals,engagement}.py`: existing API behavior to preserve/document.
 - `backend/app/main.py`: manual Request parsing and JSONResponse endpoints, body size bounds, lifespan readiness. Add OpenAPI metadata without replacing these limits. `infra/deploy/nginx.conf` strips /api/.
@@ -63,7 +63,7 @@ No GUI applications, remote deploy, paid calls, secrets in files/output, modifyi
 - [x] Write Russian README.md, Architecture.md with Mermaid current/future paths, docs/CODE_GUIDE.md with real module/entity/API/test links, API JSON/curl examples; reconcile nested README and old architecture. Cover Compose, catalog preparation, frontend build, env, migrations, private S3, profile configuration, readiness, first analysis, logs/errors. Include existing/repo-contained Windows setup_windows.cmd and smoke/pilot/full for two YOLO profiles, separate RTX 3060 training env, artifact transfer; do not execute training. Document idempotency/retry/uncertainty, consent, missing plan, retired profiles, historical null analytics, admin access.
 - [x] Verify backend edge matrix, frontend/headless demo and historical flow, additive migrations in isolated PostgreSQL/private S3, mocked API examples and schema validation, direct/proxy docs, Compose/image builds/documented startup, Markdown/Mermaid. Record actual passes and exact environment limitations.
 
-Acceptance: Given new consenting uploads, when processed with mocked DeepSeek, then per-frame observations and one immutable assessment are source-bound and human review remains explicit. Given historical rows, when read/annotated, then evidence and corrections remain usable without rewriting. Given documented clean setup, when run with mocks, then service and proxy docs match documented behavior. Technical smoke never claims model accuracy or safety quality.
+Acceptance: Given new consenting uploads, when processed with mocked «Мультимодальная модель», then per-frame observations and one immutable assessment are source-bound and human review remains explicit. Given historical rows, when read/annotated, then evidence and corrections remain usable without rewriting. Given documented clean setup, when run with mocks, then service and proxy docs match documented behavior. Technical smoke never claims model accuracy or safety quality.
 
 ## Implementation Notes
 
@@ -79,7 +79,7 @@ Run backend pytest (including isolated PostgreSQL/S3 tests), frontend tests/buil
 
 ### Investigation continuation
 
-Verified reusable experiment source: `/private/tmp/lzt-jury-ready-release/scripts/prepare_deepseek_comparison.py` contains strict free-object schema, response/mode/usage validation; transport in `prepare_qwen_annotations.py` is shared but hardcodes PNG (must fix). The DeepSeek experiment rejects duplicate keys/nonfinite JSON and validates exact model URI and completed assistant output. Training sources are `/private/tmp/lzt-yolo-training-build/kit/{README.md,setup_windows.cmd,train.py,integrity.py,train_kaggle.cmd,train_apoce.cmd}`; scripts require manifest/index/archive datasets and weights. Copy source into stable repo path and document required bundle/input, never imply source alone includes datasets/weights.
+Verified reusable experiment source: `/private/tmp/lzt-jury-ready-release/scripts/prepare_deepseek_comparison.py` contains strict free-object schema, response/mode/usage validation; transport in `prepare_qwen_annotations.py` is shared but hardcodes PNG (must fix). The «Мультимодальная модель» experiment rejects duplicate keys/nonfinite JSON and validates exact model URI and completed assistant output. Training sources are `/private/tmp/lzt-yolo-training-build/kit/{README.md,setup_windows.cmd,train.py,integrity.py,train_kaggle.cmd,train_apoce.cmd}`; scripts require manifest/index/archive datasets and weights. Copy source into stable repo path and document required bundle/input, never imply source alone includes datasets/weights.
 
 ### Delivery follow-up
 
@@ -111,7 +111,7 @@ All three reviewers completed against `/private/tmp/lzt-deepseek-review.diff`. F
 | Verification: bound-plan test missing | high | tests only freeze plan=None; add revision A/B persisted outgoing-context test. |
 | Verification: invalid response retention untested | medium | validation tests bypass save_result/readback; add invalid frame/assessment persisted cases and nullable evidence schema. |
 | Verification: claim restrictions untested | medium | no negative cases for nonvisible safety reference/unsupported assertion; add negative and permitted-counterpart tests. |
-| Verification: transport tests target retired helper | medium | legacy tests exercise cloud_api helper while DeepSeek uses shared.cloud; test actual size/deadline helper. |
+| Verification: transport tests target retired helper | medium | legacy tests exercise cloud_api helper while «Мультимодальная модель» uses shared.cloud; test actual size/deadline helper. |
 
 Root independent checks before repairs: actual HTTP synthetic lifecycle PASS; actual Compose nginx routes PASS; actual headless UI lifecycle PASS with no JavaScript errors/mobile overflow; backend/web image builds PASS; 39 OpenAPI operations and 326 embedded examples schema-validated; 46 local Markdown links valid; 2 Mermaid diagrams parsed and headlessly rendered. Re-run affected checks after patches; these are not evidence of model accuracy.
 
@@ -121,4 +121,4 @@ All requested implementation surfaces and acceptance scenarios are implemented a
 
 ### Authorized legacy-test cleanup
 
-The user explicitly authorized deletion of old tests after delivery of 1264066. Removed obsolete DINO/Qwen admission/provider execution tests; retained historical read/evidence/rights coverage and migrated ordinary upload, retry and recovery tests to DeepSeek. Added a distinct-frame series ordering/idempotency regression after independent review. Shared test fixtures now create per-module temporary PostgreSQL databases and private buckets, preventing cross-module pollution. A migrated lease-expiry regression exposed and fixed a real bug: complete() now fences its final success UPDATE and rolls back expired completion. Verification: full backend 256 passed/1 archive-dependent skip; the skipped test then passed against the existing source archive (all 257 tests covered). No blanket skip or xfail added. Frontend unchanged from its previously verified 197 passing tests. This supersedes the legacy regression gap above.
+The user explicitly authorized deletion of old tests after delivery of 1264066. Removed obsolete DINO/Qwen admission/provider execution tests; retained historical read/evidence/rights coverage and migrated ordinary upload, retry and recovery tests to «Мультимодальная модель». Added a distinct-frame series ordering/idempotency regression after independent review. Shared test fixtures now create per-module temporary PostgreSQL databases and private buckets, preventing cross-module pollution. A migrated lease-expiry regression exposed and fixed a real bug: complete() now fences its final success UPDATE and rolls back expired completion. Verification: full backend 256 passed/1 archive-dependent skip; the skipped test then passed against the existing source archive (all 257 tests covered). No blanket skip or xfail added. Frontend unchanged from its previously verified 197 passing tests. This supersedes the legacy regression gap above.

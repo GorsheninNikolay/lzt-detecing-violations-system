@@ -1,4 +1,4 @@
-"""Add immutable DeepSeek evidence, preserving every historical run."""
+"""Добавить неизменяемые доказательства мультимодальной модели, сохраняя все исторические запуски."""
 from alembic import op
 
 revision = '0022_deepseek'

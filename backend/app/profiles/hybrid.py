@@ -1,4 +1,4 @@
-"""Hybrid contract; legacy DeepSeek snapshots remain readable and executable."""
+"""Гибридный контракт; прежние снимки профиля мультимодальной модели доступны для чтения и исполнения."""
 from copy import deepcopy
 from datetime import datetime
 import re

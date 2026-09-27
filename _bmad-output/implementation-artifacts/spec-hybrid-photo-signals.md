@@ -13,13 +13,13 @@ context: []
 
 ## Intent
 
-Complete the local photograph → both YOLO checkpoints → Yandex DeepSeek-V4.1-Flash → persisted project signals flow. Preserve uploads, projects, annotations, historical results, human stage confirmation, cloud consent and uncertain-call non-replay. Delivery includes reproducible real inference, evaluation, demonstration, accompanying PDF and presentation PDF. User already approved this entire scope; do not ask for another planning approval.
+Complete the local photograph → both YOLO checkpoints → «Мультимодальная модель» → persisted project signals flow. Preserve uploads, projects, annotations, historical results, human stage confirmation, cloud consent and uncertain-call non-replay. Delivery includes reproducible real inference, evaluation, demonstration, accompanying PDF and presentation PDF. User already approved this entire scope; do not ask for another planning approval.
 
 ## Boundaries & Constraints
 
 No GUI, remote deployment, destructive migrations, secret output or overwriting unrelated work. Local CPU inference is mandatory. Keep original weights at case-sensitive `artifacts/Models/{apoce,kaggle}.pt`, mount read-only. Persist a manifest with SHA-256, original classes, pinned dependencies, inference settings and explicit mapping. Never map APOCE lifting-equipment automatically to mobile_crane. Unsupported/ambiguous classes retain raw names and null mapping. Load and verify weights at startup, cache once and serialize inference. Preserve separate normalized oriented-image detections, scores, model/frame identity and provenance.
 
-DeepSeek receives each photo and both detectors, reconciles physical objects once with detection references and disagreements, class assessability and frame usability. Assessment receives series photos, timestamps, exact immutable plan revision, bounded history, rule results and comparison method. Return activity (working_signs / possible_idle / insufficient_data) with evidence and uncertainty, multiple frame→stage→plan-entry hypotheses, and structured risks (cause, work, frame/observation references, impact, recommended check, limitations). Presence or static pose alone proves neither work nor idle. No duration/dynamics without reliable comparable independent frames. Duplicate image hashes are not independent observations.
+«Мультимодальная модель» receives each photo and both detectors, reconciles physical objects once with detection references and disagreements, class assessability and frame usability. Assessment receives series photos, timestamps, exact immutable plan revision, bounded history, rule results and comparison method. Return activity (working_signs / possible_idle / insufficient_data) with evidence and uncertainty, multiple frame→stage→plan-entry hypotheses, and structured risks (cause, work, frame/observation references, impact, recommended check, limitations). Presence or static pose alone proves neither work nor idle. No duration/dynamics without reliable comparable independent frames. Duplicate image hashes are not independent observations.
 
 Compare plan operations at each relevant frame's time, including interval boundaries and concurrent operations. Preserve conservative expected-missing/excluded-equipment rules and reconcile duplicates with model risks. Server validates references, usable evidence, plan applicability and activity grounds. Schedule risks require a bound applicable work; process signals may lack a plan but require a zone. Publish signals/projection in one lease-fenced transaction. Signal fingerprint uses zone, revision, cause, work and source evidence, never generated text or run ID. Keep immutable basis, new/in_progress/closed states/comments; calm later analyses never auto-close.
 
@@ -61,7 +61,7 @@ Quality acceptance requires independently reviewed eight-class labels/scenes/act
 - [ ] Prepare controlled real evaluation, budget ledger, demo and both PDFs with honest acceptance status.
 - [ ] Update product/architecture/run documentation; commit/push/merge verified work, local deploy with preserved data.
 
-Acceptance: Given real weights and authorized cloud access, when demo photos are processed locally, then both raw detectors, actual photo-bearing DeepSeek calls and persisted source-bound signals can be inspected. Given complete reviewed control scenarios, when evaluated, then readiness reflects actual outcomes; missing labels/provider/build evidence remains explicitly blocked.
+Acceptance: Given real weights and authorized cloud access, when demo photos are processed locally, then both raw detectors, actual photo-bearing «Мультимодальная модель» calls and persisted source-bound signals can be inspected. Given complete reviewed control scenarios, when evaluated, then readiness reflects actual outcomes; missing labels/provider/build evidence remains explicitly blocked.
 
 ## Implementation Notes
 

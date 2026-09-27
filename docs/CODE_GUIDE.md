@@ -4,7 +4,7 @@
 | --- | --- | --- | --- |
 | Запуск, готовность, HTTP-лимиты | [main.py](../backend/app/main.py), [config.py](../backend/app/config.py) | `/health/*`, `/runs/*` | [test_startup.py](../backend/tests/test_startup.py) |
 | Согласие, декодирование и idempotency | [submission.py](../backend/app/application/submission.py) | `submission_requests`, `run_inputs`, `publication_intents` | [test_deepseek.py](../backend/tests/test_deepseek.py) |
-| DeepSeek, строгие схемы, EXIF | [deepseek.py](../backend/app/profiles/deepseek.py), [cloud.py](../backend/app/shared/cloud.py) | наблюдения и assessment | [test_deepseek.py](../backend/tests/test_deepseek.py) |
+| Мультимодальная модель, строгие схемы, EXIF | [deepseek.py](../backend/app/profiles/deepseek.py), [cloud.py](../backend/app/shared/cloud.py) | наблюдения и assessment | [test_deepseek.py](../backend/tests/test_deepseek.py) |
 | Исполнение, резервации и история | [deepseek_runtime.py](../backend/app/application/deepseek_runtime.py), [executor.py](../backend/app/application/executor.py) | `deepseek_calls`, `deepseek_results`, lease | [test_deepseek.py](../backend/tests/test_deepseek.py) |
 | Хранилище, история, старые результаты | [postgres.py](../backend/app/adapters/postgres.py), [artifacts.py](../backend/app/adapters/artifacts.py) | `analysis_runs`, `observer_profiles`, `result_projections`, `artifact_metadata` | [test_single_image.py](../backend/tests/test_single_image.py) |
 | Каталог, проекты, план | [site.py](../backend/app/application/site.py) | `/catalog/works`, `/projects`, `/zones/{id}/plan` | [test_site_workflow_db.py](../backend/tests/test_site_workflow_db.py) |

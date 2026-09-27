@@ -152,6 +152,7 @@ def test_deepseek_persisted_run_and_uncertain_no_replay(monkeypatch, isolated_ad
     assert result['state'] == 'succeeded', result['error_code']
     assert len(calls) == 3 and len(result['ai_evidence']) == 3
     assert result['ai_assessment']['summary'] == 'Наблюдение площадки'
+    assert result['result_projection']['source'] == 'Yandex AI Studio · Мультимодальная модель'
     assert result['objects'][0]['class_name'] == 'unknown' and result['objects'][0]['score'] is None
     assert result['objects'][0]['box'] is None
     frozen = result['ai_evidence'][-1]['context']
@@ -365,6 +366,8 @@ def test_documentation_direct_and_proxy_schema(monkeypatch):
         assert './openapi.json' in client.get(prefix + '/redoc').text
         schema = client.get(prefix + '/openapi.json').json()
         assert schema['servers'] == [{'url':'/api','description':'Настроенный root_path'}, {'url':'/','description':'Прямой backend'}]
+        assert 'наблюдения мультимодальной модели' in schema['info']['description']
+        assert 'DeepSeek' not in json.dumps(schema, ensure_ascii=False)
         request = schema['paths']['/runs/single-image']['post']['requestBody']['content']['application/json']['schema']
         assert 'cloud_processing_consent' in request['required']
         assert schema['paths']['/admin/session']['get']['responses']['200']['content']['application/json']['schema']['required'] == ['csrf']

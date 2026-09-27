@@ -571,6 +571,23 @@ describe('Observation result', () => {
     HTMLDialogElement.prototype.close = function () { this.removeAttribute('open'); this.dispatchEvent(new Event('close')) }
   })
 
+  it('renders historical model results with current labels and preserves their saved source', async () => {
+    const historical = { ...completed,
+      result_projection: { ...completed.result_projection, source: 'Yandex AI Studio DeepSeek' },
+      ai_assessment: { summary: 'Историческая аналитика', stage_hypothesis: {stage:'unknown',reason:'Мало данных'},
+        risks:[],recommendations:[],limitations:[] },
+    }
+    const saved = JSON.stringify(historical)
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => url === `/api/runs/${runId}`
+      ? { ok:true,json:async () => historical }
+      : { ok:true,blob:async () => new Blob(['jpeg']) }))
+    render(<App />)
+    expect(await screen.findByRole('heading', { name:'Аналитика мультимодальной модели' })).toBeTruthy()
+    expect(screen.getByText('Историческая аналитика')).toBeTruthy()
+    expect(screen.queryByText('Yandex AI Studio DeepSeek')).toBeNull()
+    expect(JSON.stringify(historical)).toBe(saved)
+  })
+
   it('retries a failed run and keeps predecessor and history navigation', async () => {
     const user = userEvent.setup()
     const nextId = '22345678-1234-1234-1234-123456789abc'
@@ -1656,7 +1673,8 @@ describe('New Analysis', () => {
     await user.selectOptions(screen.getByLabelText('Этап'), 'other')
     expect(screen.queryByRole('radio', { name: 'Только распознать технику' })).toBeNull()
     expect(screen.queryByRole('radio', { name: 'Проверить правило этапа' })).toBeNull()
-    expect(screen.getByText(/DeepSeek распознаёт технику и анализирует контекст/)).toBeTruthy()
+    expect(screen.getByText(/Мультимодальная модель распознаёт технику и анализирует контекст/)).toBeTruthy()
+    expect(screen.getByRole('checkbox', { name: 'Разрешаю отправить эти фотографии и контекст анализа в Yandex AI Studio (мультимодальная модель) для облачной обработки.' })).toBeTruthy()
   })
 
   it('uses observation-only for short uploads even when old choices contain a rule', async () => {

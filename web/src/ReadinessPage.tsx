@@ -165,7 +165,7 @@ export default function ReadinessPage({ heading, onOpen }: { heading: RefObject<
     <div className="page-intro"><p className="eyebrow">Проверка прототипа</p><h1 ref={heading} tabIndex={-1} id="readiness-heading">Проверка качества</h1><p>Сохранённый отчёт по критериям и исходным доказательствам.</p></div>
     <section className="panel"><h2>Качество текущего гибридного профиля</h2>
       <p>{!hybridQuality ? 'Проверяем актуальные доказательства…' : hybridQuality.status === 'pass' ? 'Контрольные критерии пройдены.' : 'Готовность заблокирована: доказательств недостаточно или есть ошибки.'}</p>
-      <p>Исторический отчёт ниже не подтверждает качество текущих YOLO и DeepSeek.</p>
+      <p>Исторический отчёт ниже не подтверждает качество текущих YOLO и мультимодальной модели.</p>
       {!!hybridQuality?.blocking_reasons?.length && <ul>{hybridQuality.blocking_reasons.map(reason => <li key={reason}>{reason}</li>)}</ul>}
       {hybridQuality?.code && <details><summary>Состояние доказательств</summary><code>{hybridQuality.code}</code></details>}
     </section>

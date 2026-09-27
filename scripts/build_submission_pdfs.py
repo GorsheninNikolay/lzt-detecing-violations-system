@@ -35,7 +35,7 @@ ORANGE = HexColor("#DB6D3C")
 BG = HexColor("#F8F8F4")
 WHITE = HexColor("#FFFFFF")
 RULE = HexColor("#D4DFE0")
-DATE = "27 сентября 2026"
+DATE = "Проверки: 27.09.2026; тексты: 28.09.2026"
 SLIDES = 12
 NOTES = 12
 
@@ -44,7 +44,7 @@ def read_json(path):
     return json.loads((ROOT / path).read_text())
 
 
-MANIFEST = read_json("backend/app/data/yolo-manifest.json")
+MANIFEST = read_json("docs/pdf-inputs/yolo-manifest-2026-09-27.json")
 SMOKE = read_json("evaluation/hybrid/yolo-smoke-summary.json")
 QUEUE = read_json("evaluation/hybrid/control-review-queue.json")
 BUDGET = read_json("evaluation/hybrid/budget.json")
@@ -216,10 +216,10 @@ def presentation():
     c.setTitle("Контроль строительства: гибридный анализ фотографий")
     c.setAuthor("Construction monitoring project")
 
-    slide(c, 1, "От фотографии к проверяемому сигналу", "Контроль строительства  /  локальный CPU + Yandex DeepSeek  /  прототип")
+    slide(c, 1, "От фотографии к проверяемому сигналу", "Контроль строительства  /  локальный CPU + Мультимодальная модель (Yandex AI Studio)  /  прототип")
     photo(c, "Screenshot_48.png", 464, 143, 452, 234)
     text(c, "Увидеть технику.\nСопоставить с работами.\nОбъяснить повод для проверки.", 44, 351, 388, 26, 36, bold=True)
-    text(c, "Два YOLO сохраняют свои детекции; DeepSeek согласует объекты и анализирует фото с планом. Человек принимает решение.",
+    text(c, "Два YOLO сохраняют свои детекции; мультимодальная модель согласует объекты и анализирует фото с планом. Человек принимает решение.",
          44, 204, 388, 15, 22, floor=135)
     text(c, "Исходное фото организаторов: Screenshot_48.png", 464, 128, 452, 10, color=MUTED)
     band(c, "Качество пока BLOCKED: есть пропуски и путаница классов; достоверных серий простоя нет.", 66, size=14)
@@ -229,7 +229,7 @@ def presentation():
     for x, heading, body in [
         (44, "01  Фото и согласие", "Проект, участок, порядок и время кадров; хеш оригинала."),
         (342, "02  Два YOLO / CPU", "Ориентированные пиксели, классы, рамки, score и версия весов."),
-        (640, "03  DeepSeek / кадр", "Фото + обе детекции; один физический объект и разногласия."),
+        (640, "03  Мультимодальная модель / кадр", "Фото + обе детекции; один физический объект и разногласия."),
     ]:
         box(c, x, 244, 276, 138, heading, body, 13.5)
     for x, heading, body in [
@@ -243,7 +243,7 @@ def presentation():
     slide(c, 3, "Модели: независимые источники наблюдений", "Выбор задан поставленными весами; качество проверяется отдельно от запуска")
     box(c, 44, 167, 276, 214, "APOCE  /  7 классов", "apoce.pt\nSHA-256: db4447329776…\nБульдозер, миксер, самосвал, экскаватор; lifting-equipment, piling-machine и tower-crane остаются без каталожного типа.", 13.5)
     box(c, 342, 167, 276, 214, "Kaggle  /  17 классов", "kaggle.pt\nSHA-256: 0e86af081bd7…\nВосемь классов сопоставлены с каталогом. Погрузчики, трейлер и другие неподдержанные имена сохраняются как raw class.", 13.5)
-    box(c, 640, 167, 276, 214, "DeepSeek-V4.1-Flash", "Yandex AI Studio\nlatest; temperature 0\nreasoning none; store=false\nСогласование объектов, признаки сцены и анализ плана. Hosted latest может меняться; raw response сохраняется.", 13.5, ORANGE)
+    box(c, 640, 167, 276, 214, "Мультимодальная модель", "Yandex AI Studio\nlatest; temperature 0\nreasoning none; store=false\nСогласование объектов, признаки сцены и анализ плана. Hosted latest может меняться; raw response сохраняется.", 13.5, ORANGE)
     band(c, "Manifest фиксирует полные хеши, mapping и pins. APOCE lifting-equipment ≠ автоматический автокран.")
     c.showPage()
 
@@ -321,7 +321,7 @@ def presentation():
     band(c, "Успешный запуск из N кадров = N согласований фото + 1 assessment; стоимость зависит от фото и объёма ответа.")
     c.showPage()
 
-    slide(c, 12, "Проверенное состояние и следующий допуск", "Техническое evidence и качество продукта фиксируются раздельно")
+    slide(c, 12, "Проверенное состояние и следующий допуск", "Проверки от 27.09.2026 и прежние веса; текущие веса требуют отдельной проверки")
     box(c, 44, 188, 425, 192, "Фактические проверки", checks_text(), 13.5)
     box(c, 491, 188, 425, 192, "Качество: BLOCKED", "Нужна человеческая разметка восьми классов; реальные normal/risk сцены; независимый split по площадке/камере; сопоставимые серии работы и простоя; измерения ложных сигналов.", 13.5, ORANGE)
     text(c, paid_text(), 44, 154, 872, 15, bold=True)
@@ -337,7 +337,7 @@ def accompanying():
     c.setTitle("Гибридный анализ фотографий: техническое сопровождение")
     c.setAuthor("Construction monitoring project")
 
-    y = note(c, 1, "Техническое сопровождение", "Гибридный анализ фотографий: оба YOLO → DeepSeek → проверяемые сигналы")
+    y = note(c, 1, "Техническое сопровождение", "Гибридный анализ фотографий: оба YOLO → Мультимодальная модель → проверяемые сигналы")
     y = section(c, "Назначение и граница результата", "Сервис связывает видимые объекты с работами участка и формирует гипотезы, риски и рекомендации для менеджера. Наблюдение, правило и решение человека хранятся отдельно. Система не устанавливает юридическое нарушение, непрерывную выработку или фактический процент готовности по одному снимку.", y)
     photo(c, "Screenshot_48.png", 42, 294, 511, 244)
     text(c, "Оригинал Screenshot_48.png из архива организаторов; без изменения байтов. Дата поверх фото не считается подтверждённым capture time.", 42, 277, 511, 9.5, 14, color=MUTED)
@@ -355,17 +355,17 @@ def accompanying():
         ["annotation_versions / stage confirmation", "Отдельные решения человека, версии исправлений и одобренный экспорт"]],
         42, y, [230, 281], 10.6)
     y = section(c, "Где хранятся факты", "Приватный S3 хранит исходные байты и метаданные артефактов. PostgreSQL хранит run, контекст и JSON доказательств. Чтение изображения повторно проверяет SHA-256. Новые данные добавляются миграциями; старые результаты остаются читаемыми без повторного анализа.", y)
-    section(c, "Исполняемый путь", "FastAPI принимает загрузку без provider call внутри HTTP. ClaimLoop получает lease; оба YOLO работают на CPU; по каждому кадру сохраняется резервация и вызывается DeepSeek. Затем фиксируются план, правила и до трёх прошлых успешных результатов того же участка, выполняется один assessment с фотографиями серии.", y)
+    section(c, "Исполняемый путь", "FastAPI принимает загрузку без provider call внутри HTTP. ClaimLoop получает lease; оба YOLO работают на CPU; по каждому кадру сохраняется резервация и вызывается мультимодальная модель. Затем фиксируются план, правила и до трёх прошлых успешных результатов того же участка, выполняется один assessment с фотографиями серии.", y)
     c.showPage()
 
-    y = note(c, 3, "Модели и происхождение классов", "Оригинальные checkpoint read-only; manifest - backend/app/data/yolo-manifest.json")
+    y = note(c, 3, "Модели и происхождение классов", "Снимок проверенных весов: docs/pdf-inputs/yolo-manifest-2026-09-27.json")
     for model in MANIFEST["models"]:
         y = section(c, f"{model['id']} / {model['filename']} / {len(model['classes'])} исходных классов", f"SHA-256: {model['sha256']}", y, 10)
     y = section(c, "Настройки инференса", "ultralytics 8.4.163; torch 2.10.0; torchvision 0.25.0. EXIF-oriented RGB; device=cpu; imgsz=640; conf=0.25; iou=0.7; max_det=100; half=false; augment=false. Startup сверяет байты весов и исходный список классов, модели загружаются один раз и делят lock. Отдельные сырые результаты сохраняют model/frame identity.", y)
     y = table(c, [["APOCE: исходное имя", "Каталог"],
         *[[name, value or "null / исходное имя сохраняется"] for name, value in MANIFEST["models"][0]["mapping"].items()]],
         42, y, [241, 270], 10.5)
-    section(c, "Смысл выбора", "Два предоставленных checkpoint дают независимые гипотезы объектов. DeepSeek получает оба набора и само фото. Их согласование не превращает ошибочные детекции в ground truth. lifting-equipment, piling-machine и tower-crane не сопоставляются автоматически с автокраном.", y)
+    section(c, "Смысл выбора", "Два предоставленных checkpoint дают независимые гипотезы объектов. Мультимодальная модель получает оба набора и само фото. Их согласование не превращает ошибочные детекции в ground truth. lifting-equipment, piling-machine и tower-crane не сопоставляются автоматически с автокраном.", y)
     c.showPage()
 
     y = note(c, 4, "Kaggle: явное отображение классов", "17 исходных имён сохраняются дословно; неподдержанное имя не расширяет каталог")
@@ -377,7 +377,7 @@ def accompanying():
 
     y = note(c, 5, "Наблюдения и проверка ответа", "Рамки относятся к ориентированному изображению, а не к произвольной копии кадра")
     y = section(c, "Нормализация входа", "JPEG/PNG декодируются с EXIF-ориентацией. Исходный файл остаётся неизменным. Координаты YOLO переводятся в normalized xyxy; сохраняются source class, nullable catalog mapping, score, frame ID, detector ID и checkpoint SHA-256. Отсутствующим box/confidence модели не присваиваются искусственные значения.", y)
-    y = section(c, "Согласование физического объекта", "DeepSeek-V4.1-Flash получает само фото и оба detector results. Для каждой исходной детекции нужен accepted/dismissed/unresolved disposition. Одна source detection не может принадлежать двум reconciled objects. Разногласия и непринятые детекции сохраняются; unresolved класс не даёт отрицательного доказательства.", y)
+    y = section(c, "Согласование физического объекта", "Мультимодальная модель получает само фото и оба detector results. Для каждой исходной детекции нужен accepted/dismissed/unresolved disposition. Одна source detection не может принадлежать двум reconciled objects. Разногласия и непринятые детекции сохраняются; unresolved класс не даёт отрицательного доказательства.", y)
     y = section(c, "Независимые признаки достаточности", "Frame usability и class assessability не выводятся из количества детекций. Неоцениваемый ракурс, неясная идентичность и повторные SHA-256 не доказывают отсутствие техники. Объекты вне восьми классов остаются свободными именами. Фотографии и ссылки текущего run проверяются до публикации.", y)
     y = section(c, "Облачный профиль и контекст", "Профиль hybrid-photo-signals-v1 совместим с kind=deepseek и имеет отдельные хеши схемы, инструкции и manifest. Используется deepseek-v4.1-flash/latest, reasoning=none, temperature=0, max output=8192, store=false. Фактический URI, usage, полный raw response и причина отклонения сохраняются. Hosted latest не гарантирует постоянство весов.", y)
     section(c, "Публикационные проверки", "Сервер проверяет JSON-контракт, frame/observation/detection references, usable evidence, признаки activity и связь работы с frozen plan. Неподкреплённые утверждения о длительности/динамике запрещены во всех публикуемых текстовых полях. Невалидный ответ остаётся evidence, но не успешным результатом или сигналом.", y)
@@ -407,7 +407,7 @@ def accompanying():
     y = section(c, "Фактический инвентарь", "Архив содержит 100 исходных PNG; SHA-256 архива: " + QUEUE["archive_sha256"] + ". Очередь включает 15 кадров. Независимый агент просмотрел 14 и предложил 36 примерных рамок для шести классов. Нет принятия человеком; перечень не является исчерпывающей разметкой отсутствующих объектов.", y, 10.8)
     y = section(c, "Приёмочная матрица", "Требуются земляные, бетонные и дорожные работы, каждая с normal/risk/ambiguous/unusable исходами; восемь классов; single/duplicate/poor visibility/working/possible idle. Сейчас нет аутентичного привязанного плана и согласованных normal/risk меток, бульдозера, крана-манипулятора и надёжных same-camera timed series. Естественно непригодные сцены также не покрыты; synthetic blank - только robustness fixture.", y)
     y = section(c, "Что измерять после принятия разметки", "Precision/recall классов, локализацию, корректность этапа/activity, ложные сигналы и долю insufficient_data, задержку и стоимость. Набор разделяется по проверенным площадкам/камерам/сериям до обучения; одинаковые или соседние источники не попадают в train и test. Допуск требует фактического покрытия и нуля ложных предупреждений; отсутствие метрики не считается нулевой ошибкой.", y)
-    y = section(c, "Происхождение текущих весов", "Kaggle metadata: epoch 4, то есть пятая эпоха, несмотря на запрос обучения до 100. APOCE optimizer-stripped: epoch -1 не подтверждает длительность обучения. Сохраняются исходные классы и SHA-256. Название checkpoint и длительность обучения сами по себе не устанавливают качество.", y)
+    y = section(c, "Происхождение весов из отчёта", "Kaggle metadata: epoch 4, то есть пятая эпоха, несмотря на запрос обучения до 100. APOCE optimizer-stripped: epoch -1 не подтверждает длительность обучения. Сохраняются исходные классы и SHA-256. Название checkpoint и длительность обучения сами по себе не устанавливают качество.", y)
     section(c, "Windows/RTX обучение - отдельный процесс", "training/windows содержит исходники команд smoke/pilot/full и integrity checks. Нужен полный проверенный training bundle с манифестами, изображениями, метками и pretrained yolo26s.pt; его нет в репозитории. Windows 10/11, Python 3.11/3.12 x64, RTX 3060 12 GB, driver CUDA 12.8, ≥35 GB. На целевой машине обучение/установка не выполнялись; новый checkpoint подключается только после независимой оценки.", y, 10.8)
     c.showPage()
 
@@ -418,7 +418,7 @@ def accompanying():
         ["Screenshot_99.png", "Экскаваторы/самосвал; APOCE: 0; Kaggle: Trailer + Mixer"],
         ["Screenshot_48.png", "Несколько машин; APOCE: 1 excavator; Kaggle: 1 Excavator"]],
         42, y, [164, 347], 10.8)
-    y = section(c, "Измеренная CPU latency", f"Оба checkpoint отработали на 15 оригиналах. Загрузка: {SMOKE['load_ms']/1000:.2f} с. Первый кадр: {sum(m['latency_ms'] for m in SMOKE['frames'][0]['models'])/1000:.2f} с; медиана суммарного инференса пары на следующих 14 кадрах: {WARM_MS:.1f} мс. Это один smoke текущего окружения, без p95, memory/load benchmark или гарантий для целевого ноутбука.", y)
+    y = section(c, "Измеренная CPU latency", f"Оба checkpoint отработали на 15 оригиналах. Загрузка: {SMOKE['load_ms']/1000:.2f} с. Первый кадр: {sum(m['latency_ms'] for m in SMOKE['frames'][0]['models'])/1000:.2f} с; медиана суммарного инференса пары на следующих 14 кадрах: {WARM_MS:.1f} мс. Это smoke окружения от 27.09.2026, без p95, memory/load benchmark или гарантий для целевого ноутбука.", y)
     y = section(c, "Полный HTTP-путь", http_text(detail=True), y, 11)
     y = section(c, "Финальные технические проверки", checks_text(), y, 11)
     y = section(c, "Контейнер: отдельные уровни проверки", container_text(), y, 10.5)
@@ -445,7 +445,7 @@ def accompanying():
     y = section(c, "Рост нагрузки", "Успешный run из N кадров выполняет N frame calls и один assessment. CPU-инференс внутри процесса сериализован, модели кешируются. Сначала измерить throughput, p95, queue age, память и стоимость по площадкам. При необходимости добавить worker-процессы/хосты с независимым lease и теми же fenced contracts; модельный cache потребует памяти на каждый процесс. Не ослаблять validation/no-replay ради скорости.", y)
     y = section(c, "Данные для следующей итерации", "Человек согласует объекты, рамки, сцены, активность и сигналы с автором и датой; разногласия разбираются отдельно. Добавить отсутствующие классы, отрицательные примеры кранов/погрузчиков/трейлеров и реальные серии работы/простоя. Test-источники исключить из обучения и подбора. Затем прогнать обязательную матрицу и измерить метрики; допуск по качеству остаётся BLOCKED.", y)
     y = section(c, "Основные модули", "profiles/yolo.py и data/yolo-manifest.json: детекторы и pins. profiles/deepseek.py: схема/нормализация. application/deepseek_runtime.py: резервации, context, lease и публикация. domain/site_analysis.py: frame/work правила. application/signals.py: лента. adapters/postgres.py: сохранение. web EvidenceViewer/AiAssessment: raw/reconciled объекты и доказательства.", y, 10.7)
-    section(c, "Источники фактов в репозитории", "Architecture.md; README.md; docs/HYBRID_PHOTO_SIGNALS.md; docs/HYBRID_VERIFICATION.json; backend/app/data/yolo-manifest.json; evaluation/hybrid/README.md, control-review-queue.json, independent-visual-review.json, yolo-smoke-summary.json, budget.json; training/windows/README.md; frozen spec-hybrid-photo-signals.md. Все фото в PDF прочитаны непосредственно из исходного архива и сверены по хешам очереди.", y, 10.5)
+    section(c, "Источники фактов в репозитории", "Architecture.md; README.md; docs/HYBRID_PHOTO_SIGNALS.md; docs/HYBRID_VERIFICATION.json; docs/pdf-inputs/yolo-manifest-2026-09-27.json; evaluation/hybrid/README.md, control-review-queue.json, independent-visual-review.json, yolo-smoke-summary.json, budget.json; training/windows/README.md; frozen spec-hybrid-photo-signals.md. Фото сверены по хешам очереди. Проверки и веса относятся к отчёту от 27 сентября; переименование не подтверждает текущие веса.", y, 10.5)
     c.save()
     return path
 

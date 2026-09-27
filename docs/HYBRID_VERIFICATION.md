@@ -1,6 +1,6 @@
 # Hybrid delivery verification, 2026-09-27
 
-Engineering disposition: **COMPLETED_WITH_GAPS**. Product/model quality: **BLOCKED**. The local prototype implements both YOLO checkpoints, photo-bearing DeepSeek reconciliation/assessment, frozen plans, activity evidence and atomic project signals. This report does not declare the project ready for final quality acceptance.
+Engineering disposition: **COMPLETED_WITH_GAPS**. Product/model quality: **BLOCKED**. The local prototype implements both YOLO checkpoints, photo-bearing «Мультимодальная модель» reconciliation/assessment, frozen plans, activity evidence and atomic project signals. This report does not declare the project ready for final quality acceptance.
 
 The machine-readable evidence is [HYBRID_VERIFICATION.json](HYBRID_VERIFICATION.json); the [control review pack](../evaluation/hybrid/README.md) documents source images, gaps and targeted next training data. All organizer originals, checkpoints, older profiles/results and existing application data were preserved. No remote server deployment was performed.
 
@@ -13,7 +13,7 @@ The machine-readable evidence is [HYBRID_VERIFICATION.json](HYBRID_VERIFICATION.
 | Frontend production build | Passed |
 | Linux ARM64 CPU image | Final build and embedded profile/report hash verification passed |
 | Real YOLO | Both original hashes/classes loaded; 15 organizer PNGs processed on local CPU, plus separate Linux CPU smoke |
-| Real DeepSeek | Account/model/photo/strict JSON access confirmed; actual frame and assessment requests retained |
+| Real «Мультимодальная модель» | Account/model/photo/strict JSON access confirmed; actual frame and assessment requests retained |
 | Real HTTP | Successful normal/photo/blank analyses; saved stage mismatch under a clearly simulated road plan; exact uploaded-image SHA readback |
 | Repeat/status behavior | Successful quiet live repeat created no new signals, reused its insufficiency signal and retained the closed stage signal |
 | Variable AI citations | Separate DB regression passed for two successful analyses with changed boxes/citations: same stage signal, same closed state, unchanged original basis |
@@ -38,4 +38,4 @@ The account/photo smoke and intermediate frame-contract smoke were separate diag
 
 The selection contains 15 queued images, an independent agent review of 14 and 36 approximate boxes covering six confident candidate classes. No image has been human-adjudicated for the expanded acceptance set. Bulldozer, truck-mounted crane, comparable timed idle sequences and the complete excavation/concrete/roadwork × normal/risk/ambiguous/unusable matrix remain missing. Partial candidate labels cannot justify class precision/recall, localization accuracy or a zero-false-warning claim; those measurements remain null.
 
-Observed errors include a roller classified as excavators/Trailer, a missed mobile crane, and missed/poorly localized machines in loading scenes. DeepSeek recovered key classes but also showed output variability and unsupported suggestions that the server rejected. The [collection/review/retraining plan](../evaluation/hybrid/README.md) identifies specific scenes, hard negatives, class distinctions and separate acceptance data. Do not qualify the current model or announce final project completion until those gates pass.
+Observed errors include a roller classified as excavators/Trailer, a missed mobile crane, and missed/poorly localized machines in loading scenes. «Мультимодальная модель» recovered key classes but also showed output variability and unsupported suggestions that the server rejected. The [collection/review/retraining plan](../evaluation/hybrid/README.md) identifies specific scenes, hard negatives, class distinctions and separate acceptance data. Do not qualify the current model or announce final project completion until those gates pass.

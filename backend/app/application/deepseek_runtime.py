@@ -217,7 +217,7 @@ def complete(store, work, frame_results, assessment, frozen):
         projection = {'outcome': 'observations_only', 'frames': observations,
                       'ai_assessment': assessment['value'], 'series': {'usable_count': len(usable_ids), 'usable_input_ids': usable_ids,
                       'input_order': ids, 'excavator_supporting_input_ids': [o['input_id'] for o in observations if o['class_name'] == 'excavator' and o['state'] == 'detected'], 'dump_truck_persistence_input_ids': [], 'declared_observation_area': frozen.get('zone_id'), 'dump_truck_persistence_text': None},
-                      'stage_hypotheses': [], 'source': 'Yandex AI Studio DeepSeek',
+                      'stage_hypotheses': [], 'source': 'Yandex AI Studio · Мультимодальная модель',
                       'limitations': ['Фотография не доказывает отсутствие техники; выводы требуют проверки человеком.']}
         projection['context'] = frozen['declared_context']
         projection['series']['declared_observation_area'] = frozen['declared_context'].get('observation_area')

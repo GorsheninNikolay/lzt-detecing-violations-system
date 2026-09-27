@@ -118,11 +118,11 @@ curl --fail-with-body -H 'Content-Type: application/json' \
   "http://127.0.0.1:8096/api/runs/$RUN_ID/confirm-stage"
 ```
 
-Последний запрос сохраняет самостоятельное решение человека, не меняет оценку DeepSeek и не исправляет план. Для настоящего кадра пустая разметка допустима лишь после проверки, что все объекты действительно отсутствуют. Для свободной гипотезы человек должен явно выбрать класс и корректную рамку; экспорт без admin review запрещён.
+Последний запрос сохраняет самостоятельное решение человека, не меняет оценку мультимодальной модели и не исправляет план. Для настоящего кадра пустая разметка допустима лишь после проверки, что все объекты действительно отсутствуют. Для свободной гипотезы человек должен явно выбрать класс и корректную рамку; экспорт без admin review запрещён.
 
 ## Hybrid fields and current quality
 
-`GET /hybrid-readiness` is the current profile's quality report. `GET /readiness` remains historical and cannot qualify the new YOLO/DeepSeek flow. The current report returns `status: "blocked"`; absent/stale evidence is never treated as zero errors.
+`GET /hybrid-readiness` is the current profile's quality report. `GET /readiness` remains historical and cannot qualify the new YOLO/«Мультимодальная модель» flow. The current report returns `status: "blocked"`; absent/stale evidence is never treated as zero errors.
 
 For a hybrid run, `GET /runs/{id}` adds compatible evidence fields. Historical responses may omit these fields or contain empty arrays:
 
