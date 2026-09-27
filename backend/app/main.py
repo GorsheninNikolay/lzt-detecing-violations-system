@@ -199,6 +199,16 @@ def create_app() -> FastAPI:
         except Exception:
             return JSONResponse({"code": "readiness_unavailable"}, status_code=503, headers=headers)
 
+    @app.get("/hybrid-budget")
+    async def read_hybrid_budget() -> JSONResponse:
+        from app.shared.quality_budget import status
+        path = os.environ.get('HYBRID_BUDGET_LEDGER')
+        try:
+            report = await asyncio.to_thread(status, path) if path else {'configured': False}
+        except Exception:
+            report = {'configured': False, 'code': 'quality_budget_unavailable'}
+        return JSONResponse(report, headers={'Cache-Control': 'no-store'})
+
     @app.get("/hybrid-readiness")
     async def read_hybrid_readiness() -> JSONResponse:
         from app.application.hybrid_readiness import read_report

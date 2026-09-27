@@ -1,0 +1,87 @@
+{
+  "equipment": {
+    "excavator": "Экскаватор",
+    "dump_truck": "Самосвал",
+    "road_roller": "Каток",
+    "truck_mounted_crane": "Кран-манипулятор",
+    "concrete_mixer_truck": "Автобетоносмеситель",
+    "bulldozer": "Бульдозер",
+    "truck": "Грузовик",
+    "mobile_crane": "Автокран"
+  },
+  "source_equipment": {
+    "dump truck": "Самосвал",
+    "excavator": "Экскаватор",
+    "motor grader": "Автогрейдер",
+    "grader": "Автогрейдер",
+    "roller": "Каток",
+    "crane manipulator": "Кран-манипулятор",
+    "gazelle": "Газель",
+    "forklift standart": "Вилочный погрузчик",
+    "bucket loader big": "Большой ковшовый погрузчик",
+    "mixer": "Автобетоносмеситель",
+    "mixer truck": "Автобетоносмеситель",
+    "concrete mixer": "Автобетоносмеситель",
+    "tanker": "Автоцистерна",
+    "bulldozer": "Бульдозер",
+    "cleaning equipment": "Уборочная техника",
+    "truck": "Грузовик",
+    "trailer": "Прицеп",
+    "forklift giraffe": "Погрузчик «Жираф»",
+    "bucket loader standart": "Ковшовый погрузчик",
+    "autocran": "Автокран",
+    "mobile crane": "Автокран",
+    "lifting equipment": "Подъёмная техника",
+    "piling machine": "Сваебойная машина",
+    "tower crane": "Башенный кран",
+    "drilling rig": "Буровая установка",
+    "loader": "Погрузчик",
+    "crane": "Кран",
+    "unidentified construction equipment": "Неопределённая строительная техника",
+    "road roller": "Каток",
+    "truck mounted crane": "Кран-манипулятор",
+    "concrete mixer truck": "Автобетоносмеситель",
+    "loader crane": "Кран-манипулятор",
+    "piling rig": "Сваебойная установка"
+  },
+  "stages": {
+    "unknown": "Не определён",
+    "ambiguous": "Неоднозначный этап",
+    "preparation": "Подготовительные работы",
+    "demolition": "Демонтаж",
+    "excavation": "Земляные работы",
+    "concreting": "Бетонные работы",
+    "installation": "Монтаж",
+    "roadwork": "Дорожные работы",
+    "utilities": "Инженерные сети",
+    "landscaping": "Благоустройство"
+  },
+  "signal_kinds": {
+    "possible_idle": "Возможный простой",
+    "visible_process_risk": "Возможный риск организации работ",
+    "visible_safety_risk": "Возможный риск безопасности",
+    "expected_equipment_missing": "Ожидаемая техника не обнаружена",
+    "equipment_not_planned": "Техника не предусмотрена текущей операцией",
+    "stage_plan_mismatch": "Этап расходится с планом",
+    "completion_unconfirmed": "Завершение не подтверждено",
+    "insufficient_observations": "Недостаточно наблюдений"
+  },
+  "signal_states": {
+    "new": "Новый",
+    "in_progress": "В работе",
+    "closed": "Закрыт"
+  },
+  "scenes": {
+    "excavation_or_trench": "Котлован или траншея",
+    "formwork": "Опалубка",
+    "rebar": "Арматура",
+    "concrete_surface": "Бетонная поверхность",
+    "road_base_or_surface": "Основание или покрытие дороги"
+  },
+  "call_states": {
+    "reserved": "Зарезервирован",
+    "completed": "Завершён",
+    "invalid": "Ответ отклонён",
+    "uncertain": "Результат неизвестен"
+  }
+}

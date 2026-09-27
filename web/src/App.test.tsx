@@ -793,7 +793,9 @@ describe('Observation result', () => {
     expect(screen.getByText('Числовая уверенность не предоставлена.')).toBeTruthy()
     await user.selectOptions(layer, 'apoce')
     expect(box().style.left).toBe('20%')
-    expect(screen.getByRole('button',{name:'1. lifting-equipment'})).toBeTruthy()
+    expect(screen.getByRole('button',{name:'1. Подъёмная техника'})).toBeTruthy()
+    expect(models[0].detections[0].raw_class).toBe('lifting-equipment')
+    expect(models[0].detections[0].catalog_class).toBeNull()
     expect(screen.getByText(/67% — оценка модели/)).toBeTruthy()
     expect(screen.queryByText(/99% — оценка модели/)).toBeNull()
     expect(view.container.querySelectorAll('.result-feature-image .object-box')).toHaveLength(1)
@@ -922,7 +924,7 @@ describe('Observation result', () => {
     expect(screen.queryByRole('region', { name: 'Проверка человеком' })).toBeNull()
     if (outcome === 'not_analyzed') {
       const unsupported = [...view.container.querySelectorAll<HTMLElement>('.observation-row')]
-        .filter(row => row.textContent?.includes('crane: Не анализировалось'))
+        .filter(row => row.textContent?.includes('Кран: Не анализировалось'))
       expect(unsupported).toHaveLength(2)
       expect(unsupported[0].textContent).toContain('Класс не поддерживается профилем распознавания.')
       expect(view.container.querySelector('.result-details')?.textContent).toContain('Входной ID: input-0')

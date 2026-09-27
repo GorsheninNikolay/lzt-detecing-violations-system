@@ -1,3 +1,4 @@
+import { equipmentLabel, stageLabel, signalKindLabel, signalKindLabels, signalStateLabels, signalStateLabel } from './displayLabels'
 import { EvidenceViewer, SourceImage, makeResultFrames, type Input, type Observation, type DetectedObject, type NativeEvidence, type ProfileSnapshot } from './EvidenceViewer'
 import { useEffect, useState, type RefObject } from 'react'
 import './signals.css'
@@ -35,17 +36,8 @@ type Run = { state: string; inputs?: Input[]; observations?: Observation[]; obje
 type SignalContext = { signalId?: string; run?: Run; plan?: ZonePlan; runError?: string; planError?: string }
 type Draft = { state: SignalState; comment: string }
 
-const STATES: Record<SignalState, string> = { new: 'Новый', in_progress: 'В работе', closed: 'Закрыт' }
-const KINDS: Record<string, string> = {
-  possible_idle: 'Возможный простой', visible_process_risk: 'Возможный риск организации работ', visible_safety_risk: 'Возможный риск безопасности',
-  expected_equipment_missing: 'Ожидаемая техника не обнаружена',
-  equipment_not_planned: 'Техника не предусмотрена текущей операцией',
-  stage_plan_mismatch: 'Этап расходится с планом',
-  completion_unconfirmed: 'Завершение не подтверждено',
-  insufficient_observations: 'Недостаточно наблюдений',
-}
-const EQUIPMENT: Record<string, string> = { excavator: 'Экскаватор', dump_truck: 'Самосвал', road_roller: 'Каток', truck_mounted_crane: 'Кран-манипулятор', concrete_mixer_truck: 'Автобетоносмеситель', bulldozer: 'Бульдозер', truck: 'Грузовик', mobile_crane: 'Автокран' }
-const STAGES: Record<string, string> = { excavation: 'Земляные работы', concreting: 'Бетонные работы', roadwork: 'Дорожные работы' }
+const STATES = signalStateLabels
+const KINDS = signalKindLabels
 const OUTCOMES: Record<string, string> = { observations_only: 'Только наблюдения', insufficient_data: 'Недостаточно данных', not_analyzed: 'Не анализировалось', no_check: 'Проверка не запрошена', check_requested: 'Рекомендована проверка человеком' }
 const PLAN_STATES: Record<PlanEntry['state'], string> = { planned: 'Запланирована', active: 'Активна', completed: 'Завершена' }
 const REASONS: Record<string, string> = {
@@ -61,11 +53,11 @@ const RECOMMENDATIONS: Record<string, string> = {
 const ACTIONS: Record<string, {explanation:string;action:string}> = {
   expected_equipment_missing: {explanation:'Ожидаемая по плану техника не обнаружена на пригодных кадрах. Это не доказывает её отсутствие на участке.',action:'Сверьте технику с текущей работой и проверьте участок или добавьте свежие кадры.'},
   equipment_not_planned: {explanation:'Обнаруженная техника явно исключена всеми активными работами сохранённого плана.',action:'Уточните назначение техники у команды площадки и проверьте актуальность плана.'},
-  stage_plan_mismatch: {explanation:'Этап, подтверждённый человеком, расходится с этапами активных работ сохранённого плана.',action:'Сверьте фактическую работу с планом и уточните расхождение с командой.'},
+  stage_plan_mismatch: {explanation:'В основании сигнала указано возможное расхождение этапа с активными работами сохранённого плана.',action:'Сверьте фактическую работу с планом и уточните расхождение с командой.'},
   completion_unconfirmed: {explanation:'Плановый срок прошёл, но завершение работы не подтверждено. Это не доказательство просрочки.',action:'Уточните завершение у команды площадки и обновите состояние работы в плане.'},
   insufficient_observations: {explanation:'Пригодных наблюдений недостаточно для сопоставления с планом.',action:'Добавьте минимум три пригодных кадра одного участка с достоверным временем съёмки.'},
 }
-function signalTitle(signal:Signal){return `${KINDS[signal.kind] ?? signal.kind}${signal.basis?.class_name ? `: ${EQUIPMENT[String(signal.basis.class_name)] ?? signal.basis.class_name}` : ''}`}
+function signalTitle(signal:Signal){return `${signalKindLabel(signal.kind)}${signal.basis?.class_name ? `: ${equipmentLabel(String(signal.basis.class_name))}` : ''}`}
 
 function SignalPhoto({signal,run,loading,error,onRetry}:{signal:Signal;run?:Run;loading:boolean;error?:string;onRetry:()=>void}){
   const complete=run?.state==='succeeded' && !!run.result_projection?.outcome
@@ -135,10 +127,10 @@ function SignalBasis({ signal }: { signal: Signal }) {
   return <section className="signals-detail-section" aria-labelledby={`signal-basis-${signal.id}`}>
     <h3 id={`signal-basis-${signal.id}`}>Основание</h3>
     {risk && <><p>{risk.text}</p><p>Возможное влияние: {risk.impact}</p><p>Проверить: {risk.recommended_check}</p>{risk.limitations?.map((item, index) => <p key={index}>{item}</p>)}</>}
-    {Boolean(basis.class_name) && <p>Техника: <strong>{EQUIPMENT[String(basis.class_name)] ?? String(basis.class_name)}</strong>.</p>}
+    {Boolean(basis.class_name) && <p>Техника: <strong>{equipmentLabel(String(basis.class_name))}</strong>.</p>}
     {Boolean(basis.due_at) && <p>Плановый срок: <time dateTime={String(basis.due_at)}>{formatTime(String(basis.due_at))}</time>.</p>}
-    {Boolean(basis.confirmed_stage) && <p>Подтверждённый этап: {STAGES[String(basis.confirmed_stage)] ?? String(basis.confirmed_stage)}.</p>}
-    {Array.isArray(basis.planned_stages) && <p>Этапы активных работ в плане: {basis.planned_stages.map(value => STAGES[String(value)] ?? String(value)).join(', ') || 'не указаны'}.</p>}
+    {Boolean(basis.confirmed_stage) && <p>Подтверждённый этап: {stageLabel(String(basis.confirmed_stage))}.</p>}
+    {Array.isArray(basis.planned_stages) && <p>Этапы активных работ в плане: {basis.planned_stages.map(value => stageLabel(String(value))).join(', ') || 'не указаны'}.</p>}
     {Boolean(basis.reason) && <p>{REASONS[String(basis.reason)] ?? String(basis.reason)}</p>}
     {supporting.length > 0 && <p>Поддерживающих кадров в серии: {supporting.length}.</p>}
     {Boolean(basis.recommendation) && <p className="signals-recommendation"><strong>Рекомендация:</strong> {RECOMMENDATIONS[String(basis.recommendation)] ?? String(basis.recommendation)}</p>}
@@ -160,11 +152,16 @@ function SignalDetail({ signal, context, contextLoading, draft, busy, saveError,
   onRetry: () => void
 }) {
   const currentComment = signal.comment ?? ''
+  const action = signal.kind === 'stage_plan_mismatch' && signal.basis.confirmed_stage
+    ? { explanation: 'Этап, подтверждённый человеком, расходится с этапами активных работ сохранённого плана.', action: ACTIONS.stage_plan_mismatch.action }
+    : signal.kind === 'stage_plan_mismatch' && signal.basis.risk
+      ? { explanation: 'Гипотеза ИИ об этапе расходится с этапами активных работ сохранённого плана. Она требует проверки человеком.', action: 'Проверьте гипотезу по фотографиям с командой площадки, подтвердите фактический этап и сверьте его с планом.' }
+      : ACTIONS[signal.kind]
   return <article className="signals-detail" id={`signal-detail-${signal.id}`} aria-labelledby={`signal-title-${signal.id}`} aria-busy={contextLoading}>
-    <div className="signals-detail-title"><h2 id={`signal-title-${signal.id}`}>{signalTitle(signal)}</h2><span className={`signals-state signals-state-${signal.state}`}>{STATES[signal.state]}</span></div>
+    <div className="signals-detail-title"><h2 id={`signal-title-${signal.id}`}>{signalTitle(signal)}</h2><span className={`signals-state signals-state-${signal.state}`}>{signalStateLabel(signal.state)}</span></div>
     <p className="signals-detail-place">{[signal.project_name, signal.zone_name].filter(Boolean).join(' · ') || `Участок ${signal.zone_id}`}</p>
     <p className="signals-detail-date"><time dateTime={signal.created_at}>{formatTime(signal.created_at)}</time></p>
-    <p>{ACTIONS[signal.kind]?.explanation}</p><p className="signals-recommendation"><strong>Следующее действие:</strong> {ACTIONS[signal.kind]?.action ?? 'Проверьте основание сигнала.'}</p>
+    <p>{action?.explanation}</p><p className="signals-recommendation"><strong>Следующее действие:</strong> {action?.action ?? 'Проверьте основание сигнала.'}</p>
     <SignalPhoto key={signal.id} signal={signal} run={context.run} loading={contextLoading} error={context.runError} onRetry={onRetry}/>
     {(context.planError||context.runError)&&<button className="secondary" onClick={onRetry}>Повторить загрузку плана и анализа</button>}
     <details><summary>Полное основание сигнала</summary><SignalBasis signal={signal} /></details>
@@ -173,8 +170,8 @@ function SignalDetail({ signal, context, contextLoading, draft, busy, saveError,
       <p>{!signal.revision_id ? 'План не привязан. ' : ''}Ревизия {signal.plan_revision_number ?? 'не указана в списке'}{signal.work_title ? ` · ${signal.work_title}` : ''}</p>
       {contextLoading && <p role="status">Загружаем план и анализ…</p>}
       {context.planError && <p className="error" role="alert">{context.planError}</p>}
-      {context.plan && <p>{signal.work_title ?? 'Активные работы'}: {context.plan.entries.filter(entry=>!signal.work_entry_id||entry.id===signal.work_entry_id).map(entry=>`${PLAN_STATES[entry.state]} · ${entry.stage_key?STAGES[entry.stage_key]??entry.stage_key:'этап не указан'} · ${formatTime(entry.starts_at)} — ${formatTime(entry.ends_at)}${entry.expected_equipment?.length ? ` · ожидается ${entry.expected_equipment.map(value=>EQUIPMENT[value]??value).join(', ')}`:''}${entry.excluded_equipment?.length ? ` · явно не предусмотрено ${entry.excluded_equipment.map(value=>EQUIPMENT[value]??value).join(', ')}`:''}`).join('; ')||'Работа в сохранённой ревизии отсутствует.'}</p>}
-      {context.plan && <details><summary>Полная сохранённая ревизия плана</summary><div className="signals-plan-entries">{context.plan.entries.length ? context.plan.entries.map((entry, index) => <div key={entry.id} className="signals-plan-entry"><strong>{entry.id === signal.work_entry_id && signal.work_title ? signal.work_title : `Работа ${index + 1}`}</strong><span>{PLAN_STATES[entry.state] ?? entry.state}{entry.stage_key ? ` · ${STAGES[entry.stage_key] ?? entry.stage_key}` : ''}</span><span><time dateTime={entry.starts_at}>{formatTime(entry.starts_at)}</time> — <time dateTime={entry.ends_at}>{formatTime(entry.ends_at)}</time></span>{([['expected_equipment','Ожидается'],['allowed_equipment','Допускается'],['excluded_equipment','Явно не предусмотрено']] as const).map(([field,label])=><span key={field}>{label}: {entry[field]?.map(value=>EQUIPMENT[value]??value).join(', ')||'не указано'}</span>)}</div>) : <p>В сохранённой ревизии нет работ.</p>}</div></details>}
+      {context.plan && <p>{signal.work_title ?? 'Активные работы'}: {context.plan.entries.filter(entry=>!signal.work_entry_id||entry.id===signal.work_entry_id).map(entry=>`${PLAN_STATES[entry.state]} · ${entry.stage_key?stageLabel(entry.stage_key):'этап не указан'} · ${formatTime(entry.starts_at)} — ${formatTime(entry.ends_at)}${entry.expected_equipment?.length ? ` · ожидается ${entry.expected_equipment.map(value=>equipmentLabel(value)).join(', ')}`:''}${entry.excluded_equipment?.length ? ` · явно не предусмотрено ${entry.excluded_equipment.map(value=>equipmentLabel(value)).join(', ')}`:''}`).join('; ')||'Работа в сохранённой ревизии отсутствует.'}</p>}
+      {context.plan && <details><summary>Полная сохранённая ревизия плана</summary><div className="signals-plan-entries">{context.plan.entries.length ? context.plan.entries.map((entry, index) => <div key={entry.id} className="signals-plan-entry"><strong>{entry.id === signal.work_entry_id && signal.work_title ? signal.work_title : `Работа ${index + 1}`}</strong><span>{PLAN_STATES[entry.state] ?? entry.state}{entry.stage_key ? ` · ${stageLabel(entry.stage_key)}` : ''}</span><span><time dateTime={entry.starts_at}>{formatTime(entry.starts_at)}</time> — <time dateTime={entry.ends_at}>{formatTime(entry.ends_at)}</time></span>{([['expected_equipment','Ожидается'],['allowed_equipment','Допускается'],['excluded_equipment','Явно не предусмотрено']] as const).map(([field,label])=><span key={field}>{label}: {entry[field]?.map(value=>equipmentLabel(value)).join(', ')||'не указано'}</span>)}</div>) : <p>В сохранённой ревизии нет работ.</p>}</div></details>}
     </section>
     <details className="signals-detail-section"><summary>Связанный анализ</summary>
       <h3 id={`signal-run-${signal.id}`}>Связанный анализ</h3>
@@ -281,7 +278,7 @@ export default function SignalsPage({ heading, onOpenRun, projectId }: { project
     {listError && <p className="error" role="alert">{listError} <button className="secondary" onClick={()=>setRefresh(value=>value+1)}>Повторить загрузку сигналов</button></p>}
     {listLoading && !signals && <p role="status">Загружаем сигналы…</p>}
     {signals && <div className="signals-workspace">
-      <div className="signals-list-column"><ol className="signals-list">{signals.slice(0, visibleCount).map(signal => <li key={signal.id} className="signals-list-item"><button className="signals-row" type="button" aria-expanded={selectedId === signal.id} aria-controls={selectedId === signal.id ? `signal-detail-${signal.id}` : undefined} onClick={() => setSelectedId(signal.id)}><SignalPreview signal={signal} /><span className="signals-row-copy"><strong>{signalTitle(signal)}</strong><span>{signal.zone_name ?? `Участок ${signal.zone_id}`}{signal.work_title ? ` · ${signal.work_title}` : ''}</span><time dateTime={signal.created_at}>{formatTime(signal.created_at)}</time></span><span className={`signals-state signals-state-${signal.state}`}>{STATES[signal.state]}</span></button>{compact && selectedId === signal.id && detail}</li>)}</ol>
+      <div className="signals-list-column"><ol className="signals-list">{signals.slice(0, visibleCount).map(signal => <li key={signal.id} className="signals-list-item"><button className="signals-row" type="button" aria-expanded={selectedId === signal.id} aria-controls={selectedId === signal.id ? `signal-detail-${signal.id}` : undefined} onClick={() => setSelectedId(signal.id)}><SignalPreview signal={signal} /><span className="signals-row-copy"><strong>{signalTitle(signal)}</strong><span>{signal.zone_name ?? `Участок ${signal.zone_id}`}{signal.work_title ? ` · ${signal.work_title}` : ''}</span><time dateTime={signal.created_at}>{formatTime(signal.created_at)}</time></span><span className={`signals-state signals-state-${signal.state}`}>{signalStateLabel(signal.state)}</span></button>{compact && selectedId === signal.id && detail}</li>)}</ol>
         {signals.length > visibleCount && <button type="button" className="secondary signals-more" onClick={() => setVisibleCount(count => count + 20)}>Показать ещё</button>}
         {!signals.length && <p className="panel">Сигналов по выбранному фильтру нет.</p>}
       </div>

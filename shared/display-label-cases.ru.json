@@ -1,0 +1,46 @@
+[
+  {
+    "input": "Roller",
+    "expected": "Каток"
+  },
+  {
+    "input": "Crane manipulator",
+    "expected": "Кран-манипулятор"
+  },
+  {
+    "input": "tower-crane",
+    "expected": "Башенный кран"
+  },
+  {
+    "input": "lifting-equipment",
+    "expected": "Подъёмная техника"
+  },
+  {
+    "input": "mobile_crane",
+    "expected": "Автокран"
+  },
+  {
+    "input": "truck-mounted-crane",
+    "expected": "Кран-манипулятор"
+  },
+  {
+    "input": "loader crane",
+    "expected": "Кран-манипулятор"
+  },
+  {
+    "input": "piling rig",
+    "expected": "Сваебойная установка"
+  },
+  {
+    "input": "Буровая установка Bauer BG 28",
+    "expected": "Буровая установка Bauer BG 28"
+  },
+  {
+    "input": "constructor",
+    "expected": "Неопределённая техника"
+  },
+  {
+    "input": "unlisted-machine",
+    "expected": "Неопределённая техника"
+  }
+]

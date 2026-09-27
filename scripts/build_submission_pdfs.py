@@ -52,6 +52,9 @@ VERIFICATION_PATH = ROOT / "docs/HYBRID_VERIFICATION.json"
 if not VERIFICATION_PATH.exists():
     raise FileNotFoundError("Final docs/HYBRID_VERIFICATION.json is required before PDF authoring")
 VERIFICATION = json.loads(VERIFICATION_PATH.read_text())
+current_manifest_sha = hashlib.sha256(json.dumps(MANIFEST, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()).hexdigest()
+if VERIFICATION.get("container_build", {}).get("profile_check", {}).get("detector_manifest_sha256") != current_manifest_sha:
+    raise ValueError("PDF verification belongs to different weights; preserve historical PDFs and obtain a new verified report")
 for field in ("pdf_checks_summary", "pdf_http_summary", "local_url", "paid"):
     if field not in VERIFICATION:
         raise ValueError(f"Final verification report is missing {field}")

@@ -288,10 +288,25 @@ class DeepSeek:
                 "temperature": 0, "max_output_tokens": MAX_OUTPUT, "reasoning": {"effort": "none"},
                 "text": {"format": {"type": "json_schema", "name": kind, "strict": True, "schema": schema}},
                 "input": [{"role": "user", "content": content}]}
+        import os
+        from app.shared import quality_budget
+        ledger = os.environ.get('HYBRID_BUDGET_LEDGER')
+        reservation = quality_budget.reserve(ledger, 'hybrid/' + kind, digest(canonical_bytes(body))) if ledger else None
         started = time.monotonic()
         raw = _read_json(request.Request(ENDPOINT, data=canonical_bytes(body), headers={
             "Authorization": "Api-Key " + self.api_key, "OpenAI-Project": self.profile['folder_id'],
             "Content-Type": "application/json", "x-data-logging-enabled": "false"}), timeout)
+        bookkeeping_failed = False
+        if reservation:
+            try:
+                usage = validate_usage(raw)
+            except ValueError:
+                pass
+            else:
+                try:
+                    quality_budget.settle(ledger, reservation, usage, raw.get('id'))
+                except Exception:
+                    bookkeeping_failed = True
         valid, rejection = True, None
         try:
             value = validate_response(raw, body['model'], 'none')
@@ -299,7 +314,10 @@ class DeepSeek:
                      if is_hybrid else (validate_annotation(value) if kind == 'frame' else validate_assessment(value, context)))
         except (ValueError, TypeError, KeyError, AttributeError) as exc:
             value, valid, rejection = None, False, str(exc)
+        if bookkeeping_failed:
+            valid, rejection = False, 'quality_budget_settlement_failed'
         return {"value": value, "valid": valid, "rejection": rejection, "raw": raw, "image_size": dimensions,
-                "model": raw.get('model') if isinstance(raw.get('model'), str) else None,
+                "request": body, "request_sha256": digest(canonical_bytes(body)),
+                "model": raw.get('model') if isinstance(raw, dict) and isinstance(raw.get('model'), str) else None,
                 "usage": raw.get('usage') if valid else None, "latency_ms": (time.monotonic()-started)*1000,
                 "instruction_version": self.profile["instruction_version"], "schema_version": self.profile["schema_version"]}

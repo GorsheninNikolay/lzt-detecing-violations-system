@@ -211,6 +211,21 @@ it.each([
  expect(screen.getByText('Связанных фотографий нет. Основание — сохранённая ревизия плана ниже.')).toBeTruthy()
 })
 
+it.each([
+ [{ risk: { cause: 'stage_plan_mismatch', text: 'Видимый этап расходится с планом', recommended_check: 'Уточнить этап у команды' } }, 'Гипотеза ИИ об этапе расходится с этапами активных работ сохранённого плана. Она требует проверки человеком.', 'Проверьте гипотезу по фотографиям с командой площадки', false],
+ [{ confirmed_stage: 'excavation', planned_stages: ['concrete'], rule_revision: 'confirmed-stage-v2' }, 'Этап, подтверждённый человеком, расходится с этапами активных работ сохранённого плана.', 'Сверьте фактическую работу с планом', true],
+ [{}, 'В основании сигнала указано возможное расхождение этапа с активными работами сохранённого плана.', 'Сверьте фактическую работу с планом', false],
+] as const)('explains a stage mismatch according to its saved basis %#', async (basis, explanation, action, confirmed) => {
+ vi.stubGlobal('fetch', vi.fn(async (url: string) => url === '/api/signals'
+  ? json({ signals: [signal('stage', 'stage_plan_mismatch', { run_id: 'run-1', basis })], new_count: 1 })
+  : json({ state: 'succeeded', inputs: [], result_projection: { outcome: 'check_requested' } })))
+ page()
+ expect(await screen.findByText(explanation)).toBeTruthy()
+ expect(screen.getByText(new RegExp(action))).toBeTruthy()
+ expect(Boolean(screen.queryByText(/Этап, подтверждённый человеком/))).toBe(confirmed)
+ expect(Boolean(screen.queryByText(/Подтверждённый этап: Земляные работы/))).toBe(confirmed)
+})
+
 it.each([false,true])('distinguishes pending and failed photo reads while retaining valid preview=%s',async(hasPreview)=>{
  Object.defineProperty(URL,'createObjectURL',{configurable:true,value:vi.fn(()=> 'blob:photo')})
  Object.defineProperty(URL,'revokeObjectURL',{configurable:true,value:vi.fn()})

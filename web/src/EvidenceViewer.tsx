@@ -1,3 +1,4 @@
+import { equipmentLabel } from './displayLabels'
 import { useEffect, useRef, useState } from 'react'
 export type Input = { input_id: string; ordinal: number; sha256: string; artifact_id: string | null }
 export type Observation = { input_id: string; ordinal: number; class_name: string; state: string; reason?: string | null; source_artifact_id: string | null; input_sha256?: string; invocation_id?: string | null }
@@ -5,7 +6,6 @@ export type NativeEvidence = { artifact_id: string; input_id: string; ordinal: n
 export type DetectedObject = { id?: string; input_id: string; class_name: string; score: number | null; box: [number, number, number, number] | null; details?: { type_ru: string; type_en: string; evidence: string; status: string; missing_localization_reason?: string | null }; image_size: [number, number]; invocation_id: string }
 export type ProfileSnapshot = { kind?: string; observation_contract?: string; adapter?: { code?: string } }
 export type ResultFrame = { input_id: string; ordinal: number; artifact_id: string | null; sha256: string | null; usable: boolean | null; observations: Observation[] }
-const CLASS_LABELS: Record<string, string> = { excavator: 'Экскаватор', dump_truck: 'Самосвал', road_roller: 'Каток', truck_mounted_crane: 'Кран-манипулятор', concrete_mixer_truck: 'Автобетоносмеситель', bulldozer: 'Бульдозер', truck: 'Грузовик', mobile_crane: 'Автокран' }
 const OBSERVATION_STATES: Record<string, string> = { detected: 'Обнаружен', not_detected_in_frame: 'Не обнаружен в кадре', insufficient_data: 'Недостаточно данных', not_analyzed: 'Не анализировалось' }
 const OBSERVATION_REASONS: Record<string, string> = { frame_unassessable: 'Кадр непригоден для распознавания.', unsupported_class: 'Класс не поддерживается профилем распознавания.', observer_unavailable: 'Распознавание недоступно.' }
 function artifactUrl(runId: string, artifactId: string) { return `/api/runs/${runId}/artifacts/${artifactId}` }
@@ -42,7 +42,7 @@ export function SourceImage({ runId, artifactId, label, description, objects = [
     const [x1, y1, x2, y2] = object.box
     if (!(x1 >= 0 && y1 >= 0 && x2 <= 1 && y2 <= 1 && x2 > x1 && y2 > y1 && [x1, y1, x2, y2].every(Number.isFinite))) return null
     const Overlay = onSelectObject ? 'button' : 'div'
-    return <Overlay key={`${object.invocation_id}-${index}`} aria-hidden={!onSelectObject} className={`object-box ${selectedObject === index ? 'selected' : ''}`} aria-label={`Объект ${index + 1}: ${CLASS_LABELS[object.class_name] ?? object.class_name}`} aria-pressed={selectedObject === index} onClick={() => onSelectObject?.(index)} style={{ pointerEvents: onSelectObject ? 'auto' : 'none', left: `${100 * x1}%`, top: `${100 * y1}%`, width: `${100 * (x2 - x1)}%`, height: `${100 * (y2 - y1)}%` }}><span>{index + 1}</span></Overlay>
+    return <Overlay key={`${object.invocation_id}-${index}`} aria-hidden={!onSelectObject} className={`object-box ${selectedObject === index ? 'selected' : ''}`} aria-label={`Объект ${index + 1}: ${equipmentLabel(object.class_name, object.details?.type_ru, object.details?.type_en)}`} aria-pressed={selectedObject === index} onClick={() => onSelectObject?.(index)} style={{ pointerEvents: onSelectObject ? 'auto' : 'none', left: `${100 * x1}%`, top: `${100 * y1}%`, width: `${100 * (x2 - x1)}%`, height: `${100 * (y2 - y1)}%` }}><span>{index + 1}</span></Overlay>
   })}</div> :
     artifact.error ? <p className="error">{artifact.error === 'integrity' ? 'Целостность артефакта не подтверждена' : artifact.error === 'decode' ? 'Не удалось прочитать изображение' : 'Не удалось открыть исходное изображение'} <button type="button" className="secondary" onClick={artifact.retry}>Повторить</button></p> :
       <p className="muted">Загружаем изображение…</p>}</div>
@@ -50,7 +50,7 @@ export function SourceImage({ runId, artifactId, label, description, objects = [
 
 export function frameDescription(observations: Observation[]): string {
   return observations.map(item =>
-    `${CLASS_LABELS[item.class_name] ?? item.class_name}: ${OBSERVATION_STATES[item.state] ?? item.state}${item.reason ? `; ${OBSERVATION_REASONS[item.reason] ?? item.reason}` : ''}`).join('. ')
+    `${equipmentLabel(item.class_name)}: ${OBSERVATION_STATES[item.state] ?? item.state}${item.reason ? `; ${OBSERVATION_REASONS[item.reason] ?? item.reason}` : ''}`).join('. ')
 }
 
 export function makeResultFrames(observations: Observation[], inputs: Input[], usableInputIds?: string[], projected = false): ResultFrame[] {
