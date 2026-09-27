@@ -36,3 +36,5 @@
 .project-switcher select { background: #38264a; color: #f7f4f9; border: 1px solid #8f78a0; border-radius: 8px; padding: 8px 12px; }
 .project-overview > .panel { margin-block: 20px; }
 .page-intro > a.primary { display: inline-flex; align-items: center; min-height: 44px; padding: 10px 18px; border-radius: 8px; text-decoration: none; }
+
+.demo-panel{position:relative;margin:0 auto 100px;max-width:1100px;padding:16px;border:1px dashed #8f78a0;color:var(--text,#f7f4f9);background:var(--surface,#2b1a3d)}.demo-panel summary{min-height:44px;cursor:pointer;font-weight:600}.demo-panel p{max-width:75ch}.demo-panel>details>div{display:flex;gap:8px;flex-wrap:wrap}.demo-panel button{background:var(--raised,#38264a);color:inherit;border:1px solid #8f78a0}html[data-motion=off] *,html[data-motion=off] *::before,html[data-motion=off] *::after{animation:none!important;transition:none!important}html[data-motion=off] .analysis-sweep{display:none!important}@media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}

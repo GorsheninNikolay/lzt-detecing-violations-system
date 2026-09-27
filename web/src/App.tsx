@@ -1,3 +1,4 @@
+import { useMotionPreference } from './MotionPreference'
 import { equipmentLabels, equipmentLabel, stageLabels, stageLabel, sceneLabel, signalKindLabel, signalStateLabel, explanationLabel } from './displayLabels'
 import { SourceImage, EvidenceViewer, makeResultFrames, frameDescription, type Input, type Observation, type NativeEvidence, type DetectedObject, type ProfileSnapshot } from './EvidenceViewer'
 import { useEffect, useRef, useState, type FormEvent, type RefObject } from 'react'
@@ -189,8 +190,7 @@ function ObservationResult({ run, runId, pageHeading, onOpen }: { run: RunSnapsh
 
 
 function RunPipeline({ run, runId, disconnected }: { run: RunSnapshot; runId: string; disconnected: boolean }) {
-  const [motion, setMotion] = useState(() => { try { return localStorage.getItem('analysis-motion') !== 'off' } catch { return false } })
-  useEffect(() => { document.documentElement.dataset.analysisMotion = motion ? 'on' : 'off' }, [motion])
+  const { enabled: motion, toggle: toggleMotion } = useMotionPreference()
   const [activeId,setActiveId] = useState<string|null>(null)
   const current = run.stages.find(stage => stage.state === 'running')
   const failed = run.stages.find(stage=>stage.state==='failed')
@@ -204,7 +204,7 @@ function RunPipeline({ run, runId, disconnected }: { run: RunSnapshot; runId: st
     {inputs.length>1&&<div className="analysis-thumbnails" aria-label="Кадры обработки">{inputs.map(frame=><div key={frame.input_id} className="analysis-thumbnail"><SourceImage thumbnail runId={runId} artifactId={frame.artifact_id} label={`Кадр ${frame.ordinal+1}`} description=""/><button aria-pressed={frame.input_id===input?.input_id} onClick={()=>setActiveId(frame.input_id)}>Кадр {frame.ordinal+1}</button></div>)}</div>}</div>
     <div className="analysis-state"><div key={`${title}:${disconnected}`} className={`analysis-stage-copy ${motion&&!disconnected?'motion-enabled':''}`}><h2>{title}</h2><p>{explanation}</p></div>
     <ol className="analysis-route" aria-label="Краткие этапы">{run.stages.map(({name})=>{const stage=run.stages.find(item=>item.name===name),state=stage?.state??'pending';return <li key={name} className={`route-${state}`} aria-current={state==='running'?'step':undefined}><span className="route-marker" aria-hidden="true">{state==='succeeded'?<svg viewBox="0 0 20 20"><path d="m4 10 4 4 8-9" fill="none" stroke="currentColor" strokeWidth="2"/></svg>:null}</span><span>{STAGE_LABELS[name]}<small>{STAGE_STATES[state]??state}{state==='skipped'?` · ${STAGE_REASONS[stage?.reason??'']??'Не выполнено для этого анализа'}`:''}</small></span></li>})}</ol>
-    <label><input type="checkbox" checked={motion} onChange={event => { setMotion(event.target.checked); try { localStorage.setItem('analysis-motion',event.target.checked ? 'on' : 'off') } catch { /* Motion remains optional without storage. */ } }} /> Движение во время анализа</label></div></section>}<details className="panel pipeline pipeline-details" >
+    <label><input type="checkbox" checked={motion} onChange={toggleMotion} /> Движение во время анализа</label></div></section>}<details className="panel pipeline pipeline-details" >
     <summary>Этапы анализа</summary>
     <ol className="pipeline-stages">{run.stages.map(stage => <li key={stage.name} className={'pipeline-stage stage-' + stage.state}>
       <h3>{STAGE_LABELS[stage.name] ?? 'Этап анализа'}</h3>
