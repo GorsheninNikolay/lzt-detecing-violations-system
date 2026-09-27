@@ -16,4 +16,8 @@ it('persists an explicit motion choice and respects OS reduction', () => {
   second.unmount(); localStorage.setItem('analysis-motion', 'on'); reduced.value = true
   render(<MotionPreference><MotionToggle /></MotionPreference>)
   expect(document.documentElement.dataset.motion).toBe('off')
+  const systemToggle = screen.getByRole('button', { name: 'Движение: выключено системой' })
+  expect(systemToggle).toHaveProperty('disabled', true)
+  fireEvent.click(systemToggle)
+  expect(localStorage.getItem('analysis-motion')).toBe('on')
 })

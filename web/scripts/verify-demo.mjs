@@ -1,6 +1,7 @@
 import { createRequire } from 'node:module'
 import { mkdir, writeFile } from 'node:fs/promises'
 import assert from 'node:assert/strict'
+import { auditTargets } from './target-audit.mjs'
 const require = createRequire(process.env.PLAYWRIGHT_PACKAGE || '/private/tmp/lzt-design-experiment/tooling/package.json')
 const { chromium } = require('playwright-core')
 const root = '/private/tmp/lzt-design-experiment'
@@ -30,7 +31,8 @@ async function audit(page, label) {
     }
     return {width:innerWidth,scrollWidth:document.documentElement.scrollWidth,overflow,wide,small,contrast:contrast.slice(0,15)}
   })
-  report.layout.push({ label,...details })
+  const targets = await auditTargets(page)
+  report.layout.push({ label,...details,small:targets.failures,targets })
 }
 async function shot(page, label) { await page.screenshot({path:`${out}/${label}.png`,fullPage:true});report.screenshots.push(`${label}.png`);await audit(page,label) }
 try {
@@ -80,7 +82,7 @@ for(const [variant,port] of [['project-dashboard',5174],['photo-workspace',5175]
   await go('/');await page.keyboard.press('Tab');await check(`${variant}: keyboard focus visible`,async()=>{const focused=await page.evaluate(()=>({text:document.activeElement.textContent,outline:getComputedStyle(document.activeElement).outlineStyle}));assert.notEqual(focused.outline,'none');return focused})
   await page.emulateMedia({reducedMotion:'reduce'});await check(`${variant}: OS motion preference`,async()=>assert.equal(await page.locator('html').getAttribute('data-motion'),'off'))
   await page.emulateMedia({reducedMotion:'no-preference'});await page.reload();await page.locator('.more-menu>summary').click();await page.locator('.motion-toggle').click();await page.reload();await check(`${variant}: persistent motion disable`,async()=>assert.equal(await page.locator('html').getAttribute('data-motion'),'off'))
-  if(variant==='3d-experience'){await page.evaluate(()=>localStorage.setItem('analysis-motion','on'));await page.reload();await page.waitForTimeout(300);await page.setViewportSize({width:1440,height:400});await page.locator('.demo-panel').scrollIntoViewIfNeeded();await page.waitForTimeout(150);await check('3d: marquee pauses offscreen',async()=>assert.equal(await page.locator('.marquee-scene').getAttribute('data-moving'),'false'))}
+  if(variant==='3d-experience'){await page.evaluate(()=>localStorage.setItem('analysis-motion','on'));await page.reload();await page.waitForTimeout(300);await page.setViewportSize({width:1440,height:400});await page.locator('.demo-panel').scrollIntoViewIfNeeded();await page.waitForTimeout(150);await check('3d: offscreen marquee state (transform behavior checked by verify-interactions)',async()=>assert.equal(await page.locator('.marquee-scene').getAttribute('data-moving'),'false'))}
   await check(`${variant}: no uncaught JS errors`,async()=>assert.deepEqual(pageErrors,[]))
   await reset('result');await context.close()
 }

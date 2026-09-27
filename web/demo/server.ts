@@ -2,7 +2,7 @@ import { randomUUID, createHash } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import type { Plugin } from 'vite'
-import { FIXED_DATE, PROJECT_A, PROJECT_B, RUN_A, RUN_B, projects, works, photos, makeRun, makeSignal, stageNames } from './fixtures'
+import { FIXED_DATE, PROJECT_A, PROJECT_B, RUN_A, RUN_B, projects, works, photos, makeRun, stageNames } from './fixtures'
 
 type Data = Record<string, any>
 export function createDemoStore(now = Date.now) {
@@ -26,6 +26,29 @@ export function createDemoStore(now = Date.now) {
       for (const observation of run.observations) if (observation.input_id === input.input_id) { observation.input_sha256 = input.sha256; observation.sha256 = input.sha256 }
     })
   }
+  function runSignals(run: Data): Data[] {
+    const plan = run.plan_snapshot
+    if (!plan) return []
+    const detected = new Set(run.observations.filter((item: Data) => item.state === 'detected').map((item: Data) => item.class_name))
+    const times = run.context.capture_times?.length ? run.context.capture_times : [run.context.period]
+    return plan.entries.filter((entry: Data) => entry.state !== 'completed' && times.some((time: string) => Date.parse(time) >= Date.parse(entry.starts_at) && Date.parse(time) <= Date.parse(entry.ends_at))).flatMap((entry: Data) =>
+      [...new Set<string>(entry.expected_equipment)].filter(machine => !detected.has(machine)).map(machine => ({
+        id: `${run.run_id}-${entry.id}-${machine}-signal`, project_id: run.project_id,
+        project_name: projectRows.find(project => project.id === run.project_id)?.name,
+        zone_id: run.zone_id, zone_name: zones[run.project_id]?.find(zone => zone.id === run.zone_id)?.name,
+        revision_id: plan.revision_id, plan_revision_number: plan.revision_number, work_entry_id: entry.id,
+        kind: 'expected_equipment_missing', state: 'new', comment: '', created_at: FIXED_DATE,
+        run_id: run.run_id, work_title: works.find(work => work.id === entry.catalog_work_id)?.title ?? 'Работа каталога',
+        preview: { ...run.inputs[0], ordinal: 0 },
+        basis: { class_name: machine, reason: 'not_detected_in_series', recommendation: 'check_on_site', supporting_input_ids: run.inputs.map((input: Data) => input.input_id) },
+      })))
+  }
+  function bindPlan(run: Data, plan?: Data) {
+    run.plan_snapshot = plan ? structuredClone(plan) : null
+    run.plan_binding = plan ? { zone_id: run.zone_id, revision_id: plan.revision_id, capture_times: run.context.capture_times ?? [] } : null
+    run.planned_works = (plan?.entries ?? []).map((entry: Data) => ({ ...entry, title: works.find(work => work.id === entry.catalog_work_id)?.title ?? 'Работа каталога' }))
+    if (run.result_projection) { run.result_projection.context = run.context; run.result_projection.series.declared_observation_area = run.context.observation_area; run.result_projection.created_signals = runSignals(run).map(({ id, kind, state }) => ({ id, kind, state })) }
+  }
   function reset(preset = 'result') {
     state = preset; failNextSubmit = preset === 'recovery'; requests.clear(); artifacts.clear(); planVersions.clear()
     projectRows = structuredClone(projects); runs = {}; signals = []; zones = {}; plans = {}
@@ -35,7 +58,7 @@ export function createDemoStore(now = Date.now) {
         const run: Data = makeRun(id, projectId)
         if (preset === 'error') { run.state = 'failed'; run.retry_eligible = true; run.profile_id = 'demo-observer'; run.retry_profile_id = 'demo-observer'; run.retry_authorization_revision = 1; run.result_projection = null; run.outcome = null; run.stages = stageNames.map((name, index) => ({ name, state: index < 2 ? 'succeeded' : index === 2 ? 'failed' : 'skipped', reason: index === 2 ? 'observer_execution_failed' : index > 2 ? 'dependency_failed' : null })) }
         if (preset === 'analyzing') { run.state = 'running'; run.started = now(); run.pinned = true }
-        plans[run.zone_id] = { revision_id: `${projectId}-plan-1`, revision_number: 1, entries: [{ id: `${projectId}-work-1`, catalog_work_id: 'earthworks', starts_at: '2026-09-01T09:00:00+03:00', ends_at: '2026-10-01T18:00:00+03:00', state: 'active', stage_key: 'excavation', expected_equipment: ['excavator', 'dump_truck'], allowed_equipment: [], excluded_equipment: [] }] }; register(run); if (preset === 'result' || preset === 'recovery') signals.push(makeSignal(run as ReturnType<typeof makeRun>))
+        plans[run.zone_id] = { revision_id: `${projectId}-plan-1`, revision_number: 1, entries: [{ id: `${projectId}-work-1`, catalog_work_id: 'earthworks', starts_at: '2026-09-01T09:00:00+03:00', ends_at: '2026-10-01T18:00:00+03:00', state: 'active', stage_key: 'excavation', expected_equipment: ['excavator', 'dump_truck'], allowed_equipment: [], excluded_equipment: [] }] }; bindPlan(run, plans[run.zone_id]); register(run); if (preset === 'result' || preset === 'recovery') signals.push(...runSignals(run))
       }
     }
     if (preset === 'empty') { projectRows = []; zones = {}; plans = {} }
@@ -43,7 +66,7 @@ export function createDemoStore(now = Date.now) {
   function snapshot(run: Data) {
     if (run.state !== 'running') return run
     const step = run.pinned ? 2 : Math.floor((now() - run.started) / 550)
-    if (step >= stageNames.length) { run.state = 'succeeded'; if (run.plan_binding) signals.push(makeSignal(run as ReturnType<typeof makeRun>)); return run }
+    if (step >= stageNames.length) { run.state = 'succeeded'; signals.push(...runSignals(run)); return run }
     return { ...run, result_projection: null, outcome: null, observations: step > 2 ? run.observations : [], objects: step > 2 ? run.objects : [], stages: stageNames.map((name, index) => ({ name, state: index < step ? 'succeeded' : index === step ? 'running' : 'pending', timestamp: index <= step ? FIXED_DATE : null })) }
   }
   reset()
@@ -74,15 +97,28 @@ export function createDemoStore(now = Date.now) {
     if (zoneMatch) { if (!zones[zoneMatch[1]]) return error('project_not_found', 404); if (method === 'GET') return ok({ zones: zones[zoneMatch[1]] }); if (method === 'POST') { const zone = { id: randomUUID(), name: body.name }; zones[zoneMatch[1]].push(zone); plans[zone.id] = { revision_number: 0, entries: [] }; return ok(zone, 201) } }
     const planMatch = path.match(/^\/zones\/([^/]+)\/plan$/)
     if (planMatch && plans[planMatch[1]]) { const plan = plans[planMatch[1]]; if (method === 'GET') { const revision = url.searchParams.get('revision'); if (revision && Number(revision) !== plan.revision_number) { const saved = planVersions.get(`${planMatch[1]}:${revision}`); return saved ? ok(saved) : error('plan_revision_not_found', 404) } return ok(plan) } if (method === 'PUT') { if (body.expected_revision !== plan.revision_number) return error('plan_revision_conflict', 409); planVersions.set(`${planMatch[1]}:${plan.revision_number}`, structuredClone(plan)); plans[planMatch[1]] = { revision_id: randomUUID(), revision_number: plan.revision_number + 1, entries: body.entries.map((entry: Data) => ({ ...entry, id: randomUUID(), starts_at: entry.start_at, ends_at: entry.end_at })) }; return ok(plans[planMatch[1]]) } }
-    if (path === '/runs' && method === 'GET') { const projectId = url.searchParams.get('project_id'); const rows = Object.values(runs).filter(run => projectId ? run.project_id === projectId : !run.project_id).map(run => snapshot(run)); const offset = Number(url.searchParams.get('offset') || 0); return ok({ runs: rows.slice(offset, offset + 20), total: rows.length, next_offset: offset + 20 < rows.length ? offset + 20 : null }) }
+    if (path === '/runs' && method === 'GET') { const projectId = url.searchParams.get('project_id'); const rows = Object.values(runs).reverse().filter(run => projectId ? run.project_id === projectId : !run.project_id).map(run => snapshot(run)); const offset = Number(url.searchParams.get('offset') || 0); return ok({ runs: rows.slice(offset, offset + 20), total: rows.length, next_offset: offset + 20 < rows.length ? offset + 20 : null }) }
     if (['/runs/single-image', '/runs/series'].includes(path) && method === 'POST') {
       if (failNextSubmit) { failNextSubmit = false; return error('demo_temporary_failure', 503) }
       if (!projectRows.some(project => project.id === body.project_id)) return error('project_not_found', 404)
       if (!zones[body.project_id]?.some(zone => zone.id === body.zone_id)) return error('zone_not_found', 404)
       const images: string[] = body.images_base64 ?? [body.image_base64]
       if (!images.length || !images.every(image => typeof image === 'string' && image.length > 0)) return error('images_required')
+      const currentPlan = plans[body.zone_id]
+      const savedPlan = body.plan_revision_id
+        ? currentPlan?.revision_id === body.plan_revision_id ? currentPlan
+          : [...planVersions.entries()].find(([key, plan]) => key.startsWith(`${body.zone_id}:`) && plan.revision_id === body.plan_revision_id)?.[1]
+        : undefined
+      if (body.plan_revision_id && !savedPlan) return error('plan_revision_not_found', 404)
       const run: Data = makeRun(randomUUID(), body.project_id, images.length)
-      run.zone_id = body.zone_id; run.plan_binding = body.plan_revision_id ? { zone_id: body.zone_id, revision_id: body.plan_revision_id, capture_times: body.capture_times } : null; if (!run.plan_binding) { run.result_projection.created_signals = []; run.planned_works = [] } run.context = { ...run.context, ...body }; delete run.context.image_base64; delete run.context.images_base64; run.result_projection.context = run.context; run.state = 'running'; run.started = now(); register(run, images)
+      run.zone_id = body.zone_id
+      run.stage = body.stage_id ?? body.stage ?? run.stage
+      run.intent = body.intent ?? run.intent
+      run.context = { ...run.context, ...body, stage_id: run.stage }
+      delete run.context.image_base64; delete run.context.images_base64
+      run.result_projection.context = run.context
+      bindPlan(run, savedPlan)
+      run.state = 'running'; run.started = now(); register(run, images)
       return remember({ run_id: run.run_id }, 202)
     }
     const runMatch = path.match(/^\/runs\/([^/]+)(.*)$/)
@@ -93,8 +129,9 @@ export function createDemoStore(now = Date.now) {
       const artifactMatch = tail.match(/^\/artifacts\/([^/]+)(?:\/thumbnail)?$/)
       if (artifactMatch && method === 'GET') { const id = artifactMatch[1]; if (!run.inputs.some((input: Data) => input.artifact_id === id) || !artifacts.has(id)) return error('artifact_not_found', 404); return { status: 200, data: null, artifact: artifacts.get(id) } }
       if (tail === '/confirm-stage' && method === 'POST') { run.stage_confirmation = { ...body, created_at: FIXED_DATE }; return ok(run.stage_confirmation) }
-      if (tail === '/retry' && method === 'POST') { if (run.retry_successor_id) return ok({ run_id: run.retry_successor_id }, 202); if (!run.retry_eligible || run.state !== 'failed') return error('retry_not_eligible', 409); const successor = structuredClone(run); successor.run_id = randomUUID(); successor.id = successor.run_id; successor.state = 'running'; successor.started = now(); successor.pinned = false; successor.retry_predecessor_id = run.run_id; successor.retry_eligible = false; successor.stages = stageNames.map(name => ({ name, state: 'succeeded', timestamp: FIXED_DATE })); successor.result_projection = { ...makeRun(run.run_id, run.project_id, run.inputs.length).result_projection, frames: run.observations, context: run.context, created_signals: run.plan_binding ? [{ id: `${successor.run_id}-signal`, kind: 'expected_equipment_missing', state: 'new' }] : [] }; run.retry_successor_id = successor.run_id; runs[successor.run_id] = successor; return ok({ run_id: successor.run_id }, 202) }
-      if (/^\/frames\/[^/]+\/annotations$/.test(tail) && method === 'POST') { const input = run.inputs.find((value: Data) => tail.includes(value.input_id)); if (!input || input.sha256 !== body.input_sha256) return error('input_integrity_conflict', 409); run.annotations = { ...body, id: randomUUID(), status: 'pending' }; return remember(run.annotations) }
+      if (tail === '/retry' && method === 'POST') { if (run.retry_successor_id) return ok({ run_id: run.retry_successor_id }, 202); if (!run.retry_eligible || run.state !== 'failed') return error('retry_not_eligible', 409); const successor = structuredClone(run); successor.run_id = randomUUID(); successor.id = successor.run_id; successor.state = 'running'; successor.started = now(); successor.pinned = false; successor.retry_predecessor_id = run.run_id; successor.retry_eligible = false; successor.stages = stageNames.map(name => ({ name, state: 'succeeded', timestamp: FIXED_DATE })); successor.result_projection = { ...makeRun(run.run_id, run.project_id, run.inputs.length).result_projection, frames: run.observations, context: run.context, created_signals: [] }; bindPlan(successor, run.plan_snapshot ?? undefined); run.retry_successor_id = successor.run_id; runs[successor.run_id] = successor; return ok({ run_id: successor.run_id }, 202) }
+      const annotationMatch = tail.match(/^\/frames\/([^/]+)\/annotations$/)
+      if (annotationMatch && method === 'POST') { const input = run.inputs.find((value: Data) => value.input_id === annotationMatch[1]); if (!input || input.sha256 !== body.input_sha256) return error('input_integrity_conflict', 409); run.annotations = { ...body, id: randomUUID(), status: 'pending' }; return remember(run.annotations) }
     }
     if (path === '/signals' && method === 'GET') { const scoped = signals.filter(signal => !url.searchParams.get('project_id') || signal.project_id === url.searchParams.get('project_id')); const open = scoped.filter(signal => signal.state !== 'closed'); return ok({ signals: scoped.filter(signal => !url.searchParams.get('state') || signal.state === url.searchParams.get('state')), new_count: scoped.filter(signal => signal.state === 'new').length, summary: { open_count: open.length, attention_count: open.length, insufficient_data_count: 0 } }) }
     const signalMatch = path.match(/^\/signals\/([^/]+)$/)
