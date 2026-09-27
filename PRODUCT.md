@@ -1,7 +1,29 @@
-# Product context
+# Construction monitoring
 
-The canonical product contract is [SPEC.md](_bmad-output/specs/spec-construction-monitoring-concepts/SPEC.md) with its [EXPANSION.md](_bmad-output/specs/spec-construction-monitoring-concepts/EXPANSION.md) companion. This file is a discovery pointer, not a replacement specification.
+The prototype helps a reviewer inspect construction photographs, identify visible equipment and scene features, compare observations with a zone plan, and decide what needs an on-site check. Observations, model hypotheses and human decisions remain separate. A signal does not establish a regulatory violation, a confirmed delay or the condition of the whole site.
 
-The existing Operate interface uses the canonical [DESIGN.md](_bmad-output/planning-artifacts/ux-designs/ux-lzt-detecing-violations-system-2026-09-21/DESIGN.md) and [EXPERIENCE.md](_bmad-output/planning-artifacts/ux-designs/ux-lzt-detecing-violations-system-2026-09-21/EXPERIENCE.md). Preserve their Onest typography, plum palette, shared project workflow and evidence boundaries when extending visitor support, the interactive training tour or private administration.
+## Workflow
 
-The hybrid photograph implementation is defined by [the approved hybrid spec](_bmad-output/implementation-artifacts/spec-hybrid-photo-signals.md). Plan comparison defaults on for a selected zone with a saved plan, with explicit opt-out. Source detector outputs, reconciled boxes, activity uncertainty, per-frame stage/work hypotheses and durable review signals remain inspectable. Technical availability and model quality acceptance are separate; missing reviewed coverage blocks readiness. See [the hybrid runbook](docs/HYBRID_PHOTO_SIGNALS.md).
+A project contains zones, plans and analyses. The user selects a zone, uploads photographs in capture order, supplies capture times and consents to cloud processing. If the selected zone has a saved plan, comparison is enabled by default; the user can opt out. Each submitted analysis keeps its selected plan revision, so later plan edits cannot change its result. The work catalog supplies names and applicability, not a schedule.
+
+The hybrid profile runs both supplied YOLO checkpoints on the server CPU. A multimodal model in Yandex AI Studio reconciles their detections for each photograph, then assesses the photographs and saved context together. Original detector outputs, reconciled boxes, uncertain activity estimates, per-frame stage and work hypotheses, and persistent review signals remain inspectable. The profile using only the multimodal model is also supported; retired DINO/Qwen profiles remain available for historical reading.
+
+The interface uses Onest typography, a plum palette and a shared project workflow. Visitor support, the interactive training tour and private administration should preserve this visual style and the separation between source evidence and user decisions.
+
+## Evidence and decisions
+
+The catalog contains eight equipment classes. Unknown types, free-form names and missing boxes or confidence values remain explicit; they do not expand the catalog automatically. Not detecting equipment in a frame does not prove its absence from the site.
+
+A missing-equipment signal requires at least three independent, assessable frames within the relevant work interval. Concurrent work that permits the equipment prevents an exclusion signal. Visible equipment alone does not establish productive work. Possible idle requires comparable timed frames, evidence that they show the same machine, and visible non-work indicators; it remains a hypothesis for review.
+
+Original images, model responses and saved context remain unchanged. Corrections create separate versions, and stage confirmation records a separate human decision. Repeated evidence does not reopen a closed signal; a later analysis without a risk does not automatically close earlier signals. Export for training requires explicit class mapping, whole-frame review and owner approval. Reserved evaluation images remain excluded.
+
+Cloud calls are recorded before transmission. A call with an uncertain outcome is not automatically repeated. Retrying a lost upload response requires the same request body and idempotency key; it does not repeat model processing.
+
+## Acceptance and access
+
+Technical availability and model quality are assessed separately. Successful execution does not establish recognition accuracy. Missing independently reviewed coverage blocks quality acceptance; machine proposals are not ground truth. The prototype does not infer motion, idle duration or safety compliance from a single photograph.
+
+User-facing API operations currently allow access without sign-in. Private file storage alone does not restrict application access; a restricted deployment needs external access controls. Owner administration requires a password and session, with HTTPS for remote access.
+
+Setup and operating limits are in [README.md](README.md). See [Architecture.md](Architecture.md) for the implementation, [the hybrid runbook](docs/HYBRID_PHOTO_SIGNALS.md) for publication rules and checks, and [the quality review guide](evaluation/hybrid/README.md) for missing acceptance evidence.

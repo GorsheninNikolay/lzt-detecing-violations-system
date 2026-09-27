@@ -1,4 +1,4 @@
-"""Russian OpenAPI metadata for endpoints that deliberately parse bounded bodies manually."""
+"""Russian OpenAPI metadata for endpoints that parse size-limited request bodies manually."""
 from fastapi.openapi.utils import get_openapi
 from fastapi.openapi.docs import get_redoc_html, get_swagger_ui_html
 from fastapi.routing import APIRoute
@@ -50,13 +50,13 @@ BODIES = {
     'analytics_event': obj({'browser_id':UUID,'event_id':UUID,'kind':field('string','Анонимное событие.',enum=['visit','wizard_started','wizard_completed','wizard_skipped'])},('browser_id','event_id','kind')),
     'propose': obj({'input_sha256':field('string','SHA-256 исходного кадра. Изменение источника даёт 409.'),'objects':OBJECTS},('input_sha256','objects')),
     'review': obj({'expected_revision':field('integer','Ревизия, которую проверяет администратор.'),'objects':OBJECTS,'status':field('string','Решение.',enum=['pending','approved','rejected']), 'whole_frame_verified':field('boolean','Проверен весь кадр; обязательно true для approved.'),'reason':TEXT},('expected_revision','objects','status','whole_frame_verified')),
-    'export': obj({'version_ids':field('array','Одобренные версии с проверенным кадром. Зарезервированные evaluation-источники исключены.',items=UUID,minItems=1,maxItems=32)},('version_ids',)),
+    'export': obj({'version_ids':field('array','Одобренные версии с проверенным кадром. Зарезервированные источники для оценки качества исключены.',items=UUID,minItems=1,maxItems=32)},('version_ids',)),
 }
 SUMMARIES = {
     'live':'Проверить работоспособность процесса', 'ready':'Проверить готовность БД, S3 и исполнителя',
     'analysis_choices':'Доступные сценарии анализа', 'submit_single_image':'Загрузить кадры и создать анализ',
     'stage_summary':'Сводка этапов', 'read_readiness':'Исторический отчёт готовности',
-    'read_hybrid_readiness':'Качество текущего hybrid-профиля: несовпавший или отсутствующий отчёт блокирует готовность',
+    'read_hybrid_readiness':'Качество текущего гибридного профиля: несовпавший или отсутствующий отчёт блокирует готовность',
     'read_provider_comparison':'Историческое сравнение выведенных из исполнения моделей',
     'read_run':'Прочитать анализ, исходные данные и неизменяемую аналитику', 'list_runs':'История анализов',
     'retry_run':'Явный повтор допустимого сбоя до первого облачного вызова', 'read_run_artifact':'Прочитать проверенный по SHA-256 артефакт',
@@ -100,7 +100,7 @@ ASSESSMENT['properties'].update({key: value for key, value in HYBRID_ASSESSMENT_
 RISK['properties'].update({key: value for key, value in HYBRID_ASSESSMENT_SCHEMA['properties']['risks']['items']['properties'].items()
                            if key not in RISK['properties']})
 INPUT = obj({'input_id':UUID,'ordinal':field('integer','Порядок кадра, начиная с 0.'),'sha256':field('string','SHA-256 исходных байтов.'),'artifact_id':NULL_UUID,'size':COUNT,'media_type':TEXT}, ('input_id','ordinal','sha256','artifact_id'))
-OBSERVATION = obj({'input_id':UUID,'class_name':TEXT,'state':field('string','Результат присутствия, не доказательство отсутствия.',enum=['detected','not_detected_in_frame','insufficient_data','not_analyzed']), 'source_artifact_id':NULL_UUID,'invocation_id':NULL_UUID,'reason':field(['string','null'],'Причина ограничения.')})
+OBSERVATION = obj({'input_id':UUID,'class_name':TEXT,'state':field('string','Результат проверки присутствия; необнаружение не доказывает отсутствие на площадке.',enum=['detected','not_detected_in_frame','insufficient_data','not_analyzed']), 'source_artifact_id':NULL_UUID,'invocation_id':NULL_UUID,'reason':field(['string','null'],'Причина ограничения.')})
 DETECTION = obj({'id':UUID,'input_id':UUID,'invocation_id':UUID,'class_name':field('string','Один из восьми классов либо unknown.'),'score':field(['number','null'],'Оценка провайдера, если предоставлена; мультимодальная модель не придумывает число.',minimum=0,maximum=1),
                  'box':{'anyOf':[BOX,{'type':'null'}],'description':'Рамка или null при отсутствии локализации.'},
                  'image_size':array(COUNT,'Ширина и высота ориентированного изображения.'),
@@ -111,12 +111,12 @@ EVIDENCE = obj({'id':UUID,'kind':field('string','Тип вызова.',enum=['fr
                 'result':{'anyOf':[obj({'model':field(['string','null'],'Идентичность провайдера; null если отсутствует или имеет неверный тип.'),'value':field(['object','null'],'Проверенный ответ; null для invalid.'),'valid':field('boolean','Прошёл ли ответ строгую проверку.'),'raw':field('object','Точный исходный ответ, в том числе невалидный.'),'usage':{'anyOf':[obj({'input_tokens':COUNT,'output_tokens':COUNT,'total_tokens':COUNT}),{'type':'null'}],'description':'Проверенный usage, null для invalid. Исходное значение остаётся в raw.'},'instruction_version':TEXT,'schema_version':TEXT}),{'type':'null'}]}})
 RUN = obj({'run_id':UUID,'state':field('string','Состояние запуска.',enum=['queued','running','succeeded','failed']),
            'purpose':TEXT,'error_code':field(['string','null'],'Безопасный код ошибки.'),'created_at':{**TIME,'type':['string','null']},
-           'cloud_processing_consent':field('boolean','Согласие, сохранённое в immutable run.'),'profile_id':NULL_UUID,
+           'cloud_processing_consent':field('boolean','Согласие, сохранённое в неизменяемой записи анализа.'),'profile_id':NULL_UUID,
            'context':field(['object','null'],'Исходный пользовательский контекст.'),
            'ai_assessment':{'anyOf':[ASSESSMENT,{'type':'null'}],'description':'null для исторических и незавершённых запусков.'},
            'ai_evidence':array(EVIDENCE,'Неизменяемые ответы и резервации.'), 'inputs':array(INPUT,'Исходные кадры.'),
            'objects':array(DETECTION,'Свободные и каталогизированные объекты.'),'observations':array(OBSERVATION,'Состояния запрошенных классов.'),
-           'result_projection':field(['object','null'],'Успешная проекция. hybrid_frames сохраняет manifest, обе модели YOLO с raw_class, catalog_class (nullable), score, box, SHA-256 весов и кадра; created_signals — идентификаторы сохранённых сигналов; rule_results — сравнение каждого кадра с точной ревизией.'),
+           'result_projection':field(['object','null'],'Успешная проекция. hybrid_frames сохраняет manifest, обе модели YOLO с raw_class, catalog_class (nullable), score, box, SHA-256 весов и кадра; created_signals содержит идентификаторы сохранённых сигналов; rule_results содержит сравнение каждого кадра с точной ревизией.'),
            'stage_confirmation':field(['object','null'],'Отдельное подтверждение человеком.'),'retry_eligible':field('boolean','Допустим ли явный повтор до первого вызова.')}, ('run_id','state'))
 ANNOTATION = obj({'id':UUID,'run_id':UUID,'input_id':UUID,'input_sha256':TEXT,'artifact_id':UUID,'version_id':UUID,
                   'revision':COUNT,'status':TEXT,'objects':OBJECTS,'original_objects':array(DETECTION,'Неизменяемая исходная гипотеза, включая unknown/null box.'),'whole_frame_verified':field('boolean','Проверен весь кадр.'),'reason':TEXT})
@@ -178,11 +178,11 @@ def example(schema):
 def install(app):
     @app.get('/docs', include_in_schema=False)
     def swagger():
-        return get_swagger_ui_html(openapi_url='./openapi.json', title='Контроль строительства — API')
+        return get_swagger_ui_html(openapi_url='./openapi.json', title='Контроль строительства: API')
 
     @app.get('/redoc', include_in_schema=False)
     def redoc():
-        return get_redoc_html(openapi_url='./openapi.json', title='Контроль строительства — API')
+        return get_redoc_html(openapi_url='./openapi.json', title='Контроль строительства: API')
 
     def schema():
         if app.openapi_schema:
@@ -228,7 +228,7 @@ def install(app):
                     for header, description in [('Origin','Точный origin запроса.'),('X-CSRF-Token','Токен из ответа входа или сессии; не нужен для login.')]:
                         parameters.append({'in':'header','name':header,'required':header=='Origin' or name!='login','schema':{'type':'string'},'description':description})
                 if name in ('submit_single_image','submit_feedback','propose','review','create_project'):
-                    parameters.append({'in':'header','name':'Idempotency-Key','required':name != 'create_project','schema':{'type':'string'},'description':'Новый уникальный ключ операции; при потере ответа повторите тот же ключ и тело. Для feedback/annotations — UUID.'})
+                    parameters.append({'in':'header','name':'Idempotency-Key','required':name != 'create_project','schema':{'type':'string'},'description':'Новый уникальный ключ операции; при потере ответа повторите тот же ключ и тело. Для feedback/annotations нужен UUID.'})
                 if method in ('POST','PUT','PATCH'):
                     parameters.append({'in':'header','name':'X-Browser-Id','required':False,'schema':{'type':'string','format':'uuid'},'description':'Анонимный идентификатор браузера для атрибуции.'})
                 body = BODIES.get(name)
@@ -238,7 +238,7 @@ def install(app):
                     image = field('string','Полные байты JPEG/PNG в base64, до 16 МБ после декодирования, до 40 Мп.',contentEncoding='base64')
                     body['properties'][key] = field('array','От 2 до 8 кадров в фиксированном порядке.',items=image,minItems=2,maxItems=8) if key=='images_base64' else image
                     body['required'].append(key)
-                    operation['description'] += ' Требуется cloud_processing_consent=true. Лимит HTTP: 25 100 000 байт для одного кадра, 200 000 000 для серии. Выведенные профили и зарезервированные fixtures запрещены.'
+                    operation['description'] += ' Требуется cloud_processing_consent=true. Лимит HTTP: 25 100 000 байт для одного кадра, 200 000 000 для серии. Выведенные из исполнения профили и зарезервированные контрольные примеры запрещены.'
                 if body:
                     operation['requestBody'] = {'required':True,'content':{'application/json':{'schema':body,'example':example(body)}}}
                 errors = {'400':('Некорректные данные.','invalid_request'),'401':('Требуется сессия.','authentication_required'),
@@ -257,7 +257,7 @@ def install(app):
                     media_types = {'export':['application/zip'],'thumbnail':['image/jpeg'],
                                    'read_run_artifact':['image/jpeg','image/png','application/json'],
                                    'feedback_attachment':['image/jpeg','image/png','image/webp']}[name]
-                    operation['responses']['200'] = {'description':'Проверенный файл; для export — ZIP с YOLO/COCO.',
+                    operation['responses']['200'] = {'description':'Проверенный файл; для export возвращается ZIP с YOLO/COCO.',
                         'content':{media:{'schema':{'type':'string','format':'binary'}} for media in media_types}}
                 if name == 'ready':
                     operation['responses']['503'] = {'description':'Стартовая проверка не завершена; code объясняет причину.',

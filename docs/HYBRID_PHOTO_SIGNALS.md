@@ -1,6 +1,6 @@
 # Hybrid photographs to site signals
 
-The approved scope is [the frozen spec](../_bmad-output/implementation-artifacts/spec-hybrid-photo-signals.md). Technical checks and quality acceptance are separate. No remote deployment is part of this change.
+The hybrid profile runs both supplied YOLO checkpoints on each photograph, reconciles their objects through the multimodal model, and assesses the series against saved zone context and an optional plan. Source detections, reconciled boxes, activity uncertainty, per-frame stage/work hypotheses and review signals remain inspectable. Plan comparison defaults on when the selected zone has a saved plan; the user can opt out. The publication and acceptance rules below govern this path. Technical checks and quality acceptance are separate; this implementation was not deployed remotely.
 
 ## Reproduce locally
 
@@ -31,4 +31,4 @@ The initial real CPU check loaded both checkpoints, but the independently inspec
 
 Real provider evaluation must reserve a conservative upper cost before each call, count uncertain outcomes against the RUB 1000 budget, and retain exact request profile/schema, inputs, raw responses, latency and usage. The delivery evaluation report/ledger records actual measured costs and gaps separately from mock-backed regression checks.
 
-Current checked results, costs and exact limits are recorded in [HYBRID_VERIFICATION.md](HYBRID_VERIFICATION.md) and its JSON companion. The source-bound [review queue](../evaluation/hybrid/README.md) can be extracted without modifying organizer originals. A successful quiet repeat is distinct from an identical model answer: model output variability remains a quality limitation. Stage mismatch signal identity does not depend on changing model citations; its immutable basis still retains those citations.
+Current checked results, costs and exact limits are recorded in [HYBRID_VERIFICATION.md](HYBRID_VERIFICATION.md) and its JSON companion. The source-bound [review queue](../evaluation/hybrid/README.md) can be extracted without modifying organizer originals. A repeat that creates no new signals does not establish that the model returned an identical answer. Output variability remains a quality limitation. Stage mismatch signal identity does not depend on changing model citations; its immutable basis still retains those citations.

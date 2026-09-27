@@ -222,10 +222,7 @@ __marimo__/
 /artifacts/
 /output/
 /tmp/
-/_bmad-output/**/.working/
-/_bmad-output/party-mode/memories/
-/_bmad-output/implementation-artifacts/bmad-build-auto-result-*.md
-/_bmad-output/implementation-artifacts/epic-*-context.md
+/_bmad-output/
 /web/node_modules/
 /web/dist/
 /web/*.tsbuildinfo

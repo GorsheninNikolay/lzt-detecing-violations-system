@@ -69,7 +69,7 @@ function SignalPhoto({signal,run,loading,error,onRetry}:{signal:Signal;run?:Run;
   const selected=Math.max(0,frames.findIndex(frame=>frame.input_id===activeId)),frame=frames[selected]
   const supporting=Array.isArray(signal.basis.supporting_input_ids)?signal.basis.supporting_input_ids:[]
   const readState=signal.run_id&&(error?<p role="alert">Фотографии анализа не удалось загрузить. <button className="secondary" onClick={onRetry}>Повторить загрузку фотографий</button></p>:loading?<p role="status">Загружаем фотографии анализа…</p>:null)
-  if(!signal.run_id || !frame)return readState || <p>Связанных фотографий нет. Основание — сохранённая ревизия плана ниже.</p>
+  if(!signal.run_id || !frame)return readState || <p>Связанных фотографий нет. Сигнал основан на сохранённой ревизии плана ниже.</p>
   return <section className="signal-photo" aria-label="Фотографии сигнала">{readState}<SourceImage runId={signal.run_id} artifactId={frame.artifact_id} label={`Кадр ${frame.ordinal+1}`} description={supporting.includes(frame.input_id)?'Поддерживающий кадр':'Кадр анализа'} objects={run?.objects?.filter(item=>item.input_id===frame.input_id)} showBoxes />
     <button className="secondary" onClick={()=>setViewer(true)}>Открыть фото</button><p>{supporting.includes(frame.input_id)?'Поддерживающий кадр':'Кадр анализа'} · {frame.ordinal+1} из {frames.length}</p>
     {frames.length>1&&<div className="signal-frame-switcher">{frames.map(frame=><button key={frame.input_id} className="secondary" aria-pressed={frame.input_id===frames[selected].input_id} onClick={()=>setActiveId(frame.input_id)}>Кадр {frame.ordinal+1}{supporting.includes(frame.input_id)?' · поддерживающий':''}</button>)}</div>}

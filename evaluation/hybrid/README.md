@@ -27,7 +27,7 @@ The extractor checks the archive and every image hash and refuses to overwrite d
 
 The required matrix is excavation / concreting / roadwork × normal / grounded risk / ambiguous / unusable. Current independent candidates support observation and ambiguity checks. A synthetic blank image is appropriate for an unusable-input regression. An explicitly simulated plan can exercise HTTP binding and signal persistence, but does not establish an authentic site delay.
 
-Authentic normal/risk labels for every scenario, reliable comparable time series, and confirmed idle cases are **missing**. Confident bulldozer and truck-mounted crane examples are **missing** in this selection. No class precision/recall, false-warning rate, or stage correctness is claimed as acceptance evidence: labels are partial and unadjudicated, and a zero from an unrun metric would be false evidence. Localization candidates are approximate, not reference-quality boxes. The quality endpoint remains blocked.
+Authentic normal/risk labels for every scenario, reliable comparable time series, and confirmed idle cases are missing. Confident bulldozer and truck-mounted crane examples are missing in this selection. No class precision/recall, false-warning rate, or stage correctness is claimed as acceptance evidence: labels are partial and unadjudicated, and a zero from an unrun metric would be false evidence. Localization candidates are approximate, not reference-quality boxes. The quality endpoint remains blocked.
 
 ## Observed model errors and targeted next data
 

@@ -208,7 +208,7 @@ it.each([
  vi.stubGlobal('fetch',vi.fn(async()=>json({signals:[signal('signal-1',kind)],new_count:1})))
  page()
  expect(await screen.findByText(new RegExp(action))).toBeTruthy()
- expect(screen.getByText('Связанных фотографий нет. Основание — сохранённая ревизия плана ниже.')).toBeTruthy()
+ expect(screen.getByText('Связанных фотографий нет. Сигнал основан на сохранённой ревизии плана ниже.')).toBeTruthy()
 })
 
 it.each([

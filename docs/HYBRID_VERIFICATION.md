@@ -1,6 +1,6 @@
 # Hybrid delivery verification, 2026-09-27
 
-Engineering disposition: **COMPLETED_WITH_GAPS**. Product/model quality: **BLOCKED**. The local prototype implements both YOLO checkpoints, photo-bearing «Мультимодальная модель» reconciliation/assessment, frozen plans, activity evidence and atomic project signals. This report does not declare the project ready for final quality acceptance.
+Engineering disposition: COMPLETED_WITH_GAPS. Product/model quality: BLOCKED. The local prototype implements both YOLO checkpoints, photo-bearing «Мультимодальная модель» reconciliation/assessment, frozen plans, activity evidence and atomic project signals. This report does not declare the project ready for final quality acceptance.
 
 The machine-readable evidence is [HYBRID_VERIFICATION.json](HYBRID_VERIFICATION.json); the [control review pack](../evaluation/hybrid/README.md) documents source images, gaps and targeted next training data. All organizer originals, checkpoints, older profiles/results and existing application data were preserved. No remote server deployment was performed.
 
@@ -32,7 +32,7 @@ Local demo: `http://127.0.0.1:58159`. The [machine-readable report](HYBRID_VERIF
 
 [HTTP demonstration](../evaluation/hybrid/http-demonstration.json) identifies the successful runs and the explicitly simulated plan/time premise. [Run records](../evaluation/hybrid/results/) preserve all 14 HTTP attempts, including rejected output, source hash, raw detector results, schema/profile and observation links. [Artifact readback](../evaluation/hybrid/artifact-readback.json) confirms original image bytes through the API. Quality review candidates remain separate from model responses and approved training data.
 
-The account/photo smoke and intermediate frame-contract smoke were separate diagnostic calls. Their token reservations are included in the final ledger, along with every application call. There were **31 paid verification requests**, an uncached usage-based estimate of **58.7845 RUB**, and **0 transport/usage-uncertain calls**. The authorized cap was 1000 RUB. Invalid model output still counts toward cost. This is not a verified billing statement. [Budget ledger](../evaluation/hybrid/budget.json) uses the [published pricing](https://aistudio.yandex.ru/ru/docs/ai-studio/pricing) checked for this run.
+The account/photo smoke and intermediate frame-contract smoke were separate diagnostic calls. Their token reservations are included in the final ledger, along with every application call. There were 31 paid verification requests, an uncached usage-based estimate of 58.7845 RUB, and 0 transport/usage-uncertain calls. The authorized cap was 1000 RUB. Invalid model output still counts toward cost. This is not a verified billing statement. [Budget ledger](../evaluation/hybrid/budget.json) uses the [published pricing](https://aistudio.yandex.ru/ru/docs/ai-studio/pricing) checked for this run.
 
 ## Remaining acceptance work
 

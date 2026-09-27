@@ -3,25 +3,25 @@ title: Construction Site Monitoring - Technical Assignment Digest
 source: ./artifacts/spec.pdf
 source_language: Russian
 document_language: English
-purpose: Fast, faithful context for agents working in a fresh session
+purpose: Summary of the technical assignment and submission requirements
 ---
 
 # Construction Site Monitoring - Technical Assignment Digest
 
-This file condenses the authoritative Russian technical assignment in [`artifacts/spec.pdf`](./artifacts/spec.pdf). It preserves requirements but does not choose an architecture or add product scope. If this digest conflicts with the PDF, the PDF wins.
+This file condenses the authoritative Russian technical assignment in `artifacts/spec.pdf` (a local input supplied separately). It preserves requirements but does not choose an architecture or add product scope. If this digest conflicts with the PDF, the PDF wins.
 
 ## Why
 
 Build a prototype that reduces manual review of construction-site camera images by detecting construction equipment, relating observations to the construction schedule, and showing understandable warnings about possible deviations.
 
-The prototype should demonstrate the value of automatic image-to-schedule comparison and provide a credible foundation for future development.
+The prototype should demonstrate automatic image-to-schedule comparison and support further development.
 
 ## Required capabilities
 
 ### CAP-1 - Detect and classify equipment
 
-- **Intent:** Process construction-site camera images and identify major equipment types.
-- **Success:** The prototype shows which supported equipment classes were detected in the supplied image or images.
+- Intent: Process construction-site camera images and identify major equipment types.
+- Success: The prototype shows which supported equipment classes were detected in the supplied image or images.
 
 The supplied data may contain:
 
@@ -38,29 +38,29 @@ The team may support additional classes.
 
 ### CAP-2 - Relate observations to work stages
 
-- **Intent:** Connect observed equipment to specific construction stages using a team-defined, explicit methodology such as `work stage -> required equipment`.
-- **Success:** A reviewer can inspect and verify why an equipment observation is relevant to the selected stage.
+- Intent: Connect observed equipment to specific construction stages using a team-defined, explicit methodology such as `work stage -> required equipment`.
+- Success: A reviewer can inspect and verify why an equipment observation is relevant to the selected stage.
 
 Example from the assignment: excavation-pit work requires an excavator and dump trucks.
 
 ### CAP-3 - Detect deviations
 
-- **Intent:** Automatically identify anomalies defined by the team's stage-to-equipment methodology.
-- **Success:** The prototype detects and visualizes at least missing equipment required by the plan and equipment inconsistent with the current stage.
+- Intent: Automatically identify anomalies defined by the team's stage-to-equipment methodology.
+- Success: The prototype detects and visualizes at least missing equipment required by the plan and equipment inconsistent with the current stage.
 
 Example from the assignment: during excavation-pit work, an excavator is present but dump trucks are absent; the user receives a warning about a possible reduction in work pace, with the affected zone and supporting image or images.
 
 ### CAP-4 - Visualize results
 
-- **Intent:** Provide the minimum interface necessary to demonstrate the mandatory functions.
-- **Success:** A reviewer can quickly understand the site status, detected equipment, selected work stage, and the reason and evidence for each warning.
+- Intent: Provide the minimum interface necessary to demonstrate the mandatory functions.
+- Success: A reviewer can quickly understand the site status, detected equipment, selected work stage, and the reason and evidence for each warning.
 
 The final prototype may be a web interface, console application, or API with documented endpoints.
 
 ### CAP-5 - Produce a reproducible demonstration
 
-- **Intent:** Let the jury run or inspect the complete path from image input to analysis result.
-- **Success:** The final submission includes a working prototype, readable source code, setup instructions, presentation, and supporting documentation.
+- Intent: Let the jury run or inspect the complete path from image input to analysis result.
+- Success: The final submission includes a working prototype, readable source code, setup instructions, presentation, and supporting documentation.
 
 ## Inputs and source materials
 
@@ -73,7 +73,7 @@ The final prototype may be a web interface, console application, or API with doc
 
 ## Schedule interpretation
 
-The assignment requires comparison with a construction schedule and refers to equipment inconsistent with the **current stage**. It does not require inferring the construction stage from the image itself.
+The assignment requires comparison with a construction schedule and refers to equipment inconsistent with the current stage. It does not require inferring the construction stage from the image itself.
 
 The assignment does not define how the current stage is selected or derived. An implementation must make that mechanism explicit, for example by selecting it from the supplied plan or deriving it from schedule data when such data exists.
 
@@ -155,7 +155,7 @@ Provide a `.doc` or `.pdf` document describing:
 
 ## Evaluation priorities
 
-Agents should optimize for the following judging criteria:
+The judging criteria are:
 
 1. Completeness of the mandatory functions in the task description.
 2. Recognition quality and robustness across varied examples.
