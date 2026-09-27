@@ -6,7 +6,7 @@ The prototype helps a reviewer inspect construction photographs, identify visibl
 
 A project contains zones, plans and analyses. The user selects a zone, uploads photographs in capture order, supplies capture times and consents to cloud processing. If the selected zone has a saved plan, comparison is enabled by default; the user can opt out. Each submitted analysis keeps its selected plan revision, so later plan edits cannot change its result. The work catalog supplies names and applicability, not a schedule.
 
-The hybrid profile runs both supplied YOLO checkpoints on the server CPU. A multimodal model in Yandex AI Studio reconciles their detections for each photograph, then assesses the photographs and saved context together. Original detector outputs, reconciled boxes, uncertain activity estimates, per-frame stage and work hypotheses, and persistent review signals remain inspectable. The profile using only the multimodal model is also supported; retired DINO/Qwen profiles remain available for historical reading.
+The hybrid profile runs both supplied YOLO checkpoints on the server CPU. The cloud service labelled «Мультимодальная модель» in the interface reconciles their detections for each photograph, then assesses the photographs and saved context together. Original detector outputs, reconciled boxes, uncertain activity estimates, per-frame stage and work hypotheses, and persistent review signals remain inspectable. The profile using only the multimodal model is also supported.
 
 The interface uses Onest typography, a plum palette and a shared project workflow. Visitor support, the interactive training tour and private administration should preserve this visual style and the separation between source evidence and user decisions.
 
@@ -26,4 +26,4 @@ Technical availability and model quality are assessed separately. Successful exe
 
 User-facing API operations currently allow access without sign-in. Private file storage alone does not restrict application access; a restricted deployment needs external access controls. Owner administration requires a password and session, with HTTPS for remote access.
 
-Setup and operating limits are in [README.md](README.md). See [Architecture.md](Architecture.md) for the implementation, [the hybrid runbook](docs/HYBRID_PHOTO_SIGNALS.md) for publication rules and checks, and [the quality review guide](evaluation/hybrid/README.md) for missing acceptance evidence.
+Start with [README.md](README.md) and the [documentation index](docs/README.md). See [the approach](docs/APPROACH.md), [equipment detection](docs/EQUIPMENT_DETECTION.md) and [construction stages](docs/CONSTRUCTION_STAGES.md) for the current behavior, [deployment instructions](infra/deploy/README.md) for setup and operating limits, and [the quality review guide](evaluation/hybrid/README.md) for acceptance requirements.
