@@ -2,6 +2,7 @@ import { randomUUID, createHash } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import type { Plugin } from 'vite'
+import sharp from 'sharp'
 import { FIXED_DATE, PROJECT_A, PROJECT_B, RUN_A, RUN_B, projects, works, photos, makeRun, stageNames } from './fixtures'
 
 type Data = Record<string, any>
@@ -14,6 +15,8 @@ export function createDemoStore(now = Date.now) {
   let plans: Record<string, Data> = {}
   const planVersions = new Map<string, Data>()
   const artifacts = new Map<string, string | Uint8Array>()
+  const covers = new Map<string, string | Uint8Array>()
+  const coverRequests = new Map<string, { projectId: string; body: string; response: Data }>()
   const requests = new Map<string, { body: string; response: Data }>()
   let failNextSubmit = false
   function register(run: Data, images?: string[]) {
@@ -50,8 +53,13 @@ export function createDemoStore(now = Date.now) {
     if (run.result_projection) { run.result_projection.context = run.context; run.result_projection.series.declared_observation_area = run.context.observation_area; run.result_projection.created_signals = runSignals(run).map(({ id, kind, state }) => ({ id, kind, state })) }
   }
   function reset(preset = 'result') {
-    state = preset; failNextSubmit = preset === 'recovery'; requests.clear(); artifacts.clear(); planVersions.clear()
-    projectRows = structuredClone(projects); runs = {}; signals = []; zones = {}; plans = {}
+    state = preset; failNextSubmit = preset === 'recovery'; requests.clear(); artifacts.clear(); covers.clear(); coverRequests.clear(); planVersions.clear()
+    projectRows = structuredClone(projects).map(project => ({ ...project, cover_sha256: project.id === PROJECT_A
+      ? '2dadb850e7a78cca8691763df50d1096d441b7837b1334a26e95d612123aaf9a'
+      : '057ae16749a6a50c522b750ae9cf02bc3a168a89e26d3a263ffb2d9ce394de0c' }))
+    covers.set(PROJECT_A, '/demo/Screenshot_23.jpg')
+    covers.set(PROJECT_B, '/demo/Screenshot_87.jpg')
+    runs = {}; signals = []; zones = {}; plans = {}
     for (const project of projectRows) { zones[project.id] = [{ id: `${project.id}-zone`, name: 'Основной участок' }]; plans[`${project.id}-zone`] = { revision_number: 0, entries: [] } }
     if (preset !== 'empty' && preset !== 'upload') {
       for (const [id, projectId] of [[RUN_A, PROJECT_A], [RUN_B, PROJECT_B]]) {
@@ -91,7 +99,41 @@ export function createDemoStore(now = Date.now) {
     const remember = (data: Data, status = 201) => { const response = ok(data, status); if (cacheKey) requests.set(cacheKey, { body: JSON.stringify(body), response }); return response }
     if (path === '/projects') {
       if (method === 'GET') return ok({ projects: projectRows })
-      if (method === 'POST') { if (!body.name?.trim()) return error('name_required'); const project = { id: randomUUID(), name: body.name.trim(), timezone: body.timezone || 'Europe/Moscow' }; projectRows.push(project); zones[project.id] = [{ id: `${project.id}-zone`, name: 'Основной участок' }]; plans[`${project.id}-zone`] = { revision_number: 0, entries: [] }; return remember(project) }
+      if (method === 'POST') { if (!body.name?.trim()) return error('name_required'); const project = { id: randomUUID(), name: body.name.trim(), timezone: body.timezone || 'Europe/Moscow', cover_sha256: null }; projectRows.push(project); zones[project.id] = [{ id: `${project.id}-zone`, name: 'Основной участок' }]; plans[`${project.id}-zone`] = { revision_number: 0, entries: [] }; return remember(project) }
+    }
+    const coverMatch = path.match(/^\/projects\/([^/]+)\/cover$/)
+    if (coverMatch) {
+      const project = projectRows.find(item => item.id === coverMatch[1])
+      if (!project) return error('project_not_found', 404)
+      if (method === 'GET') return covers.has(project.id)
+        ? { status: 200, data: null, artifact: covers.get(project.id) }
+        : error('project_cover_not_found', 404)
+      if (method === 'PUT') {
+        if (!/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(key)) return error('invalid_idempotency_key')
+        const serialized = JSON.stringify(body)
+        const previous = coverRequests.get(key)
+        if (previous) return previous.projectId === project.id && previous.body === serialized
+          ? previous.response as { status: number; data: Data }
+          : error('idempotency_key_conflict', 409)
+        if (typeof body.data !== 'string' || body.data.length > 7_000_000 || !/^[A-Za-z0-9+/]+={0,2}$/.test(body.data)) return error('invalid_project_cover')
+        const bytes = Buffer.from(body.data, 'base64')
+        if (!bytes.length || bytes.length > 5_000_000) return error('invalid_project_cover')
+        let cover: Buffer
+        try {
+          const input = sharp(bytes, { failOn: 'warning', limitInputPixels: 25_000_000, autoOrient: true })
+          const metadata = await input.metadata()
+          if (!['jpeg', 'png', 'webp'].includes(metadata.format ?? '')) return error('invalid_project_cover')
+          cover = await input.resize({ width: 1600, height: 1600, fit: 'inside', withoutEnlargement: true })
+            .flatten({ background: '#ffffff' }).jpeg({ quality: 82 }).toBuffer()
+          if (!cover.length || cover.length > 5_000_000) return error('invalid_project_cover')
+        } catch { return error('invalid_project_cover') }
+        const digest = createHash('sha256').update(cover).digest('hex')
+        covers.set(project.id, cover)
+        project.cover_sha256 = digest
+        const response = ok({ cover_sha256: digest })
+        coverRequests.set(key, { projectId: project.id, body: serialized, response })
+        return response
+      }
     }
     const zoneMatch = path.match(/^\/projects\/([^/]+)\/zones$/)
     if (zoneMatch) { if (!zones[zoneMatch[1]]) return error('project_not_found', 404); if (method === 'GET') return ok({ zones: zones[zoneMatch[1]] }); if (method === 'POST') { const zone = { id: randomUUID(), name: body.name }; zones[zoneMatch[1]].push(zone); plans[zone.id] = { revision_number: 0, entries: [] }; return ok(zone, 201) } }
@@ -150,7 +192,7 @@ export function demoPlugin(): Plugin {
         for await (const chunk of req) { size += chunk.length; if (size > 180 * 1024 * 1024) { res.writeHead(413).end(); return } chunks.push(chunk) }
         const raw = Buffer.concat(chunks).toString()
         const result = await store.request(req.method || 'GET', req.url, raw ? JSON.parse(raw) : {}, String(req.headers['idempotency-key'] || ''))
-        if (result.artifact) { const bytes = typeof result.artifact === 'string' ? await readFile(resolve(server.config.root, 'public', result.artifact.slice(1))) : result.artifact; res.writeHead(200, { 'Content-Type': bytes[0] === 0x89 ? 'image/png' : 'image/jpeg', 'Cache-Control': 'no-store' }); res.end(bytes); return }
+        if (result.artifact) { const bytes = typeof result.artifact === 'string' ? await readFile(resolve(server.config.root, 'public', result.artifact.slice(1))) : result.artifact; const type = bytes[0] === 0x89 ? 'image/png' : bytes[0] === 0x52 ? 'image/webp' : 'image/jpeg'; res.writeHead(200, { 'Content-Type': type, 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' }); res.end(bytes); return }
         res.writeHead(result.status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }); res.end(JSON.stringify(result.data))
       } catch { res.writeHead(400, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ code: 'invalid_demo_request' })) }
     })

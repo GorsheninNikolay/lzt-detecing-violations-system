@@ -14,3 +14,23 @@
 @media(max-width:767px){.bottom-nav{position:static;grid-template-columns:repeat(auto-fit,minmax(min(100%,8rem),1fr));padding:8px 16px;gap:4px}.bottom-nav a{min-width:0;min-height:44px;white-space:normal;overflow-wrap:anywhere}.page{padding-bottom:48px}.demo-panel{margin-bottom:32px}}
 
 .more-menu .secondary-nav{padding:8px;max-height:calc(100dvh - 96px);overflow-y:auto}.more-menu .secondary-nav>.motion-toggle{position:static;width:100%;min-height:44px;margin:0;white-space:normal}@media(max-width:767px){.more-menu .secondary-nav{max-height:calc(100dvh - 220px)}}
+
+.project-cover,.marquee-slot{position:relative}
+.project-cover-photo,.marquee-cover-photo{position:absolute;inset:0;display:block;width:100%;height:100%;object-fit:cover}
+.project-cover-photo[hidden],.marquee-cover-photo[hidden]{display:none}
+.marquee-slot{overflow:hidden}
+.marquee-slot--photo svg{position:relative;z-index:1;filter:drop-shadow(0 1px 2px #201524);pointer-events:none}
+.demo-disclaimer{display:inline-flex;max-width:none;margin:0 0 24px;padding:6px 12px;border:1px solid var(--border);border-radius:999px;font-weight:650;line-height:1.2}
+.marquee-slot--empty{background:transparent!important;border-color:#846b8a!important}
+.marquee-slot--empty svg{opacity:.48}
+.project-cover-public{max-width:65ch;margin:24px 0 0;color:var(--secondary);font-size:.875rem}
+.project-cover-public+.project-list{margin-top:12px}
+.project-cover-upload{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;min-width:0;margin-top:16px}
+.project-cover-picker{position:relative;display:inline-flex;align-items:center;justify-content:center;min-height:44px;max-width:100%;padding:8px 16px;border:1px solid var(--essential);border-radius:8px;background:var(--raised);color:var(--text);font-weight:600;text-align:center;cursor:pointer}
+.project-cover-picker:hover{background:var(--selected)}
+.project-cover-picker:focus-within{outline:3px solid var(--focus);outline-offset:2px}
+.project-cover-picker.is-disabled{opacity:.62;cursor:not-allowed}
+.project-cover-picker input{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:inherit}
+.project-cover-upload p{flex-basis:100%;margin:0;font-size:.875rem;overflow-wrap:anywhere}
+.project-cover-upload .project-cover-formats{color:var(--secondary)}
+.project-cover-upload .secondary{min-height:44px;white-space:normal;text-align:center}

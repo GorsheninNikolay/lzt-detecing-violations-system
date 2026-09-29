@@ -105,6 +105,8 @@ components:
 
 Dark plum surfaces, large Onest headlines and illustrated architectural covers give project entry a spatial character. Depth belongs to introductory decoration and project presentation. The workflow settles into legible, stable surfaces when the user uploads photographs, inspects geometry or reviews evidence.
 
+In the selected integration, each project card shows its uploaded public cover photograph when present and retains the architectural drawing as the empty-state fallback. The decorative entrance marquee keeps its cube grid: one slot fills for each project, the first four projects occupy the visible third row, and unfilled slots remain outlined. A supplied cover sits behind the cube outline. Project covers are presentation assets; working analysis photographs and annotation geometry remain outside transformed containers.
+
 This is the implemented visual system of this approved experiment, extracted from source and saved headless renders. The metaphor names the approved direction; it does not introduce another concept decision. Product behavior remains governed by [PRODUCT.md](PRODUCT.md) and the approved [experiment brief](docs/design-experiment/SPEC.md).
 
 **Key Characteristics:**

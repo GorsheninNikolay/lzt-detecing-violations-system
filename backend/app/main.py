@@ -1,5 +1,6 @@
 import asyncio
 import json
+import logging
 import os
 import uuid
 from contextlib import asynccontextmanager
@@ -17,7 +18,7 @@ from app.domain.rule import ANALYSIS_CHOICES
 from app.domain.comparison_campaign import CampaignGateError
 from app.config import Config
 from app.profiles.deepseek import DeepSeek
-from app.application.site import router as site_router
+from app.application.site import cleanup_project_covers, router as site_router
 from app.application.signals import router as signals_router
 from app.application.engagement import router as engagement_router
 
@@ -47,6 +48,14 @@ async def lifespan(app: FastAPI):
     app.state.claim_loop = claim_loop
     app.state.store = store
     app.state.artifacts = artifacts
+
+    async def cover_cleanup_loop() -> None:
+        while state.ready.is_set():
+            try:
+                await asyncio.to_thread(cleanup_project_covers, store.engine, artifacts)
+            except Exception:
+                logging.getLogger(__name__).exception("Project cover cleanup will retry")
+            await asyncio.sleep(300)
 
     async def startup() -> None:
         migrations = str(Path(__file__).resolve().parents[1] / "migrations")
@@ -87,6 +96,7 @@ async def lifespan(app: FastAPI):
         state.code = "ready"
         state.ready.set()
         claim_loop.start(state.ready, artifacts)
+        app.state.cover_cleanup_task = asyncio.create_task(cover_cleanup_loop())
         def loop_finished(task: asyncio.Task) -> None:
             if state.ready.is_set():
                 state.ready.clear()
@@ -104,6 +114,13 @@ async def lifespan(app: FastAPI):
             await app.state.startup_task
         except asyncio.CancelledError:
             pass
+        cover_cleanup_task = getattr(app.state, "cover_cleanup_task", None)
+        if cover_cleanup_task is not None:
+            cover_cleanup_task.cancel()
+            try:
+                await cover_cleanup_task
+            except asyncio.CancelledError:
+                pass
         await claim_loop.stop()
         store.close()
 

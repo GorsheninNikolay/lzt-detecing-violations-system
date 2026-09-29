@@ -40,6 +40,7 @@ ENTRY = obj({'catalog_work_id': UUID, 'start_at': TIME, 'end_at': TIME,
                  ('expected_equipment','Ожидаемая техника.'),('allowed_equipment','Допустимая техника.'),('excluded_equipment','Явно исключённая техника.'))}}, ('catalog_work_id','start_at','end_at'))
 BODIES = {
     'create_project': obj({'name': field('string','Непустое название проекта.',minLength=1,maxLength=200),'timezone':field('string','Часовой пояс IANA.',example='Europe/Moscow')}, ('name','timezone')),
+    'replace_project_cover': obj({'data':field('string','JPEG, PNG или WEBP в base64; до 5 МБ после декодирования и до 25 Мп.',contentEncoding='base64')},('data',)),
     'create_zone': obj({'name':field('string','Непустое имя, уникальное в проекте.',minLength=1,maxLength=200)},('name',)),
     'replace_zone_plan': obj({'expected_revision':field('integer','Текущая ревизия; 0 для первого плана.',minimum=0), 'entries':field('array','Работы новой неизменяемой ревизии.',items=ENTRY)},('expected_revision','entries')),
     'update_signal': obj({'state':field('string','Статус ручного разбора.',enum=['new','in_progress','closed']),'comment':TEXT},('state',)),
@@ -61,6 +62,7 @@ SUMMARIES = {
     'read_run':'Прочитать анализ, исходные данные и неизменяемую аналитику', 'list_runs':'История анализов',
     'retry_run':'Явный повтор допустимого сбоя до первого облачного вызова', 'read_run_artifact':'Прочитать проверенный по SHA-256 артефакт',
     'list_catalog':'Каталог строительных работ', 'create_project':'Создать проект', 'list_projects':'Список проектов',
+    'replace_project_cover':'Добавить или заменить обложку проекта', 'read_project_cover':'Получить обложку проекта',
     'create_zone':'Создать участок проекта', 'list_zones':'Участки проекта', 'replace_zone_plan':'Сохранить новую ревизию плана',
     'read_zone_plan':'Прочитать ревизию плана участка', 'list_signals':'Список сигналов для ручной проверки',
     'update_signal':'Изменить статус разбора сигнала', 'confirm_stage':'Отдельно подтвердить этап человеком',
@@ -81,7 +83,9 @@ def array(items, description):
 
 COUNT = field('integer', 'Количество.', minimum=0)
 NULL_UUID = {**UUID, 'type': ['string', 'null']}
-PROJECT = obj({'id':UUID,'name':field('string','Название проекта.'),'timezone':field('string','Часовой пояс IANA.')}, ('id','name','timezone'))
+PROJECT = obj({'id':UUID,'name':field('string','Название проекта.'),'timezone':field('string','Часовой пояс IANA.'),
+               'cover_sha256':field(['string','null'],'SHA-256 текущей обложки для обновления URL после замены.')},
+              ('id','name','timezone','cover_sha256'))
 ZONE = obj({'id':UUID,'project_id':UUID,'name':field('string','Название участка.')}, ('id','name'))
 RISK = obj({'category':field('string','Категория риска для проверки.',enum=['process','plan','safety']),
             'text':field('string','Возможный риск, не подтверждённое нарушение.'),
@@ -133,6 +137,7 @@ RESPONSES = {
     'read_provider_comparison':obj({'campaign':obj({'id':UUID,'revision_number':COUNT,'evaluation_revision_id':UUID}),'candidates':array(field('object','Снимок исторического кандидата.'),'Сравниваемые профили.'),'cells':array(field('object','Измерения ячейки исторической кампании.'),'Сохранённые измерения.')}),
     'list_catalog':obj({'source_sha256':TEXT,'total':COUNT,'works':array(obj({'id':UUID,'source_row':COUNT,'title':TEXT,'code':field(['string','null'],'Исходный код работы.'),'raw_code':{},'applicability':field('object','Ограничения визуальной применимости.')}),'Работы исходного каталога.')}),
     'create_project':obj({**PROJECT['properties'],'default_zone_id':field('string','UUID автоматически созданного основного участка.',format='uuid')},(*PROJECT['required'],'default_zone_id')),'list_projects':obj({'projects':array(PROJECT,'Проекты.')}),
+    'replace_project_cover':obj({'project_id':UUID,'cover_sha256':field('string','SHA-256 опубликованной обложки.')},('project_id','cover_sha256')),
     'create_zone':ZONE,'list_zones':obj({'zones':array(ZONE,'Участки проекта.')}),
     'replace_zone_plan':obj({'revision_id':UUID,'revision_number':COUNT,'entry_count':COUNT}),
     'read_zone_plan':obj({'zone_id':UUID,'revision_id':UUID,'revision_number':COUNT,'created_at':TIME,'entries':array(obj({'id':UUID,'catalog_work_id':UUID,'starts_at':TIME,'ends_at':TIME,'state':TEXT,'stage_key':field(['string','null'],'Этап плана.')}),'Работы сохранённой ревизии.')}),
@@ -215,7 +220,7 @@ def install(app):
                          'Обратная связь' if route.path == '/feedback' else 'Активность' if '/analytics' in route.path else
                          'Состояние и архив' if route.path.startswith(('/health','/readiness','/provider','/stages')) else 'Анализы')
                 operation.update(summary=summary, description=summary + '.', tags=[group])
-                body_limit = {'login':8192,'change_password':8192,'submit_feedback':20_100_000,
+                body_limit = {'login':8192,'change_password':8192,'submit_feedback':20_100_000,'replace_project_cover':8_000_000,
                               'analytics_event':2048,'propose':150_000,'review':150_000,'export':8192}.get(name)
                 if body_limit:
                     operation['description'] += f' Максимальный размер HTTP-тела: {body_limit} байт; превышение возвращает 413.'
@@ -227,8 +232,10 @@ def install(app):
                 if route.path.startswith('/admin') and method != 'GET':
                     for header, description in [('Origin','Точный origin запроса.'),('X-CSRF-Token','Токен из ответа входа или сессии; не нужен для login.')]:
                         parameters.append({'in':'header','name':header,'required':header=='Origin' or name!='login','schema':{'type':'string'},'description':description})
-                if name in ('submit_single_image','submit_feedback','propose','review','create_project'):
-                    parameters.append({'in':'header','name':'Idempotency-Key','required':name != 'create_project','schema':{'type':'string'},'description':'Новый уникальный ключ операции; при потере ответа повторите тот же ключ и тело. Для feedback/annotations нужен UUID.'})
+                if name == 'replace_project_cover':
+                    parameters.append({'in':'header','name':'Origin','required':True,'schema':{'type':'string'},'description':'Точный origin страницы; локальный HTTP через Nginx поддерживается.'})
+                if name in ('submit_single_image','submit_feedback','propose','review','create_project','replace_project_cover'):
+                    parameters.append({'in':'header','name':'Idempotency-Key','required':name != 'create_project','schema':{'type':'string'},'description':'Новый уникальный ключ операции; при потере ответа повторите тот же ключ и тело. Для feedback/annotations/обложки нужен UUID.'})
                 if method in ('POST','PUT','PATCH'):
                     parameters.append({'in':'header','name':'X-Browser-Id','required':False,'schema':{'type':'string','format':'uuid'},'description':'Анонимный идентификатор браузера для атрибуции.'})
                 body = BODIES.get(name)
@@ -248,15 +255,16 @@ def install(app):
                 for code, (description, error) in errors.items():
                     key = 'detail' if route.path.startswith('/admin') or name in ('propose','frame_annotations','submit_feedback','analytics_event') else 'code'
                     operation['responses'][code] = {'description':description,'content':{'application/json':{'schema':obj({key:TEXT},(key,)), 'example':{key:error}}}}
-                if name in ('login','change_password','submit_feedback','analytics_event','propose','export'):
+                if name in ('login','change_password','submit_feedback','replace_project_cover','analytics_event','propose','export'):
                     operation['responses']['429']['headers'] = {'Retry-After':{'description':'Число секунд до следующей попытки.','schema':{'type':'integer','minimum':0}}}
                 success = '202' if name in ('submit_single_image','retry_run') else '201' if name in ('create_project','create_zone') else '200'
                 operation['responses'].pop('200', None)
                 operation['responses'][success] = {'description':'Операция принята в очередь.' if success=='202' else summary + '.', 'content':{'application/json':{'schema':RESPONSES.get(name, {'type':'object'})}}}
-                if name in ('read_run_artifact','thumbnail','feedback_attachment','export'):
+                if name in ('read_run_artifact','thumbnail','feedback_attachment','read_project_cover','export'):
                     media_types = {'export':['application/zip'],'thumbnail':['image/jpeg'],
                                    'read_run_artifact':['image/jpeg','image/png','application/json'],
-                                   'feedback_attachment':['image/jpeg','image/png','image/webp']}[name]
+                                   'feedback_attachment':['image/jpeg','image/png','image/webp'],
+                                   'read_project_cover':['image/jpeg']}[name]
                     operation['responses']['200'] = {'description':'Проверенный файл; для export возвращается ZIP с YOLO/COCO.',
                         'content':{media:{'schema':{'type':'string','format':'binary'}} for media in media_types}}
                 if name == 'ready':

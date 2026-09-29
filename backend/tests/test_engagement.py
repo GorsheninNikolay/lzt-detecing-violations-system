@@ -16,7 +16,7 @@ from app.adapters.postgres import PostgresStore
 from app.adapters.artifacts import ArtifactStore
 from app.config import Config
 from app.application.engagement import router, validate_feedback
-from app.application.site import router as site_router
+from app.application.site import SiteError, _cover_image, cleanup_project_covers, router as site_router
 from app.application.signals import router as signals_router
 from app.application.admin_password import hash_password, verify_password
 
@@ -54,7 +54,7 @@ def service():
         pytest.fail('Test and application buckets must differ')
     store = PostgresStore(os.environ['TEST_DATABASE_URL'])
     with store.engine.begin() as connection:
-        connection.execute(text('TRUNCATE feedback_attachments,feedback,admin_sessions,admin_credentials,request_limits,activity_attribution,anonymous_events,anonymous_sessions,anonymous_browsers,project_requests'))
+        connection.execute(text('TRUNCATE feedback_attachments,feedback,admin_sessions,admin_credentials,request_limits,activity_attribution,anonymous_events,anonymous_sessions,anonymous_browsers,project_requests,project_cover_requests,project_cover_gc'))
     app = FastAPI()
     app.include_router(router)
     app.include_router(site_router)
@@ -138,6 +138,236 @@ def test_feedback_atomic_publication_retry_and_private_images(service, monkeypat
         assert connection.execute(text('SELECT count(*) FROM feedback')).scalar_one() == 1
     monkeypatch.setattr(client.app.state.artifacts.client,'put_object',original)
     assert client.post('/feedback',headers={'idempotency-key':failure_key},json=payload).status_code == 200
+
+
+def test_project_cover_validation_removes_metadata_and_rejects_bad_images():
+    output = io.BytesIO()
+    image = Image.new('RGB', (20, 12), (220, 35, 45))
+    exif = image.getexif()
+    exif[274] = 6
+    image.save(output, format='JPEG', exif=exif)
+    encoded = base64.b64encode(output.getvalue()).decode()
+    payload, measured, size = _cover_image({'data': encoded})
+    assert len(payload) == size and len(measured) == 64
+    with Image.open(io.BytesIO(payload)) as cover:
+        assert cover.format == 'JPEG' and cover.size == (12, 20)
+        assert not cover.getexif()
+    for image_format in ('PNG', 'WEBP'):
+        output = io.BytesIO()
+        Image.new('RGB', (12, 12), (35, 120, 180)).save(output, format=image_format)
+        assert _cover_image({'data': base64.b64encode(output.getvalue()).decode()})[2] > 0
+    for invalid in ({'data': 'not base64'}, {'data': base64.b64encode(b'<svg/>').decode()},
+                    {'data': base64.b64encode(output.getvalue()[:12]).decode()}, {'other': encoded}):
+        with pytest.raises(SiteError, match='invalid_cover'):
+            _cover_image(invalid)
+    with pytest.raises(SiteError) as error:
+        _cover_image({'data': base64.b64encode(b'x' * 5_000_001).decode()})
+    assert error.value.status == 413
+
+
+class CoverObjects:
+    def __init__(self):
+        self.objects = {}
+
+    def put_object(self, *, Key, Body, IfNoneMatch=None, **kwargs):
+        if IfNoneMatch == '*' and Key in self.objects:
+            error = RuntimeError('already exists')
+            error.response = {'ResponseMetadata': {'HTTPStatusCode': 412}}
+            raise error
+        self.objects[Key] = Body
+
+    def head_object(self, *, Key, **kwargs):
+        if Key not in self.objects:
+            error = RuntimeError('missing')
+            error.response = {'ResponseMetadata': {'HTTPStatusCode': 404}}
+            raise error
+        return {'ContentLength': len(self.objects[Key])}
+
+    def get_object(self, *, Key, **kwargs):
+        return {'Body': io.BytesIO(self.objects[Key])}
+
+    def delete_object(self, *, Key, **kwargs):
+        self.objects.pop(Key, None)
+
+    def get_paginator(self, name):
+        class EmptyVersions:
+            def paginate(self, **kwargs):
+                return [{}]
+        return EmptyVersions()
+
+
+def test_public_project_cover_replacement_is_isolated_and_retry_safe(service, monkeypatch):
+    client, _ = service
+    client.app.state.artifacts.client = CoverObjects()
+    first = client.post('/projects', json={'name': 'Cover A', 'timezone': 'UTC'}).json()
+    second = client.post('/projects', json={'name': 'Cover B', 'timezone': 'UTC'}).json()
+    assert first['cover_sha256'] is None
+    first_path = f"/projects/{first['id']}/cover"
+    second_path = f"/projects/{second['id']}/cover"
+    assert client.get(first_path).status_code == 404
+    assert client.get(second_path).status_code == 404
+    headers = {'origin': 'https://testserver', 'idempotency-key': str(uuid4())}
+    assert client.put(first_path, headers={'idempotency-key': headers['idempotency-key']}, json={'data': image_data()}).status_code == 403
+    first_upload = client.put(first_path, headers=headers, json={'data': image_data()})
+    assert first_upload.status_code == 200, first_upload.text
+    assert client.put(first_path, headers=headers, json={'data': image_data()}).json() == first_upload.json()
+    assert client.put(second_path, headers=headers, json={'data': image_data()}).status_code == 409
+    other_image = io.BytesIO()
+    Image.new('RGB', (8, 8), (220, 20, 30)).save(other_image, format='PNG')
+    replacement = {'data': base64.b64encode(other_image.getvalue()).decode()}
+    assert client.put(first_path, headers=headers, json=replacement).status_code == 409
+    listed = {item['id']: item for item in client.get('/projects').json()['projects']}
+    assert listed[first['id']]['cover_sha256'] == first_upload.json()['cover_sha256']
+    assert listed[second['id']]['cover_sha256'] is None
+    image = client.get(first_path)
+    assert image.status_code == 200 and image.headers['content-type'] == 'image/jpeg'
+    assert image.headers['x-content-type-options'] == 'nosniff'
+    with Image.open(io.BytesIO(image.content)) as cover:
+        cover.verify()
+    with TestClient(client.app, base_url='https://testserver') as other_visitor:
+        assert other_visitor.get(first_path).content == image.content
+    replacement_key = {'origin': 'https://testserver', 'idempotency-key': str(uuid4())}
+    changed = client.put(first_path, headers=replacement_key, json=replacement)
+    assert changed.status_code == 200 and changed.json()['cover_sha256'] != first_upload.json()['cover_sha256']
+    assert client.get(first_path).content != image.content
+    assert client.get(second_path).status_code == 404
+    assert client.put(f'/projects/{uuid4()}/cover', headers={**replacement_key, 'idempotency-key': str(uuid4())}, json=replacement).status_code == 404
+    assert client.get(f'/projects/{uuid4()}/cover').status_code == 404
+    with monkeypatch.context() as patch:
+        patch.setattr(client.app.state.artifacts.client, 'get_object', lambda **kwargs: {'Body': io.BytesIO(b'wrong')})
+        assert client.get(first_path).status_code == 503
+
+
+def test_failed_cover_storage_preserves_prior_cover_and_can_retry(service, monkeypatch):
+    client, store = service
+    client.app.state.artifacts.client = CoverObjects()
+    project = client.post('/projects', json={'name': 'Durable cover', 'timezone': 'UTC'}).json()
+    path = f"/projects/{project['id']}/cover"
+    image = {'data': image_data()}
+    headers = {'origin': 'https://testserver', 'idempotency-key': str(uuid4())}
+    original = client.put(path, headers=headers, json=image)
+    assert original.status_code == 200
+    other_image = io.BytesIO()
+    Image.new('RGB', (8, 8), (1, 200, 50)).save(other_image, format='PNG')
+    changed_image = {'data': base64.b64encode(other_image.getvalue()).decode()}
+    retry_headers = {'origin': 'https://testserver', 'idempotency-key': str(uuid4())}
+    with monkeypatch.context() as patch:
+        patch.setattr(client.app.state.artifacts.client, 'put_object', lambda **kwargs: (_ for _ in ()).throw(OSError('unavailable')))
+        assert client.put(path, headers=retry_headers, json=changed_image).status_code == 503
+    with store.engine.connect() as connection:
+        assert connection.execute(text('SELECT cover_sha256 FROM site_projects WHERE id=:id'),
+                                  {'id': project['id']}).scalar_one() == original.json()['cover_sha256']
+    assert client.put(path, headers=retry_headers, json=changed_image).status_code == 200
+
+
+def test_project_cover_request_bounds_and_throttle(service):
+    client, _ = service
+    project = client.post('/projects', json={'name': 'Limited cover', 'timezone': 'UTC'}).json()
+    path = f"/projects/{project['id']}/cover"
+    headers = {'origin': 'https://testserver', 'idempotency-key': str(uuid4())}
+    assert client.put(path, headers=headers, json={'data': 'broken'}).status_code == 400
+    assert client.put(path, headers=headers, content=b'x' * 8_000_001).status_code == 413
+    for _ in range(10):
+        assert client.put(path, headers=headers, json={'data': 'broken'}).status_code == 400
+    denied = client.put(path, headers=headers, json={'data': image_data()})
+    assert denied.status_code == 429 and denied.headers['retry-after'] == '3600'
+    assert client.get(path).status_code == 404
+
+
+def test_project_cover_upload_accepts_http_same_origin(service):
+    client, _ = service
+    client.app.state.artifacts.client = CoverObjects()
+    project = client.post('/projects', json={'name': 'Local HTTP', 'timezone': 'UTC'}).json()
+    path = f"/projects/{project['id']}/cover"
+    with TestClient(client.app, base_url='http://testserver') as local:
+        headers = {'origin': 'http://testserver', 'idempotency-key': str(uuid4())}
+        assert local.put(path, headers=headers, json={'data': image_data()}).status_code == 200
+        assert local.get(path).status_code == 200
+        assert local.put(path, headers={**headers, 'origin': 'https://other.example'},
+                         json={'data': image_data()}).status_code == 403
+
+
+def test_project_cover_proxy_limit_uses_distinct_validated_addresses(service, monkeypatch):
+    client, _ = service
+    monkeypatch.setenv('PROJECT_COVER_TRUST_PROXY_IP', '1')
+    project = client.post('/projects', json={'name': 'Proxy visitors', 'timezone': 'UTC'}).json()
+    path = f"/projects/{project['id']}/cover"
+    headers = {'origin': 'https://testserver', 'idempotency-key': str(uuid4())}
+    assert client.put(path, headers={**headers, 'x-real-ip': 'spoofed'}, json={'data': 'bad'}).status_code == 503
+    for _ in range(12):
+        assert client.put(path, headers={**headers, 'x-real-ip': '203.0.113.10'}, json={'data': 'bad'}).status_code == 400
+    assert client.put(path, headers={**headers, 'x-real-ip': '203.0.113.10'}, json={'data': 'bad'}).status_code == 429
+    assert client.put(path, headers={**headers, 'x-real-ip': '203.0.113.11'}, json={'data': 'bad'}).status_code == 400
+
+
+def test_project_cover_cleanup_waits_for_readers_and_keeps_current_object(service, monkeypatch):
+    client, store = service
+    objects = CoverObjects()
+    client.app.state.artifacts.client = objects
+    project = client.post('/projects', json={'name': 'Cover cleanup', 'timezone': 'UTC'}).json()
+    path = f"/projects/{project['id']}/cover"
+    headers = {'origin': 'https://testserver', 'idempotency-key': str(uuid4())}
+    first = client.put(path, headers=headers, json={'data': image_data()}).json()
+    newer_image = io.BytesIO()
+    Image.new('RGB', (8, 8), (40, 130, 220)).save(newer_image, format='PNG')
+    replacement = client.put(path, headers={**headers, 'idempotency-key': str(uuid4())},
+                             json={'data': base64.b64encode(newer_image.getvalue()).decode()}).json()
+    old_key = f"project-covers/{project['id']}/{first['cover_sha256']}"
+    new_key = f"project-covers/{project['id']}/{replacement['cover_sha256']}"
+    cleanup_project_covers(store.engine, client.app.state.artifacts)
+    assert old_key in objects.objects and new_key in objects.objects
+    with store.engine.begin() as connection:
+        connection.execute(text("UPDATE project_cover_gc SET not_before=clock_timestamp()-interval '1 second'"))
+    with monkeypatch.context() as patch:
+        patch.setattr(objects, 'delete_object', lambda **kwargs: (_ for _ in ()).throw(OSError('temporary S3 error')))
+        cleanup_project_covers(store.engine, client.app.state.artifacts)
+    assert old_key in objects.objects
+    with store.engine.begin() as connection:
+        connection.execute(text("UPDATE project_cover_gc SET not_before=clock_timestamp()-interval '1 second'"))
+    cleanup_project_covers(store.engine, client.app.state.artifacts)
+    assert old_key not in objects.objects and new_key in objects.objects
+    assert client.get(path).status_code == 200
+    with store.engine.begin() as connection:
+        connection.execute(text("""INSERT INTO project_cover_gc(project_id,sha256,not_before)
+            VALUES (:project,:hash,clock_timestamp()-interval '1 second')"""),
+            {'project': project['id'], 'hash': replacement['cover_sha256']})
+    cleanup_project_covers(store.engine, client.app.state.artifacts)
+    assert new_key in objects.objects
+    with store.engine.connect() as connection:
+        assert connection.execute(text('SELECT count(*) FROM project_cover_gc')).scalar_one() == 0
+
+
+def test_project_cover_db_failure_queues_unreferenced_blob(service):
+    client, store = service
+    objects = CoverObjects()
+    client.app.state.artifacts.client = objects
+    project = client.post('/projects', json={'name': 'Failed pointer', 'timezone': 'UTC'}).json()
+    path = f"/projects/{project['id']}/cover"
+    headers = {'origin': 'https://testserver', 'idempotency-key': str(uuid4())}
+    original = client.put(path, headers=headers, json={'data': image_data()}).json()
+    output = io.BytesIO()
+    Image.new('RGB', (8, 8), (15, 230, 35)).save(output, format='PNG')
+    changed = {'data': base64.b64encode(output.getvalue()).decode()}
+    abandoned_hash = _cover_image(changed)[1]
+    def fail_cover_update(connection, cursor, statement, parameters, context, executemany):
+        if statement.startswith('UPDATE site_projects SET cover_sha256'):
+            raise RuntimeError('database write failed')
+    event.listen(store.engine, 'before_cursor_execute', fail_cover_update)
+    try:
+        failed = client.put(path, headers={**headers, 'idempotency-key': str(uuid4())}, json=changed)
+    finally:
+        event.remove(store.engine, 'before_cursor_execute', fail_cover_update)
+    assert failed.status_code == 503
+    assert client.get('/projects').json()['projects'][-1]['cover_sha256'] == original['cover_sha256']
+    abandoned_key = f"project-covers/{project['id']}/{abandoned_hash}"
+    assert abandoned_key in objects.objects
+    with store.engine.begin() as connection:
+        assert connection.execute(text("""SELECT count(*) FROM project_cover_gc
+            WHERE project_id=:project AND sha256=:hash"""),
+            {'project': project['id'], 'hash': abandoned_hash}).scalar_one() == 1
+        connection.execute(text("UPDATE project_cover_gc SET not_before=clock_timestamp()-interval '1 second'"))
+    cleanup_project_covers(store.engine, client.app.state.artifacts)
+    assert abandoned_key not in objects.objects and client.get(path).status_code == 200
 
 
 def test_sessions_dedup_project_attribution_and_statistics(service):

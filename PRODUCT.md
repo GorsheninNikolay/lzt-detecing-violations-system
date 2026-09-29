@@ -6,6 +6,8 @@ The prototype helps a reviewer inspect construction photographs, identify visibl
 
 A project contains zones, plans and analyses. The user selects a zone, uploads photographs in capture order, supplies capture times and consents to cloud processing. If the selected zone has a saved plan, comparison is enabled by default; the user can opt out. Each submitted analysis keeps its selected plan revision, so later plan edits cannot change its result. The work catalog supplies names and applicability, not a schedule.
 
+A project may also have a public cover photograph, separate from analysis evidence. Any visitor can add or replace the cover. Project cards use that photograph when available; the entrance marquee fills one decorative cube per project and gives the first projects visible space on its third row. Cover changes never alter observations or model results.
+
 The hybrid profile runs both supplied YOLO checkpoints on the server CPU. The cloud service labelled «Мультимодальная модель» in the interface reconciles their detections for each photograph, then assesses the photographs and saved context together. Original detector outputs, reconciled boxes, uncertain activity estimates, per-frame stage and work hypotheses, and persistent review signals remain inspectable. The profile using only the multimodal model is also supported.
 
 The selected 3D visual world uses local Onest typography and a dark plum palette. [DESIGN.md](DESIGN.md) and [.impeccable/design.json](.impeccable/design.json) record its tokens and presentation motion. Visitor support, training and private administration preserve the shared project workflow and evidence boundaries.

@@ -1,5 +1,13 @@
 """Source-bound work catalog and manually versioned zone plans."""
 
+import asyncio
+import base64
+import binascii
+import io
+import ipaddress
+import logging
+import os
+import warnings
 from datetime import datetime, timedelta
 from hashlib import sha256
 from pathlib import Path
@@ -10,11 +18,14 @@ import json
 import re
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from fastapi import APIRouter, Request
-from fastapi.responses import JSONResponse
+from fastapi import APIRouter, HTTPException, Request
+from fastapi.responses import JSONResponse, Response
+from PIL import Image, ImageOps, UnidentifiedImageError
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from app.application.activity import attribute
+from app.application.engagement import body as limited_body, identifier, limit, require_origin
+from app.adapters.artifacts import ArtifactGateError
 
 
 router = APIRouter()
@@ -187,12 +198,13 @@ def create_project(request: Request, body: dict):
                 if previous:
                     if previous.body_sha256 != body_hash:
                         raise SiteError("idempotency_key_conflict", 409)
-                    return previous.response
+                    return {**previous.response, "cover_sha256": None}
             connection.execute(text("INSERT INTO site_projects (id,name,timezone) VALUES (:id,:name,:timezone)"),
                                {"id": project_id, "name": name.strip(), "timezone": tz})
             connection.execute(text("INSERT INTO site_zones (id,project_id,name) VALUES (:id,:project,'Основной участок')"),
                                {"id": zone_id, "project": project_id})
-            result = {"id": str(project_id), "name": name.strip(), "timezone": tz, "default_zone_id": str(zone_id)}
+            result = {"id": str(project_id), "name": name.strip(), "timezone": tz,
+                      "default_zone_id": str(zone_id), "cover_sha256": None}
             attribute(connection, request.headers.get("x-browser-id"), "project", project_id)
             if request_key:
                 connection.execute(text("INSERT INTO project_requests(request_key,body_sha256,response) VALUES (:key,:hash,CAST(:response AS jsonb))"), {"key":request_key,"hash":body_hash,"response":json.dumps(result)})
@@ -205,8 +217,198 @@ def create_project(request: Request, body: dict):
 def list_projects(request: Request):
     try:
         with _engine(request).connect() as connection:
-            rows = connection.execute(text("SELECT id,name,timezone FROM site_projects ORDER BY created_at,id")).all()
-        return {"projects": [{"id": str(row.id), "name": row.name, "timezone": row.timezone} for row in rows]}
+            rows = connection.execute(text("SELECT id,name,timezone,cover_sha256 FROM site_projects ORDER BY created_at,id")).all()
+        return {"projects": [{"id": str(row.id), "name": row.name, "timezone": row.timezone,
+                              "cover_sha256": row.cover_sha256} for row in rows]}
+    except SiteError as error:
+        return _response(error)
+
+
+def _cover_image(value: dict) -> tuple[bytes, str, int]:
+    if set(value) != {"data"} or not isinstance(value["data"], str):
+        raise SiteError("invalid_cover")
+    try:
+        raw = base64.b64decode(value["data"], validate=True)
+    except (binascii.Error, ValueError):
+        raise SiteError("invalid_cover") from None
+    if not raw:
+        raise SiteError("invalid_cover")
+    if len(raw) > 5_000_000:
+        raise SiteError("cover_too_large", 413)
+    try:
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", Image.DecompressionBombWarning)
+            with Image.open(io.BytesIO(raw)) as image:
+                if image.format not in {"JPEG", "PNG", "WEBP"} or image.width * image.height > 25_000_000:
+                    raise ValueError()
+                image.verify()
+            with Image.open(io.BytesIO(raw)) as image:
+                image.load()
+                oriented = ImageOps.exif_transpose(image)
+                oriented.thumbnail((1600, 1600), Image.Resampling.LANCZOS)
+                if "A" in oriented.getbands() or "transparency" in oriented.info:
+                    rgba = oriented.convert("RGBA")
+                    cover = Image.new("RGB", rgba.size, "#ffffff")
+                    cover.paste(rgba, mask=rgba.getchannel("A"))
+                else:
+                    cover = oriented.convert("RGB")
+                output = io.BytesIO()
+                cover.save(output, format="JPEG", quality=82, optimize=True)
+    except (ValueError, OSError, UnidentifiedImageError, Image.DecompressionBombError, Image.DecompressionBombWarning):
+        raise SiteError("invalid_cover") from None
+    payload = output.getvalue()
+    return payload, sha256(payload).hexdigest(), len(payload)
+
+
+def _cover_client_ip(request: Request) -> str:
+    if os.getenv("PROJECT_COVER_TRUST_PROXY_IP") != "1":
+        return request.client.host if request.client else "unknown"
+    try:
+        return str(ipaddress.ip_address(request.headers["x-real-ip"]))
+    except (KeyError, ValueError):
+        raise SiteError("cover_client_ip_unavailable", 503) from None
+
+
+def _cover_key(project_id: UUID, cover_hash: str) -> str:
+    return f"project-covers/{project_id}/{cover_hash}"
+
+
+def _queue_cover_cleanup(connection, project_id: UUID, cover_hash: str) -> None:
+    connection.execute(text("""INSERT INTO project_cover_gc(project_id,sha256,not_before)
+        VALUES (:project,:hash,clock_timestamp() + interval '10 minutes')
+        ON CONFLICT(project_id,sha256) DO UPDATE SET
+        not_before=greatest(project_cover_gc.not_before,excluded.not_before)"""),
+        {"project": project_id, "hash": cover_hash})
+
+
+def _queue_unreferenced_cover(request: Request, project_id: UUID, cover_hash: str) -> None:
+    try:
+        with request.app.state.store.engine.begin() as connection:
+            current = connection.execute(text("SELECT cover_sha256 FROM site_projects WHERE id=:id FOR UPDATE"),
+                                         {"id": project_id}).first()
+            if current is not None and current.cover_sha256 != cover_hash:
+                _queue_cover_cleanup(connection, project_id, cover_hash)
+    except Exception:
+        logging.getLogger(__name__).exception("Could not queue abandoned project cover")
+
+
+def cleanup_project_covers(engine, artifacts, batch_size: int = 10) -> None:
+    with engine.connect() as connection:
+        due = connection.execute(text("""SELECT project_id,sha256 FROM project_cover_gc
+            WHERE not_before <= clock_timestamp() ORDER BY not_before LIMIT :limit"""),
+            {"limit": batch_size}).all()
+    for project_id, cover_hash in due:
+        with engine.begin() as connection:
+            current = connection.execute(text("SELECT cover_sha256 FROM site_projects WHERE id=:id FOR UPDATE"),
+                                         {"id": project_id}).first()
+            queued = connection.execute(text("""SELECT 1 FROM project_cover_gc
+                WHERE project_id=:project AND sha256=:hash AND not_before <= clock_timestamp()
+                FOR UPDATE SKIP LOCKED"""), {"project": project_id, "hash": cover_hash}).first()
+            if queued is None:
+                continue
+            if current is None or current.cover_sha256 != cover_hash:
+                try:
+                    artifacts._delete_report_temporary(_cover_key(project_id, cover_hash))
+                except Exception:
+                    connection.execute(text("""UPDATE project_cover_gc
+                        SET not_before=clock_timestamp() + interval '10 minutes'
+                        WHERE project_id=:project AND sha256=:hash"""),
+                        {"project": project_id, "hash": cover_hash})
+                    logging.getLogger(__name__).warning("Project cover cleanup will retry", exc_info=True)
+                    continue
+            connection.execute(text("DELETE FROM project_cover_gc WHERE project_id=:project AND sha256=:hash"),
+                               {"project": project_id, "hash": cover_hash})
+
+
+@router.put("/projects/{project_id}/cover")
+async def replace_project_cover(project_id: UUID, request: Request):
+    try:
+        _engine(request)
+        require_origin(request)
+        await asyncio.to_thread(limit, request, "project_cover", 12, 3600,
+                                client_ip=_cover_client_ip(request))
+        key = identifier(request.headers.get("idempotency-key"))
+        value, body_hash = await limited_body(request, 8_000_000)
+        payload, cover_hash, size = await asyncio.to_thread(_cover_image, value)
+        return await asyncio.to_thread(_replace_project_cover, project_id, request, key,
+                                       body_hash, payload, cover_hash, size)
+    except SiteError as error:
+        return _response(error)
+
+
+def _replace_project_cover(project_id: UUID, request: Request, key: UUID, body_hash: str,
+                           payload: bytes, cover_hash: str, size: int) -> dict:
+    attempted_store = False
+    try:
+        with _engine(request).begin() as connection:
+            connection.execute(text("SELECT pg_advisory_xact_lock(:lock)"), {"lock": key.int % (2**63)})
+            previous = connection.execute(text("""SELECT project_id,body_sha256,response
+                FROM project_cover_requests WHERE request_key=:key"""), {"key": key}).first()
+            if previous:
+                if previous.project_id != project_id or previous.body_sha256 != body_hash:
+                    raise SiteError("idempotency_key_conflict", 409)
+                return previous.response
+            project = connection.execute(text("SELECT cover_sha256 FROM site_projects WHERE id=:id FOR UPDATE"),
+                                         {"id": project_id}).first()
+            if project is None:
+                raise SiteError("project_not_found", 404)
+            artifacts = request.app.state.artifacts
+            object_key = _cover_key(project_id, cover_hash)
+            try:
+                attempted_store = True
+                try:
+                    artifacts.client.put_object(Bucket=artifacts.bucket, Key=object_key, Body=payload,
+                                                ContentType="image/jpeg", IfNoneMatch="*")
+                except Exception as error:
+                    status = getattr(error, "response", {}).get("ResponseMetadata", {}).get("HTTPStatusCode")
+                    if status not in (409, 412):
+                        raise
+                artifacts._verify(object_key, cover_hash, size)
+            except Exception:
+                raise SiteError("cover_storage_unavailable", 503) from None
+            connection.execute(text("""UPDATE site_projects SET cover_sha256=:hash,cover_size=:size
+                WHERE id=:project"""), {"hash": cover_hash, "size": size, "project": project_id})
+            if project.cover_sha256 and project.cover_sha256 != cover_hash:
+                _queue_cover_cleanup(connection, project_id, project.cover_sha256)
+            result = {"project_id": str(project_id), "cover_sha256": cover_hash}
+            connection.execute(text("""INSERT INTO project_cover_requests(request_key,project_id,body_sha256,response)
+                VALUES (:key,:project,:hash,CAST(:response AS jsonb))"""),
+                {"key": key, "project": project_id, "hash": body_hash, "response": json.dumps(result)})
+            return result
+    except SiteError:
+        if attempted_store:
+            _queue_unreferenced_cover(request, project_id, cover_hash)
+        raise
+    except Exception:
+        if attempted_store:
+            _queue_unreferenced_cover(request, project_id, cover_hash)
+        raise SiteError("cover_update_unavailable", 503) from None
+
+
+@router.get("/projects/{project_id}/cover")
+def read_project_cover(project_id: UUID, request: Request):
+    try:
+        with _engine(request).connect() as connection:
+            row = connection.execute(text("SELECT cover_sha256,cover_size FROM site_projects WHERE id=:id"),
+                                     {"id": project_id}).first()
+        if row is None:
+            raise SiteError("project_not_found", 404)
+        if row.cover_sha256 is None:
+            raise SiteError("cover_not_found", 404)
+        try:
+            artifacts = request.app.state.artifacts
+            object_key = _cover_key(project_id, row.cover_sha256)
+            response = artifacts.client.get_object(Bucket=artifacts.bucket, Key=object_key)
+            try:
+                payload = response["Body"].read(row.cover_size + 1)
+            finally:
+                response["Body"].close()
+            if len(payload) != row.cover_size or sha256(payload).hexdigest() != row.cover_sha256:
+                raise ArtifactGateError("artifact_integrity_failed")
+        except Exception:
+            raise SiteError("cover_unavailable", 503) from None
+        return Response(payload, media_type="image/jpeg",
+                        headers={"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"})
     except SiteError as error:
         return _response(error)
 

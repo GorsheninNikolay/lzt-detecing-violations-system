@@ -10,4 +10,8 @@ Demo presets are available in the disclosure at the end of the page. Selecting a
 
 The fixed photography and manually prepared boxes demonstrate interaction and evidence presentation, not model quality. No real backend write is part of verification.
 
+The selected 3D integration adds persistent public project cover uploads. Any visitor can replace a cover; the browser and backend decode and resize it, output JPEG, and strip source metadata. Covers are separate from analysis evidence. The local demo keeps cover changes in memory and uses the two existing demonstration photographs for its initial project covers. The compact `Демо` marker and the state-panel explanation remain demo-only.
+
+In this integration worktree `npm run dev:demo` uses strict port `5177`; the original three experiment branches retain `5174`–`5176`. The historical comparison scripts below still address those three original branches. Cover API/storage details are in [PROJECT_COVERS.md](PROJECT_COVERS.md).
+
 Comparison, full commit manifest, screenshots and verification history are saved under `/private/tmp/lzt-design-experiment/`; start with [COMPARISON.md](../../../COMPARISON.md). Final source verification is recorded in [final-validation-summary.json](../../../final-validation-summary.json). Root DESIGN.md and .impeccable/design.json document this branch's approved visual world.

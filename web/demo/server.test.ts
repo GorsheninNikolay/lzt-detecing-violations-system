@@ -1,4 +1,8 @@
 import { describe, expect, it } from 'vitest'
+import { createHash, randomUUID } from 'node:crypto'
+import { readFile } from 'node:fs/promises'
+import { resolve } from 'node:path'
+import sharp from 'sharp'
 import { createDemoStore } from './server'
 import { PROJECT_A, PROJECT_B, RUN_A } from './fixtures'
 describe('isolated demonstration contract', () => {
@@ -97,4 +101,35 @@ it('rejects an annotation frame segment that only contains a valid frame id', as
   const input = run.inputs[0]
   expect((await store.request('POST', `/api/runs/${RUN_A}/frames/wrong-${input.input_id}-suffix/annotations`, { input_sha256: input.sha256, objects: [] })).status).toBe(409)
   expect((await store.request('GET', `/api/runs/${RUN_A}`)).data.annotations).toBeUndefined()
+})
+
+it('keeps uploaded project covers isolated, replayable and resettable', async () => {
+  const store = createDemoStore()
+  const initial = (await store.request('GET', '/api/projects')).data.projects
+  expect(initial[0].cover_sha256).not.toBe(initial[1].cover_sha256)
+  expect((await store.request('GET', `/api/projects/${PROJECT_A}/cover`)).artifact).toBe('/demo/Screenshot_23.jpg')
+  const bytes = await readFile(resolve('public/demo/Screenshot_25.jpg'))
+  const body = { data: bytes.toString('base64') }
+  const key = randomUUID()
+  const uploaded = await store.request('PUT', `/api/projects/${PROJECT_A}/cover`, body, key)
+  expect(uploaded.status).toBe(200)
+  const image = (await store.request('GET', `/api/projects/${PROJECT_A}/cover?revision=${uploaded.data.cover_sha256}`)).artifact as Uint8Array
+  expect(uploaded.data.cover_sha256).toBe(createHash('sha256').update(image).digest('hex'))
+  expect((await sharp(image).metadata()).format).toBe('jpeg')
+  expect((await sharp(image).metadata()).exif).toBeUndefined()
+  expect(await store.request('PUT', `/api/projects/${PROJECT_A}/cover`, body, key)).toEqual(uploaded)
+  expect((await store.request('PUT', `/api/projects/${PROJECT_A}/cover`, { data: 'changed' }, key)).status).toBe(409)
+  expect((await store.request('PUT', `/api/projects/${PROJECT_B}/cover`, body, key)).status).toBe(409)
+  expect((await store.request('PUT', `/api/projects/${PROJECT_A}/cover`, body)).status).toBe(400)
+  expect((await store.request('PUT', `/api/projects/${PROJECT_A}/cover`, { data: Buffer.from('not a photograph').toString('base64') }, randomUUID())).status).toBe(400)
+  expect((await store.request('PUT', '/api/projects/missing/cover', body, randomUUID())).status).toBe(404)
+  const current = (await store.request('GET', '/api/projects')).data.projects
+  expect(current[0].cover_sha256).toBe(uploaded.data.cover_sha256)
+  expect(current[1].cover_sha256).toBe(initial[1].cover_sha256)
+  expect(Buffer.from(image).equals(bytes)).toBe(false)
+  const corrupt = Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), Buffer.alloc(40)])
+  expect((await store.request('PUT', `/api/projects/${PROJECT_A}/cover`, { data: corrupt.toString('base64') }, randomUUID())).status).toBe(400)
+  await store.request('POST', '/api/__demo/state', { state: 'result' })
+  expect((await store.request('GET', '/api/projects')).data.projects[0].cover_sha256).toBe(initial[0].cover_sha256)
+  expect((await store.request('GET', `/api/projects/${PROJECT_A}/cover`)).artifact).toBe('/demo/Screenshot_23.jpg')
 })

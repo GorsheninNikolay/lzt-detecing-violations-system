@@ -41,8 +41,8 @@ def identifier(value):
         raise HTTPException(400, 'invalid_identifier') from None
 
 
-def limit(request, scope, maximum, seconds=60):
-    identity = digest(request.client.host if request.client else 'unknown')
+def limit(request, scope, maximum, seconds=60, *, client_ip=None):
+    identity = digest(client_ip if client_ip is not None else request.client.host if request.client else 'unknown')
     bucket = int(time.time()) // seconds
     with engine(request).begin() as connection:
         count = connection.execute(text('''INSERT INTO request_limits(scope,identity,bucket,count)

@@ -61,7 +61,9 @@ services:
       context: ../..
       dockerfile: infra/deploy/backend.Dockerfile
     restart: unless-stopped
-    environment: *backend_environment
+    environment:
+      <<: *backend_environment
+      PROJECT_COVER_TRUST_PROXY_IP: "1"
     volumes:
       - ../../artifacts/Models:/app/artifacts/Models:ro
     depends_on:

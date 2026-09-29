@@ -9,8 +9,11 @@ export default function DemoPanel() {
       const response = await fetch('/api/__demo/state', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ state }) })
       if (!response.ok) throw new Error()
       for (const key of ['observation-pending', 'observation-pending-id', 'onboarding-training-request']) sessionStorage.removeItem(key)
+      for (const key of Object.keys(sessionStorage)) if (key.startsWith('project-cover-pending:')) sessionStorage.removeItem(key)
       for (const key of Object.keys(localStorage)) if (key.startsWith('annotation:')) localStorage.removeItem(key)
-      await new Promise<void>((resolve, reject) => { const request = indexedDB.deleteDatabase('observation-recovery'); request.onsuccess = () => resolve(); request.onerror = () => reject(request.error); request.onblocked = () => reject(new Error('storage_busy')) })
+      for (const name of ['observation-recovery', 'project-cover-recovery']) {
+        await new Promise<void>((resolve, reject) => { const request = indexedDB.deleteDatabase(name); request.onsuccess = () => resolve(); request.onerror = () => reject(request.error); request.onblocked = () => reject(new Error('storage_busy')) })
+      }
       location.href = state === 'empty' || state === 'result' ? '/' : state === 'upload' || state === 'recovery' ? '/projects/11111111-1111-4111-8111-111111111111/new' : '/projects/11111111-1111-4111-8111-111111111111/runs/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
     } catch { setError('Сброс не выполнен. Повторите.'); setBusy(false) }
   }
