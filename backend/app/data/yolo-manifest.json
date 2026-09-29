@@ -44,7 +44,7 @@
     {
       "id": "kaggle",
       "filename": "kaggle.pt",
-      "sha256": "215ee62fbe670d846affc120e9a626d24dd1fadf7723578123845aab8babca31",
+      "sha256": "72aca9714df472790f26d383a364202075e951f8a66b83e4bdb0ebde012cdef1",
       "classes": [
         "Dump truck",
         "Excavator",
