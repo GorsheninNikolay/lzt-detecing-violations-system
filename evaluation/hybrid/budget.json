@@ -1170,6 +1170,206 @@
       },
       "actual_estimate_rub": "4.5747",
       "response_id": "a807100a-d5ce-4e83-8f7a-ea7239f8023c"
+    },
+    {
+      "id": "dc336ae1-468c-4d74-81ed-5238c1cadaa1",
+      "purpose": "hybrid/frame",
+      "request_sha256": "740ed36ba0afffdae288e30d22ef95c3c68f47905cd7b8c1d71688476e3a3418",
+      "upper_rub": "318.6688",
+      "status": "received_usage",
+      "at": "2026-09-27T23:12:22.867654+00:00",
+      "usage": {
+        "input_tokens": 4386,
+        "input_tokens_details": {
+          "cached_tokens": 0,
+          "valid": true,
+          "tool_tokens": 0
+        },
+        "output_tokens": 1522,
+        "output_tokens_details": {
+          "reasoning_tokens": 0,
+          "valid": true
+        },
+        "total_tokens": 5908,
+        "valid": true
+      },
+      "actual_estimate_rub": "2.0768",
+      "response_id": "83311100-6139-41cb-9276-82b09569f486"
+    },
+    {
+      "id": "6767e2c4-708e-4707-b94a-ef6ebd5a10bd",
+      "purpose": "hybrid/frame",
+      "request_sha256": "a76a83f9ac2b91399368b1729771118af81248eb7c71fc9fea317540c756d710",
+      "upper_rub": "318.6688",
+      "status": "received_usage",
+      "at": "2026-09-27T23:12:34.042626+00:00",
+      "usage": {
+        "input_tokens": 3868,
+        "input_tokens_details": {
+          "cached_tokens": 0,
+          "valid": true,
+          "tool_tokens": 0
+        },
+        "output_tokens": 1176,
+        "output_tokens_details": {
+          "reasoning_tokens": 0,
+          "valid": true
+        },
+        "total_tokens": 5044,
+        "valid": true
+      },
+      "actual_estimate_rub": "1.7484",
+      "response_id": "a5325ca7-5848-4bf1-be2d-2402a5913338"
+    },
+    {
+      "id": "830acca1-965d-47c2-bb78-eeffc06c39af",
+      "purpose": "hybrid/frame",
+      "request_sha256": "994a7a7f1093a56ad946911da1b24462061cfdd8878ba7f4fb9b7fa504cd2de8",
+      "upper_rub": "318.6688",
+      "status": "received_usage",
+      "at": "2026-09-27T23:12:45.750242+00:00",
+      "usage": {
+        "input_tokens": 4544,
+        "input_tokens_details": {
+          "cached_tokens": 0,
+          "valid": true,
+          "tool_tokens": 0
+        },
+        "output_tokens": 1863,
+        "output_tokens_details": {
+          "reasoning_tokens": 0,
+          "valid": true
+        },
+        "total_tokens": 6407,
+        "valid": true
+      },
+      "actual_estimate_rub": "2.2947",
+      "response_id": "60dfa6f2-be05-4b27-922f-20b6dfd5e676"
+    },
+    {
+      "id": "38217158-1eee-4ae2-b2b0-9336068b684d",
+      "purpose": "hybrid/assessment",
+      "request_sha256": "1d8924d49e54d9d37499c95e64e4ac1b6dbdbf19360784db4a77fac8a056d566",
+      "upper_rub": "318.6688",
+      "status": "received_usage",
+      "at": "2026-09-27T23:12:56.929695+00:00",
+      "usage": {
+        "input_tokens": 14127,
+        "input_tokens_details": {
+          "cached_tokens": 0,
+          "valid": true,
+          "tool_tokens": 0
+        },
+        "output_tokens": 2526,
+        "output_tokens_details": {
+          "reasoning_tokens": 0,
+          "valid": true
+        },
+        "total_tokens": 16653,
+        "valid": true
+      },
+      "actual_estimate_rub": "5.5011",
+      "response_id": "bcaf6c99-2c22-4304-90f6-0921d221f7a7"
+    },
+    {
+      "id": "5ee37fdb-1507-49f5-8b54-115cfb2266af",
+      "purpose": "hybrid/frame",
+      "request_sha256": "e9cbe74b58effd0d87df071e01215becb3eae88332168e8f892205569f98fe2e",
+      "upper_rub": "318.6688",
+      "status": "received_usage",
+      "at": "2026-09-29T09:50:58.890509+00:00",
+      "usage": {
+        "input_tokens": 4340,
+        "input_tokens_details": {
+          "cached_tokens": 0,
+          "valid": true,
+          "tool_tokens": 0
+        },
+        "output_tokens": 1456,
+        "output_tokens_details": {
+          "reasoning_tokens": 0,
+          "valid": true
+        },
+        "total_tokens": 5796,
+        "valid": true
+      },
+      "actual_estimate_rub": "2.03",
+      "response_id": "deead24b-6de4-46f2-9ab3-2493be73a5e2"
+    },
+    {
+      "id": "df948f7e-7f79-4aa1-96cc-6b171e3308c6",
+      "purpose": "hybrid/frame",
+      "request_sha256": "c0c0c35ca0da6e87407515bbc02a176e055a5b56641ed1e2ff5662425bd472d7",
+      "upper_rub": "318.6688",
+      "status": "received_usage",
+      "at": "2026-09-29T09:51:10.729754+00:00",
+      "usage": {
+        "input_tokens": 3986,
+        "input_tokens_details": {
+          "cached_tokens": 0,
+          "valid": true,
+          "tool_tokens": 0
+        },
+        "output_tokens": 1001,
+        "output_tokens_details": {
+          "reasoning_tokens": 0,
+          "valid": true
+        },
+        "total_tokens": 4987,
+        "valid": true
+      },
+      "actual_estimate_rub": "1.6963",
+      "response_id": "1c2cfa58-132f-462c-b97e-b23536d05421"
+    },
+    {
+      "id": "ba437230-12ba-4075-8e01-4f836ddc1b03",
+      "purpose": "hybrid/frame",
+      "request_sha256": "53a15eb7e35a4188245a4c17d384db4eb78f8f26ed134de4d5889f1a9684d56b",
+      "upper_rub": "318.6688",
+      "status": "received_usage",
+      "at": "2026-09-29T09:51:21.332904+00:00",
+      "usage": {
+        "input_tokens": 4546,
+        "input_tokens_details": {
+          "cached_tokens": 0,
+          "valid": true,
+          "tool_tokens": 0
+        },
+        "output_tokens": 1664,
+        "output_tokens_details": {
+          "reasoning_tokens": 0,
+          "valid": true
+        },
+        "total_tokens": 6210,
+        "valid": true
+      },
+      "actual_estimate_rub": "2.1958",
+      "response_id": "a040b019-df71-4952-aabb-eeb21eafb3ab"
+    },
+    {
+      "id": "125bb213-2677-4d01-a04b-46b601aa117a",
+      "purpose": "hybrid/assessment",
+      "request_sha256": "f4220757e05458b7296285e412fde9acd55eb3205ef235f025f2f26ae1ceb9a3",
+      "upper_rub": "318.6688",
+      "status": "received_usage",
+      "at": "2026-09-29T09:51:32.171272+00:00",
+      "usage": {
+        "input_tokens": 13905,
+        "input_tokens_details": {
+          "cached_tokens": 0,
+          "valid": true,
+          "tool_tokens": 0
+        },
+        "output_tokens": 3875,
+        "output_tokens_details": {
+          "reasoning_tokens": 0,
+          "valid": true
+        },
+        "total_tokens": 17780,
+        "valid": true
+      },
+      "actual_estimate_rub": "6.109",
+      "response_id": "d851ee99-2fc9-4240-b486-4997472bfbb4"
     }
   ]
 }
