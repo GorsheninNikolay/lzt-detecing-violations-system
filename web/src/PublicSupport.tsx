@@ -1,3 +1,4 @@
+import { randomUUID } from './randomUUID'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { startActivity, track } from './engagement'
 import OnboardingTour, { type Training } from './OnboardingTour'
@@ -32,13 +33,13 @@ function tabKey(): Promise<string> {
       const claim = (key: string) => {
         if (!navigator.locks) { sessionStorage.setItem('feedback-tab', key); resolve(key); return }
         void navigator.locks.request(`feedback-tab:${key}`, { ifAvailable: true }, async lock => {
-          if (!lock) { claim(crypto.randomUUID()); return }
+          if (!lock) { claim(randomUUID()); return }
           sessionStorage.setItem('feedback-tab', key)
           resolve(key)
           await new Promise(() => {})
         }).catch(reject)
       }
-      claim(sessionStorage.getItem('feedback-tab') ?? crypto.randomUUID())
+      claim(sessionStorage.getItem('feedback-tab') ?? randomUUID())
     } catch (error) { reject(error) }
   })
   return draftIdentity
@@ -110,7 +111,7 @@ function Feedback({ projectId, analysisId, close }: { projectId?: string; analys
     setBusy(true); setError('')
     const generation = lifecycle.current
     const current = () => active.current && generation === lifecycle.current
-    const frozen = draft.frozen ?? { key: crypto.randomUUID(), body: JSON.stringify({ category: draft.category, message: draft.message, context: draft.includeContext ? context : {}, attachments: draft.pictures.map(({ data }) => ({ data })) }) }
+    const frozen = draft.frozen ?? { key: randomUUID(), body: JSON.stringify({ category: draft.category, message: draft.message, context: draft.includeContext ? context : {}, attachments: draft.pictures.map(({ data }) => ({ data })) }) }
     const next = { ...draft, frozen }
     setDraft(next)
     try {

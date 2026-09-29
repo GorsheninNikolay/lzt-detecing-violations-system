@@ -1466,6 +1466,18 @@ describe('New Analysis', () => {
     provenance: 'demonstration rule', recommendation: 'Проверить вручную',
   } }, { id: 'other', label: 'Другой этап', rule: null }] }
 
+  it('accepts images when randomUUID is unavailable on an HTTP origin', async () => {
+    let sequence = 0
+    vi.stubGlobal('crypto', { getRandomValues: (bytes: Uint8Array) => { bytes.fill(++sequence); return bytes } })
+    render(<App />)
+    fireEvent.drop(screen.getByRole('group', { name: 'Загрузка кадров' }), {
+      dataTransfer: { files: [image('first.jpg'), image('second.jpg')] },
+    })
+    expect(await screen.findByText('second.jpg')).toBeTruthy()
+    expect(screen.getAllByRole('img', { name: /Предпросмотр: кадр/ })).toHaveLength(2)
+    expect(screen.queryByText('Не удалось проверить выбранные изображения. Повторите выбор файлов.')).toBeNull()
+  })
+
   it('validates dropped files, previews accepted frames, and releases removed previews', async () => {
     const user = userEvent.setup()
     const create = vi.fn().mockReturnValueOnce('blob:first').mockReturnValueOnce('blob:second').mockReturnValueOnce('blob:restored')

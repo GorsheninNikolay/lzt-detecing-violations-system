@@ -1,3 +1,4 @@
+import { randomUUID } from './randomUUID'
 let browser = ''
 let identity: Promise<string> | undefined
 
@@ -5,9 +6,9 @@ export function browserIdentity(): Promise<string> {
   if (!identity) identity = (async () => {
     const read = () => {
       try {
-        browser = localStorage.getItem('construction-browser') ?? crypto.randomUUID()
+        browser = localStorage.getItem('construction-browser') ?? randomUUID()
         localStorage.setItem('construction-browser', browser)
-      } catch { browser = crypto.randomUUID() }
+      } catch { browser = randomUUID() }
       return browser
     }
     return navigator.locks ? navigator.locks.request('construction-browser', read) : read()
@@ -21,7 +22,7 @@ export function attributionHeaders(): Record<string, string> {
 
 export async function track(kind: 'visit' | 'wizard_started' | 'wizard_completed' | 'wizard_skipped') {
   try {
-    const body = JSON.stringify({ browser_id: await browserIdentity(), event_id: crypto.randomUUID(), kind })
+    const body = JSON.stringify({ browser_id: await browserIdentity(), event_id: randomUUID(), kind })
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
         const response = await fetch('/api/analytics/events', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body, signal: AbortSignal.timeout(5000) })

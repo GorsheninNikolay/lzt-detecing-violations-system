@@ -1,3 +1,4 @@
+import { randomUUID } from './randomUUID'
 import { equipmentLabels, equipmentLabel } from './displayLabels'
 import { useEffect, useRef, useState, type PointerEvent } from 'react'
 import './annotations.css'
@@ -157,14 +158,14 @@ export function AnnotationEditor({ runId, inputId, checksum, artifactId, initial
       const end=point(event.clientX,event.clientY)
       const box:AnnotationObject['box']=[Math.min(start.x,end.x),Math.min(start.y,end.y),Math.max(start.x,end.x),Math.max(start.y,end.y)]
       if((box[2]-box[0])*bounds.width<4 || (box[3]-box[1])*bounds.height<4)return
-      const id=crypto.randomUUID();edit([...current,{id,class_name:'excavator',box}]);select(id);setMode('select')
+      const id=randomUUID();edit([...current,{id,class_name:'excavator',box}]);select(id);setMode('select')
       requestAnimationFrame(()=>classSelect.current?.focus())
     }
   }
   const boxStyle=(box:AnnotationObject['box'])=>({left:`${box[0]*100}%`,top:`${box[1]*100}%`,width:`${(box[2]-box[0])*100}%`,height:`${(box[3]-box[1])*100}%`})
   async function submit(status: string) {
     if (geometryPending || (!draft.pending && status === 'approved' && (!imageLoaded || imageError || !draft.verified))) return
-    const pending = draft.pending ?? { key: crypto.randomUUID(), body: JSON.stringify(review ? { expected_revision: draft.reviewRevision ?? review.revision, objects: current, status, whole_frame_verified: draft.verified, reason: draft.reason } : { input_sha256: checksum, objects: current }) }
+    const pending = draft.pending ?? { key: randomUUID(), body: JSON.stringify(review ? { expected_revision: draft.reviewRevision ?? review.revision, objects: current, status, whole_frame_verified: draft.verified, reason: draft.reason } : { input_sha256: checksum, objects: current }) }
     const next = { ...draft, pending, completed:false }
     try { localStorage.setItem(storage,JSON.stringify(next)) } catch { setStorageError(true); setMessage('Не удалось сохранить запрос перед отправкой. Освободите локальное хранилище и повторите.'); return }
     setDraft(next); setBusy(true); setMessage('')
@@ -185,7 +186,7 @@ export function AnnotationEditor({ runId, inputId, checksum, artifactId, initial
   return <section className="annotation-editor" aria-label={review ? 'Проверка разметки' : 'Исправление разметки'}>
     <p>Редактируется отдельная копия. Исходные наблюдения и выводы сохраняются.</p>
     {storageError && <p role="alert" className="error">Локальное сохранение недоступно. Не закрывайте страницу до успешной отправки.</p>}
-    <div className="annotation-tools"><button disabled={locked || draft.cursor === 0} onClick={() => persist({ ...draft, cursor:draft.cursor-1, verified:false,geometry:{},completed:false })}>Отменить</button><button disabled={locked || draft.cursor === draft.history.length-1} onClick={() => persist({ ...draft, cursor:draft.cursor+1, verified:false,geometry:{},completed:false })}>Повторить правку</button><button className="geometry-control" disabled={locked || current.length >= 300} onClick={() => { const id = crypto.randomUUID(); edit([...current,{id,class_name:'excavator',box:[.25,.25,.5,.5]}]); select(id) }}>Добавить объект</button></div>
+    <div className="annotation-tools"><button disabled={locked || draft.cursor === 0} onClick={() => persist({ ...draft, cursor:draft.cursor-1, verified:false,geometry:{},completed:false })}>Отменить</button><button disabled={locked || draft.cursor === draft.history.length-1} onClick={() => persist({ ...draft, cursor:draft.cursor+1, verified:false,geometry:{},completed:false })}>Повторить правку</button><button className="geometry-control" disabled={locked || current.length >= 300} onClick={() => { const id = randomUUID(); edit([...current,{id,class_name:'excavator',box:[.25,.25,.5,.5]}]); select(id) }}>Добавить объект</button></div>
     <div className="annotation-tools" aria-label="Инструменты фотографии">{([['select','Выбрать'],['draw','Нарисовать объект'],['pan','Двигать фото']] as const).map(([value,label])=><button key={value} aria-pressed={mode===value} disabled={value==='draw' && (locked || current.length>=300)} onClick={()=>setMode(value)}>{label}</button>)}<button onClick={()=>setView({...view,zoom:Math.min(6,view.zoom+.5)})}>Увеличить фото</button><button onClick={()=>setView({...view,zoom:Math.max(1,view.zoom-.5)})}>Уменьшить фото</button><button onClick={()=>setView({zoom:1,x:0,y:0})}>Вписать фото</button><output aria-label="Масштаб фото">{Math.round(view.zoom*100)}%</output></div>
     {current.length>=300&&<p role="status">Достигнут предел: 300 объектов. Удалите объект, чтобы добавить новый.</p>}
     <p>Выберите рамку или нарисуйте новую. Стрелки перемещают объект; Shift + стрелки меняют размер. Два пальца меняют масштаб фотографии.</p>

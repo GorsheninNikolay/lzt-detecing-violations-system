@@ -1,3 +1,4 @@
+import { randomUUID } from './randomUUID'
 import { ProjectCover, EntryScene, OverviewScene } from './VariantDesign'
 import ProjectCoverUpload from './ProjectCoverUpload'
 import { useMotionPreference } from './MotionPreference'
@@ -420,7 +421,7 @@ async function siteRequest<T>(path: string, method = 'GET', body?: object, signa
   if (signal?.aborted) controller.abort()
   let timeout: ReturnType<typeof setTimeout> | undefined
   const read = async () => {
-    const response = await fetch(`/api${path}`, { method, signal: controller.signal, ...(body ? { headers: { 'Content-Type': 'application/json', ...attributionHeaders(), ...(path === '/projects' && method === 'POST' ? { 'Idempotency-Key': requestKey ?? crypto.randomUUID() } : {}) }, body: JSON.stringify(body) } : {}) })
+    const response = await fetch(`/api${path}`, { method, signal: controller.signal, ...(body ? { headers: { 'Content-Type': 'application/json', ...attributionHeaders(), ...(path === '/projects' && method === 'POST' ? { 'Idempotency-Key': requestKey ?? randomUUID() } : {}) }, body: JSON.stringify(body) } : {}) })
     if (!response.ok) throw new Error((await response.json().catch(() => ({})) as { code?: string }).code ?? 'request_failed')
     return response.json() as Promise<T>
   }
@@ -524,7 +525,7 @@ function ProjectList({ heading, projects, loaded, navigate, onCreated, onCoverUp
   return <section className="projects-entry" aria-labelledby="projects-heading"><div className="page-intro"><EntryScene projects={projects} /><h1 id="projects-heading" ref={heading} tabIndex={-1}>Проекты</h1><p>Создайте проект, загрузите фотографии и рассмотрите результат. План можно добавить позже.</p><p>Общий список доступен всем посетителям без регистрации.</p></div>
     {loaded && projects.length > 0 && <p className="project-cover-public">Обложки видны всем. Любой посетитель может их заменить.</p>}
     {!loaded ? <p role="status">Загружаем проекты…</p> : projects.length ? <ul className="project-list">{projects.map(project => <li className="panel project-card" key={project.id}><ProjectCover project={project} /><div className="project-card-copy"><h2><a href={`/projects/${project.id}`} onClick={event => { event.preventDefault(); navigate(`/projects/${project.id}`) }}>{project.name}</a></h2><p>{project.timezone}</p><a className="project-open" href={`/projects/${project.id}`} onClick={event => { event.preventDefault(); navigate(`/projects/${project.id}`) }}>Открыть проект <span aria-hidden="true">→</span></a><ProjectCoverUpload project={project} onUpdated={sha => onCoverUpdated(project.id, sha)} /></div></li>)}</ul> : <p className="panel">Проектов пока нет. Введите название; основной участок создастся автоматически.</p>}
-    <details className="project-create-action" open={!projects.length}><summary>Создать новый проект</summary><form className="panel project-create" onSubmit={event => { event.preventDefault(); setBusy(true); setError(''); const body = { name: name.trim(), timezone }; const serialized = JSON.stringify(body); if (pendingCreation.current?.body !== serialized) pendingCreation.current = { body: serialized, key: crypto.randomUUID() }; void siteRequest<Project>('/projects', 'POST', body, undefined, pendingCreation.current.key).then(onCreated).catch(() => setError('Не удалось создать проект. Проверьте название и повторите попытку.')).finally(() => setBusy(false)) }}><label className="field" htmlFor="project-name">Название проекта<input id="project-name" required maxLength={200} value={name} onChange={event => setName(event.target.value)} /></label><details><summary>Дополнительные настройки</summary><label className="field" htmlFor="project-timezone">Часовой пояс<input id="project-timezone" required value={timezone} onChange={event => setTimezone(event.target.value)} /></label></details><button className="primary" disabled={busy || !name.trim()}>{busy ? 'Создаём…' : 'Создать проект'}</button>{error && <p className="error" role="alert">{error}</p>}</form></details><p><a href="/archive" onClick={event => { event.preventDefault(); navigate('/archive') }}>Архив анализов без проекта</a></p></section>
+    <details className="project-create-action" open={!projects.length}><summary>Создать новый проект</summary><form className="panel project-create" onSubmit={event => { event.preventDefault(); setBusy(true); setError(''); const body = { name: name.trim(), timezone }; const serialized = JSON.stringify(body); if (pendingCreation.current?.body !== serialized) pendingCreation.current = { body: serialized, key: randomUUID() }; void siteRequest<Project>('/projects', 'POST', body, undefined, pendingCreation.current.key).then(onCreated).catch(() => setError('Не удалось создать проект. Проверьте название и повторите попытку.')).finally(() => setBusy(false)) }}><label className="field" htmlFor="project-name">Название проекта<input id="project-name" required maxLength={200} value={name} onChange={event => setName(event.target.value)} /></label><details><summary>Дополнительные настройки</summary><label className="field" htmlFor="project-timezone">Часовой пояс<input id="project-timezone" required value={timezone} onChange={event => setTimezone(event.target.value)} /></label></details><button className="primary" disabled={busy || !name.trim()}>{busy ? 'Создаём…' : 'Создать проект'}</button>{error && <p className="error" role="alert">{error}</p>}</form></details><p><a href="/archive" onClick={event => { event.preventDefault(); navigate('/archive') }}>Архив анализов без проекта</a></p></section>
 }
 
 function ProjectOverview({ projectId, projectName, heading, navigate }: { projectId: string; projectName?: string; heading: RefObject<HTMLHeadingElement | null>; navigate: (path: string) => void }) {
@@ -1014,7 +1015,7 @@ export default function App() {
     try {
       let saved = sessionStorage.getItem('onboarding-training-request')
       if (!saved) {
-        saved = JSON.stringify({ key: crypto.randomUUID(), body: { name: 'Учебный проект · знакомство с системой', timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC' } })
+        saved = JSON.stringify({ key: randomUUID(), body: { name: 'Учебный проект · знакомство с системой', timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC' } })
         sessionStorage.setItem('onboarding-training-request', saved)
       }
       const request = JSON.parse(saved) as { key: string; body: { name: string; timezone: string } }
@@ -1070,7 +1071,7 @@ export default function App() {
         const hash = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', await readFile(file))))
           .map(byte => byte.toString(16).padStart(2, '0')).join('')
         if (hash !== frame.sha256) throw new Error('asset_integrity')
-        return { id: crypto.randomUUID(), file }
+        return { id: randomUUID(), file }
       })), new Promise<never>((_, reject) => {
         timeout = setTimeout(() => { controller.abort(); reject(new Error('demo_timeout')) }, 10000)
       })])
@@ -1112,7 +1113,7 @@ export default function App() {
         if (next.length >= MAX_FRAMES) { rejected.push('Можно добавить не более 8 кадров.'); break }
         const error = await validateImage(file)
         if (error) rejected.push(`${file.name}: ${error}`)
-        else next.push({ id: crypto.randomUUID(), file })
+        else next.push({ id: randomUUID(), file })
       }
       if (!mounted.current || routeRef.current !== 'new' || generation !== demoGeneration.current) return
       updateFrames(next)
@@ -1305,7 +1306,7 @@ export default function App() {
           capture_times: approvedFrames.map(frame => periodWithOffset(captureTimes[frame.id] ?? period)) } : {}),
         ...(images.length === 1 ? { image_base64: images[0] } : { images_base64: images }),
       })
-      const request = { endpoint: images.length === 1 ? '/api/runs/single-image' : '/api/runs/series', body, key: crypto.randomUUID() }
+      const request = { endpoint: images.length === 1 ? '/api/runs/single-image' : '/api/runs/series', body, key: randomUUID() }
       await storePending(request)
       setPending(request)
       if (generation !== demoGeneration.current) return

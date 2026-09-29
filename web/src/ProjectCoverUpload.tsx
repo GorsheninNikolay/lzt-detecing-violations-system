@@ -1,3 +1,4 @@
+import { randomUUID } from './randomUUID'
 import { useEffect, useState } from 'react'
 import { attributionHeaders } from './engagement'
 import type { ProjectVisual } from './VariantDesign'
@@ -181,7 +182,7 @@ export default function ProjectCoverUpload({ project, onUpdated }: { project: Pr
         setError(cause instanceof Error && cause.message === 'output_too_large' ? 'После подготовки фотография больше 5 МБ. Выберите другое изображение.' : 'Не удалось прочитать фотографию. Выберите другой файл JPEG, PNG или WEBP.')
         return
       }
-      const request = { body, key: crypto.randomUUID() }
+      const request = { body, key: randomUUID() }
       try { await savePending(project.id, request) }
       catch {
         setError('Новая обложка не отправлена: браузер не смог сохранить запрос для безопасного повтора. Разрешите хранение данных сайта или освободите место, затем выберите фотографию снова.')
