@@ -8,3 +8,5 @@
 [data-appearance=light] .overview-presentation p{color:var(--text)}
 [data-appearance=light] :is(.annotation-editor,.correction-workspace,.stage-confirmation,.pipeline,.evidence-dialog,.feedback-dialog,.signals-detail,.plan-editor){background:var(--surface);color:var(--text);border-color:var(--border)}
 [data-appearance=light] :is(.annotation-box.selected,.object-box.selected){outline-color:var(--accent)}
+
+.page.account-page{box-sizing:border-box;width:100%;max-width:520px;margin-inline:auto;padding:40px 24px 64px}.page.account-page form,.page.account-page label{min-width:0}.page.account-page input{box-sizing:border-box;width:100%;min-width:0}.page.account-page .account-links{font-size:14px;gap:20px}@media(max-width:600px){.page.account-page{padding:28px 16px 48px}}
