@@ -7,7 +7,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 import uvicorn
-from fastapi import FastAPI, Request
+from fastapi import Depends, FastAPI, Request
 from fastapi.responses import JSONResponse, Response
 
 from app.adapters.artifacts import ArtifactGateError, ArtifactStore
@@ -21,6 +21,9 @@ from app.profiles.deepseek import DeepSeek
 from app.application.site import cleanup_project_covers, router as site_router
 from app.application.signals import router as signals_router
 from app.application.engagement import router as engagement_router
+from app.application.accounts import authorize_request, router as accounts_router, current_user, auth_required, require_project, require_entity
+from app.application.assistant import router as assistant_router
+from app.application.trial import router as trial_router
 
 
 MAX_HTTP_BODY_BYTES = 25_100_000
@@ -86,7 +89,7 @@ async def lifespan(app: FastAPI):
                 return
             try:
                 snapshot, _ = store.require_authorized(uuid.UUID(runtime_profile))
-                DeepSeek(snapshot, config.cloud_api_key)
+                DeepSeek(snapshot, config.api_key_for(snapshot))
                 if snapshot.get("observation_contract") == "hybrid-photo-signals-v1":
                     from app.profiles.yolo import detectors
                     await asyncio.to_thread(detectors)
@@ -126,8 +129,11 @@ async def lifespan(app: FastAPI):
 
 
 def create_app() -> FastAPI:
-    app = FastAPI(lifespan=lifespan, root_path=os.getenv("API_ROOT_PATH", ""), docs_url=None, redoc_url=None)
+    app = FastAPI(dependencies=[Depends(authorize_request)], lifespan=lifespan, root_path=os.getenv("API_ROOT_PATH", ""), docs_url=None, redoc_url=None)
     app.state.readiness = Readiness()
+    app.include_router(accounts_router)
+    app.include_router(assistant_router)
+    app.include_router(trial_router)
     app.include_router(site_router)
     app.include_router(signals_router)
     from app.application.annotations import router as annotations_router
@@ -137,9 +143,8 @@ def create_app() -> FastAPI:
     @app.middleware("http")
     async def private_cache(request: Request, call_next):
         response = await call_next(request)
-        if request.url.path.removeprefix(request.scope.get("root_path", "")).startswith("/admin/"):
-            response.headers["Cache-Control"] = "no-store"
-            response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["Cache-Control"] = "no-store"
+        response.headers["X-Content-Type-Options"] = "nosniff"
         return response
 
     @app.get("/health/live")
@@ -153,8 +158,21 @@ def create_app() -> FastAPI:
         return JSONResponse(result, status_code=200 if result["ready"] else 503)
 
     @app.get("/analysis-choices")
-    def analysis_choices() -> dict:
-        return ANALYSIS_CHOICES
+    def analysis_choices() -> JSONResponse:
+        from app.profiles.deepseek import provider_for, provider_label
+        binding = getattr(getattr(app.state, 'claim_loop', None), 'runtime_binding', None)
+        result = {**ANALYSIS_CHOICES, 'cloud_provider': None, 'cloud_provider_label': None,
+                  'cloud_profile_id': None}
+        headers = {'Cache-Control': 'no-store'}
+        if binding is None:
+            return JSONResponse(result, headers=headers)
+        try:
+            profile, _ = app.state.store.require_authorized(binding[0], binding[1])
+            result.update({'cloud_provider': provider_for(profile), 'cloud_provider_label': provider_label(profile),
+                           'cloud_profile_id': str(binding[0])})
+            return JSONResponse(result, headers=headers)
+        except Exception:
+            return JSONResponse({'code': 'cloud_provider_unavailable'}, status_code=503, headers=headers)
 
     @app.post("/runs/single-image")
     @app.post("/runs/series")
@@ -162,9 +180,6 @@ def create_app() -> FastAPI:
         series = request.url.path.removeprefix(request.scope.get("root_path", "")) == "/runs/series"
         if not app.state.readiness.ready.is_set():
             return JSONResponse({"code": "service_not_ready"}, status_code=503)
-        binding = app.state.claim_loop.runtime_binding
-        if binding is None:
-            return JSONResponse({"code": "profile_unauthorized"}, status_code=503)
         try:
             payload = bytearray()
             async for chunk in request.stream():
@@ -172,8 +187,24 @@ def create_app() -> FastAPI:
                     return JSONResponse({"code": "invalid_image_file"}, status_code=400)
                 payload.extend(chunk)
             body = json.loads(payload)
+            if not isinstance(body, dict):
+                raise ValueError()
         except ValueError:
             return JSONResponse({"code": "invalid_request"}, status_code=400)
+        if auth_required():
+            if not body.get("project_id"):
+                return JSONResponse({"code": "project_required"}, status_code=400)
+            try:
+                project = uuid.UUID(body["project_id"])
+                zone = uuid.UUID(body["zone_id"]) if body.get("zone_id") else None
+            except (ValueError, TypeError):
+                return JSONResponse({"code": "invalid_plan_binding"}, status_code=400)
+            require_project(request, project, write=True)
+            if zone:
+                require_entity(request, "zone", zone, write=True)
+        binding = app.state.claim_loop.runtime_binding
+        if binding is None:
+            return JSONResponse({"code": "profile_unauthorized"}, status_code=503)
         try:
             key = request.headers.get("Idempotency-Key")
             snapshot, revision = await asyncio.to_thread(app.state.store.require_authorized, binding[0], binding[1])
@@ -266,9 +297,13 @@ def create_app() -> FastAPI:
             if run["state"] == "failed" and not run["retry_successor_id"] and binding and app.state.readiness.ready.is_set():
                 try:
                     snapshot, _ = await asyncio.to_thread(app.state.store.require_authorized, binding[0], binding[1])
-                    DeepSeek(snapshot, Config.from_env().cloud_api_key)
+                    DeepSeek(snapshot, Config.from_env().api_key_for(snapshot))
                     if run.get("ai_evidence") or run.get("profile_snapshot", {}).get("kind") != "deepseek":
                         raise ValueError("provider_call_not_replayable")
+                    from app.profiles.deepseek import validate_consent, provider_for
+                    if provider_for(run['profile_snapshot']) != provider_for(snapshot):
+                        raise ValueError('cloud_provider_mismatch')
+                    validate_consent(run.get('context', {}), snapshot)
                     run["retry_eligible"] = True
                     run["retry_profile_id"] = str(binding[0])
                     run["retry_authorization_revision"] = binding[1]
@@ -292,10 +327,11 @@ def create_app() -> FastAPI:
             except ValueError:
                 return JSONResponse({"code": "invalid_history_filter"}, status_code=400)
         try:
+            scope = {"user_id": current_user(request)["id"]} if auth_required() else {}
             if project_id is None and raw_unassigned == "false":
-                result = await asyncio.to_thread(app.state.store.list_ordinary, int(raw_offset))
+                result = await asyncio.to_thread(app.state.store.list_ordinary, int(raw_offset), **scope)
             else:
-                result = await asyncio.to_thread(app.state.store.list_ordinary, int(raw_offset), project_id, raw_unassigned == "true")
+                result = await asyncio.to_thread(app.state.store.list_ordinary, int(raw_offset), project_id, raw_unassigned == "true", **scope)
             return JSONResponse(result)
         except AdmissionStoreError as error:
             if str(error) == "project_not_found":
@@ -322,7 +358,14 @@ def create_app() -> FastAPI:
             return JSONResponse({"code": "profile_unauthorized"}, status_code=503)
         try:
             snapshot, revision = await asyncio.to_thread(app.state.store.require_authorized, binding[0], binding[1])
-            DeepSeek(snapshot, Config.from_env().cloud_api_key)
+            from app.profiles.deepseek import provider_for, validate_consent
+            try:
+                if provider_for(source['profile_snapshot']) != provider_for(snapshot):
+                    raise ValueError('cloud_provider_mismatch')
+                validate_consent(source.get('context', {}), snapshot)
+            except ValueError as exc:
+                raise AdmissionStoreError(str(exc)) from None
+            DeepSeek(snapshot, Config.from_env().api_key_for(snapshot))
             successor = await asyncio.to_thread(app.state.store.retry_ordinary, identifier, binding[0], revision,
                                                 snapshot, app.state.artifacts,
                                                 browser_id=request.headers.get("x-browser-id"))
@@ -330,7 +373,7 @@ def create_app() -> FastAPI:
         except AdmissionStoreError as exc:
             code = str(exc)
             return JSONResponse({"code": code}, status_code=404 if code == "run_not_found" else
-                                409 if code in {"retry_ineligible", "retry_source_unavailable", "profile_retired", "provider_call_not_replayable", "cloud_consent_required"} else 503)
+                                409 if code in {"retry_ineligible", "retry_source_unavailable", "profile_retired", "provider_call_not_replayable", "cloud_consent_required", "cloud_provider_mismatch", "cloud_provider_unavailable"} else 503)
         except Exception:
             return JSONResponse({"code": "retry_unavailable"}, status_code=503)
 

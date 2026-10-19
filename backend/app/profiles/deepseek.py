@@ -136,17 +136,23 @@ def validate_usage(response):
     return usage
 
 
-def validate_response(response, model, effort):
+def validate_response(response, model, effort, provider="yandex_ai_studio"):
+    if provider not in ("yandex_ai_studio", "deepseek"):
+        raise ValueError("cloud_provider_unavailable")
     if (not isinstance(response, dict) or response.get('model') not in (model, model.removesuffix('/latest'))
             or not isinstance(response.get('id'), str) or not response['id'].strip()
             or response.get('status') != 'completed' or response.get('error') is not None
             or response.get('incomplete_details') is not None):
         raise ValueError('response_identity_or_status_invalid')
-    if not isinstance(response.get('reasoning'), dict) or (response['reasoning'].get('effort') != effort or response['reasoning'].get('valid') is False):
+    if ((provider == 'yandex_ai_studio' or response.get('reasoning') is not None)
+            and (not isinstance(response.get('reasoning'), dict) or response['reasoning'].get('effort') != effort
+                 or response['reasoning'].get('valid') is False)):
         raise ValueError('response_reasoning_unconfirmed')
     if 'max_output_tokens' in response and (type(response['max_output_tokens']) is not int or response['max_output_tokens'] != MAX_OUTPUT):
         raise ValueError('response_output_limit_mismatch')
-    validate_usage(response)
+    usage = validate_usage(response)
+    if provider == 'deepseek' and effort == 'none' and (usage.get('output_tokens_details') or {}).get('reasoning_tokens', 0):
+        raise ValueError('response_reasoning_unconfirmed')
     output = response.get('output')
     messages = [o for o in output if isinstance(o, dict) and o.get('type') == 'message'] if isinstance(output, list) else []
     if len(messages) != 1 or messages[0].get('role') != 'assistant' or messages[0].get('status', 'completed') != 'completed':
@@ -181,7 +187,41 @@ limits of photographic evidence and need for human verification. Return precisel
 """
 
 
-def snapshot(folder_id):
+def provider_for(profile):
+    code = profile.get('adapter', {}).get('code') if isinstance(profile, dict) else None
+    if code == 'yandex_deepseek':
+        return 'yandex_ai_studio'
+    if code == 'deepseek_direct':
+        return 'deepseek'
+    raise ValueError('cloud_provider_unavailable')
+
+
+def provider_label(profile):
+    return 'DeepSeek' if provider_for(profile) == 'deepseek' else 'Yandex AI Studio'
+
+
+def validate_consent(context, profile):
+    provider = provider_for(profile)
+    if context.get('cloud_processing_consent') is not True:
+        raise ValueError('cloud_consent_required')
+    supplied = context.get('cloud_provider')
+    if 'cloud_provider' in context and supplied not in ('yandex_ai_studio', 'deepseek'):
+        raise ValueError('cloud_provider_unavailable')
+    if supplied != provider and not (supplied is None and provider == 'yandex_ai_studio'):
+        raise ValueError('cloud_provider_mismatch')
+
+
+def snapshot(folder_id=None, provider='yandex_ai_studio'):
+    if provider == 'deepseek':
+        profile = snapshot('direct-placeholder')
+        profile.pop('folder_id')
+        profile.pop('data_logging_enabled')
+        profile.update({'adapter': {'code': 'deepseek_direct', 'version': REVISION},
+                        'endpoint': 'https://api.deepseek.com/responses',
+                        'requested_model_identity': {'id': 'deepseek-flash'}})
+        return profile
+    if provider != 'yandex_ai_studio':
+        raise ValueError('cloud_provider_unavailable')
     if not isinstance(folder_id, str) or not folder_id or not folder_id.replace('-', '').isalnum():
         raise ValueError('invalid_folder_id')
     return {"kind": "deepseek", "adapter": {"code": "yandex_deepseek", "version": REVISION},
@@ -209,7 +249,7 @@ def oriented_image(payload):
 def unsupported_claim(text, pattern):
     for clause in re.split(r'[.!?;\n]|\b(?:но|однако|but|however)\b', text, flags=re.I):
         if re.search(pattern, clause, re.I) and not re.search(
-                r'невозможно|нельзя|недостаточно|нет данных|данных.*нет|не подтвержд|не установл|'
+                r'невозможн(?:о|а|ы)\b|нельзя|недостаточно|нет данных|данных.*нет|не подтвержд|не установл|'
                 r'cannot|insufficient|not (?:verified|confirmed|established)', clause, re.I):
             return True
     return False
@@ -263,7 +303,11 @@ def validate_assessment(value, context):
 class DeepSeek:
     def __init__(self, profile, api_key):
         from app.profiles.hybrid import snapshot as hybrid_snapshot
-        if profile not in (snapshot(profile.get('folder_id')), hybrid_snapshot(profile.get('folder_id'))):
+        provider = provider_for(profile)
+        import os
+        if provider == 'deepseek' and os.environ.get('HYBRID_BUDGET_LEDGER'):
+            raise ValueError('quality_budget_provider_mismatch')
+        if profile not in (snapshot(profile.get('folder_id'), provider), hybrid_snapshot(profile.get('folder_id'), provider)):
             raise ValueError('deepseek_profile_invalid')
         if not api_key:
             raise ValueError('cloud_credential_missing')
@@ -291,11 +335,17 @@ class DeepSeek:
         import os
         from app.shared import quality_budget
         ledger = os.environ.get('HYBRID_BUDGET_LEDGER')
+        if ledger and provider_for(self.profile) != 'yandex_ai_studio':
+            raise ValueError('quality_budget_provider_mismatch')
         reservation = quality_budget.reserve(ledger, 'hybrid/' + kind, digest(canonical_bytes(body))) if ledger else None
         started = time.monotonic()
-        raw = _read_json(request.Request(ENDPOINT, data=canonical_bytes(body), headers={
-            "Authorization": "Api-Key " + self.api_key, "OpenAI-Project": self.profile['folder_id'],
-            "Content-Type": "application/json", "x-data-logging-enabled": "false"}), timeout)
+        direct = provider_for(self.profile) == 'deepseek'
+        headers = {'Content-Type': 'application/json',
+                   'Authorization': ('Bearer ' if direct else 'Api-Key ') + self.api_key}
+        if not direct:
+            headers.update({'OpenAI-Project': self.profile['folder_id'], 'x-data-logging-enabled': 'false'})
+        raw = _read_json(request.Request(self.profile['endpoint'] if direct else ENDPOINT,
+                                        data=canonical_bytes(body), headers=headers), timeout)
         bookkeeping_failed = False
         if reservation:
             try:
@@ -309,7 +359,7 @@ class DeepSeek:
                     bookkeeping_failed = True
         valid, rejection = True, None
         try:
-            value = validate_response(raw, body['model'], 'none')
+            value = validate_response(raw, body['model'], 'none', provider_for(self.profile))
             value = ((hybrid.validate_frame(value, context) if kind == 'frame' else hybrid.validate_assessment(value, context))
                      if is_hybrid else (validate_annotation(value) if kind == 'frame' else validate_assessment(value, context)))
         except (ValueError, TypeError, KeyError, AttributeError) as exc:

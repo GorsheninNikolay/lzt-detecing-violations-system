@@ -9,6 +9,8 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
 
+from app.application.accounts import auth_required, current_user
+
 
 router = APIRouter()
 from app.profiles.deepseek import STAGES as MODEL_STAGES
@@ -49,8 +51,9 @@ def list_signals(request: Request, project_id: uuid.UUID | None = None,
             JOIN zone_plan_entries e ON e.revision_id=r.id
             WHERE e.state <> 'completed' AND e.ends_at < clock_timestamp()
               AND (CAST(:zone AS uuid) IS NULL OR z.id=:zone)
-              AND (CAST(:project AS uuid) IS NULL OR z.project_id=:project)"""),
-            {"zone": zone_id, "project": project_id}).mappings().all()
+              AND (CAST(:project AS uuid) IS NULL OR z.project_id=:project)
+              AND (CAST(:account_user AS uuid) IS NULL OR EXISTS (SELECT 1 FROM project_members pm WHERE pm.project_id=z.project_id AND pm.user_id=:account_user))"""),
+            {"zone": zone_id, "project": project_id, "account_user": current_user(request)["id"] if auth_required() else None}).mappings().all()
         for item in due:
             _insert_signal(connection, run_id=None, zone_id=item["zone_id"],
                            revision_id=item["revision_id"], entry_id=item["entry_id"],
@@ -79,9 +82,10 @@ def list_signals(request: Request, project_id: uuid.UUID | None = None,
             ) frame ON true
             WHERE (CAST(:zone AS uuid) IS NULL OR s.zone_id=:zone)
               AND (CAST(:project AS uuid) IS NULL OR z.project_id=:project)
+              AND (CAST(:account_user AS uuid) IS NULL OR EXISTS (SELECT 1 FROM project_members pm WHERE pm.project_id=z.project_id AND pm.user_id=:account_user))
               AND (CAST(:state AS text) IS NULL OR s.state=:state)
             ORDER BY s.created_at DESC,s.id DESC LIMIT 500"""),
-            {"zone": zone_id, "project": project_id, "state": state}).mappings().all()
+            {"zone": zone_id, "project": project_id, "state": state, "account_user": current_user(request)["id"] if auth_required() else None}).mappings().all()
         counts = connection.execute(text("""SELECT
             count(*) FILTER (WHERE s.state='new') AS new_count,
             count(*) FILTER (WHERE s.state IN ('new','in_progress')) AS open_count,
@@ -91,8 +95,9 @@ def list_signals(request: Request, project_id: uuid.UUID | None = None,
                 AND s.kind = 'insufficient_observations') AS insufficient_data_count
             FROM site_signals s JOIN site_zones z ON z.id=s.zone_id
             WHERE (CAST(:zone AS uuid) IS NULL OR s.zone_id=:zone)
-              AND (CAST(:project AS uuid) IS NULL OR z.project_id=:project)"""),
-            {"zone": zone_id, "project": project_id}).mappings().one()
+              AND (CAST(:project AS uuid) IS NULL OR z.project_id=:project)
+              AND (CAST(:account_user AS uuid) IS NULL OR EXISTS (SELECT 1 FROM project_members pm WHERE pm.project_id=z.project_id AND pm.user_id=:account_user))"""),
+            {"zone": zone_id, "project": project_id, "account_user": current_user(request)["id"] if auth_required() else None}).mappings().one()
     return {"new_count": counts["new_count"], "summary": {
         key: counts[key] for key in ("open_count", "attention_count", "insufficient_data_count")}, "signals": [{**dict(item),
             "id": str(item["id"]), "run_id": str(item["run_id"]) if item["run_id"] else None,

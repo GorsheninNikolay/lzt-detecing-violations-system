@@ -17,6 +17,7 @@ from app.application import executor
 from app.application import admission, submission
 from app.application.submission import SubmissionError, validate_request
 from app.config import Config
+from app.profiles.deepseek import snapshot as cloud_snapshot
 from app.main import MAX_HTTP_BODY_BYTES, create_app
 from test_admission import isolated_admission_database
 from test_startup import database, integration
@@ -278,7 +279,7 @@ def test_mixed_format_submission_passes_each_media_type_to_publication():
         def read_verified(self, key, digest, size):
             pass
 
-    assert submission.submit_series(Store(), Artifacts(), "mixed", body, uuid.uuid4(), 1, {"kind":"deepseek"})[0] == "queued"
+    assert submission.submit_series(Store(), Artifacts(), "mixed", body, uuid.uuid4(), 1, cloud_snapshot('mock-folder'))[0] == "queued"
     assert published == list(zip(originals, ("image/jpeg", "image/png")))
 
 
@@ -357,7 +358,7 @@ def test_duplicate_waits_for_original_without_mutating_it(monkeypatch):
             raise AssertionError("duplicate cannot fail the owner")
 
     monkeypatch.setattr(submission.time, "sleep", lambda *_: None)
-    assert submission.submit(Store(), None, "same-key", request_body(jpeg((0, 0, 0))), uuid.uuid4(), 1, {"kind":"deepseek"}) == ("queued", run)
+    assert submission.submit(Store(), None, "same-key", request_body(jpeg((0, 0, 0))), uuid.uuid4(), 1, cloud_snapshot('mock-folder')) == ("queued", run)
 
 
 def test_http_submission_and_guarded_execution(isolated_admission_database, integration, monkeypatch):

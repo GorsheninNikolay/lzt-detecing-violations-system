@@ -21,6 +21,22 @@ export const stageLabel = (name: string) => lookup(stageLabels, name) ?? 'Эта
 export const signalKindLabel = (name: string) => lookup(signalKindLabels, name) ?? 'Сигнал для проверки'
 export const signalStateLabel = (name: string) => lookup(signalStateLabels, name) ?? 'Состояние не определено'
 
+export type CloudProvider = 'deepseek' | 'yandex_ai_studio'
+export const cloudProviderLabel = (provider: CloudProvider) => provider === 'deepseek' ? 'DeepSeek' : 'Yandex AI Studio'
+export function savedCloudProviderLabel(adapterCode?: string): string | null {
+  return adapterCode === 'deepseek_direct' ? 'DeepSeek' : adapterCode === 'yandex_deepseek' ? 'Yandex AI Studio' : null
+}
+export const cloudErrorLabels: Record<string, string> = {
+  observer_balance_failed: 'На аккаунте облачной модели недостаточно средств. Пополните баланс перед новым анализом.',
+  cloud_provider_mismatch: 'Сервис облачной обработки изменился. Обновите настройки и подтвердите согласие для нового сервиса.',
+  quality_budget_provider_mismatch: 'Для этого облачного сервиса настроен несовместимый бюджет обработки. Проверьте настройки сервера.',
+  cloud_provider_unavailable: 'Облачная обработка пока недоступна. Обновите настройки или проверьте конфигурацию сервера.',
+  deepseek_response_invalid: 'Ответ облачной модели не прошёл проверку. Проверьте сохранённые данные вызова; автоматического повтора не будет.',
+  observer_redirect_rejected: 'Облачный сервис вернул перенаправление. Передача ключа на другой адрес заблокирована.',
+  observer_access_failed: 'Облачный сервис отклонил доступ. Проверьте API-ключ выбранного провайдера.',
+  observer_quota_failed: 'Достигнут лимит запросов облачного сервиса. Подождите перед новым анализом.',
+}
+
 const sceneLabels: Record<string, string> = labels.scenes
 const callStateLabels: Record<string, string> = labels.call_states
 export const sceneLabel = (name: string) => lookup(sceneLabels, name) ?? 'Признак сцены не определён'

@@ -1,7 +1,8 @@
+import { AccountIdentity } from './AccountIdentity'
 import { randomUUID } from './randomUUID'
-import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { startActivity, track } from './engagement'
-import OnboardingTour, { type Training } from './OnboardingTour'
+import { useEffect, useRef, useState, useContext, type ReactNode } from 'react'
+import { startActivity } from './engagement'
+import { type Training } from './OnboardingTour'
 
 export function Modal({ title, children, close }: { title: string; children: ReactNode; close: () => void }) {
   const dialog = useRef<HTMLDialogElement>(null)
@@ -10,18 +11,15 @@ export function Modal({ title, children, close }: { title: string; children: Rea
   useEffect(() => {
     const previous = document.activeElement as HTMLElement | null
     const element = dialog.current!
-    element.showModal?.()
+    if (typeof element.showModal === 'function') element.showModal()
+    else element.setAttribute('open', '')
     const cancel = (event: Event) => { event.preventDefault(); closeRef.current() }
     element.addEventListener('cancel', cancel)
-    return () => { element.removeEventListener('cancel', cancel); element.close?.(); previous?.focus() }
+    return () => { element.removeEventListener('cancel', cancel); if (typeof element.close === 'function') element.close(); else element.removeAttribute('open'); previous?.focus() }
   }, [])
   return <dialog ref={dialog} className="support-dialog" aria-labelledby="support-title"><div className="support-dialog-head"><h2 id="support-title">{title}</h2><button type="button" className="secondary" onClick={close} aria-label="Закрыть">Закрыть</button></div>{children}</dialog>
 }
 
-
-function remembered() {
-  try { return !!localStorage.getItem('construction-onboarding') } catch { return true }
-}
 
 type Picture = { name: string; media: string; data: string; size: number }
 type Draft = { category: string; message: string; includeContext: boolean; pictures: Picture[]; frozen?: { body: string; key: string } }
@@ -44,8 +42,8 @@ function tabKey(): Promise<string> {
   })
   return draftIdentity
 }
-async function draftStore(value?: Draft): Promise<Draft | undefined> {
-  const key = await tabKey()
+async function draftStoreRaw(value?: Draft, accountId = ''): Promise<Draft | undefined> {
+  const key = `${accountId}:${await tabKey()}`
   const db = await new Promise<IDBDatabase>((resolve, reject) => {
     const request = indexedDB.open('construction-feedback', 1)
     request.onupgradeneeded = () => request.result.createObjectStore('drafts')
@@ -72,6 +70,8 @@ function serializeDraft<T>(operation: () => Promise<T>): Promise<T> {
 }
 
 function Feedback({ projectId, analysisId, close }: { projectId?: string; analysisId?: string; close: () => void }) {
+  const accountId = useContext(AccountIdentity)
+  const draftStore = (value?: Draft) => draftStoreRaw(value, accountId)
   const [draft, setDraft] = useState<Draft>(emptyDraft)
   const [loaded, setLoaded] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -146,24 +146,10 @@ function Feedback({ projectId, analysisId, close }: { projectId?: string; analys
   </form>}</Modal>
 }
 
-export default function PublicSupport({ safe, projectId, analysisId, start, training }: { safe: boolean; projectId?: string; analysisId?: string; start: () => void; training?: Training }) {
-  const [mode, setMode] = useState<'wizard' | 'feedback' | null>(null)
-  const autoChecked = useRef(false)
+export default function PublicSupport({ projectId, analysisId }: { safe: boolean; projectId?: string; analysisId?: string; start: () => void; training?: Training }) {
+  const [feedback, setFeedback] = useState(false)
   useEffect(startActivity, [])
-  useEffect(() => { const editing = () => { autoChecked.current = true }; document.addEventListener('input', editing); return () => document.removeEventListener('input', editing) }, [])
-  function openWizard() { autoChecked.current = true; setMode('wizard'); void track('wizard_started') }
-  useEffect(() => {
-    if (!safe || autoChecked.current) return
-    autoChecked.current = true
-    if (!remembered()) openWizard()
-  }, [safe])
-  function finish(completed: boolean) {
-    try { localStorage.setItem('construction-onboarding', completed ? 'completed' : 'skipped') } catch { /* Manual reopening remains available. */ }
-    void track(completed ? 'wizard_completed' : 'wizard_skipped')
-    setMode(null)
-  }
-  return <><div className="public-support"><button type="button" onClick={openWizard}>Как пользоваться</button><button type="button" onClick={() => { autoChecked.current = true; setMode('feedback') }}>Обратная связь</button></div>
-    {mode === 'wizard' && <OnboardingTour projectId={projectId} finish={finish} start={start} training={training} />}
-    {mode === 'feedback' && <Feedback projectId={projectId} analysisId={analysisId} close={() => setMode(null)} />}
+  return <><div className="public-support"><button type="button" onClick={() => dispatchEvent(new Event('open-assistant'))}>Как пользоваться</button><button type="button" onClick={() => setFeedback(true)}>Обратная связь</button></div>
+    {feedback && <Feedback projectId={projectId} analysisId={analysisId} close={() => setFeedback(false)} />}
   </>
 }

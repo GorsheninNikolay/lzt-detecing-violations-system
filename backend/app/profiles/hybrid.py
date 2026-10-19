@@ -96,9 +96,9 @@ off-frame people or generic hazards. If no specific abnormal condition is visibl
 '''
 
 
-def snapshot(folder_id):
-    profile = legacy.snapshot(folder_id)
-    profile.update({'adapter': {'code': 'yandex_deepseek', 'version': REVISION},
+def snapshot(folder_id=None, provider="yandex_ai_studio"):
+    profile = legacy.snapshot(folder_id, provider=provider)
+    profile.update({'adapter': {'code': profile['adapter']['code'], 'version': REVISION},
                     'observation_contract': REVISION, 'instruction_version': REVISION, 'schema_version': REVISION,
                     'schema_sha256': digest(canonical_bytes([FRAME_SCHEMA, ASSESSMENT_SCHEMA])),
                     'instruction_sha256': digest((FRAME_PROMPT + ASSESSMENT_PROMPT).encode()),

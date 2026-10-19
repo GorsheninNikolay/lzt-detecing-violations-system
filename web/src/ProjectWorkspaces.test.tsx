@@ -1,9 +1,10 @@
 vi.mock('./engagement', () => ({ startActivity: () => () => {}, track: async () => {}, attributionHeaders: () => ({}) }))
 beforeEach(() => localStorage.setItem('construction-onboarding', 'completed'))
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import App from './App'
+import { AccountIdentity } from './AccountIdentity'
 import demoCases from './demoCases.json'
 
 const a = 'aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa'
@@ -39,6 +40,7 @@ it('creates a project from an empty shared list with browser timezone', async ()
   vi.stubGlobal('fetch', fetcher)
   render(<App />)
   expect(await screen.findByText(/Проектов пока нет/)).toBeTruthy()
+  await user.click(screen.getByRole('link', { name: 'Создать проект' }))
   await user.type(screen.getByLabelText('Название проекта'), 'Первый объект')
   await user.click(screen.getByRole('button', { name: 'Создать проект' }))
   await waitFor(() => expect(location.pathname).toBe(`/projects/${a}`))
@@ -140,9 +142,10 @@ it('preserves a conflicting plan draft and guards browser Back', async () => {
   const user = userEvent.setup()
   const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
   render(<App />)
-  await user.click(await screen.findByRole('button', { name: 'Добавить работу' }))
+  await user.click(await screen.findByRole('button', { name: /Добавить (?:первую )?работу/ }))
+  await user.click(within(screen.getByRole('dialog', { name: 'Выберите работу' })).getAllByRole('button', { name: /^Выбрать:/ })[0])
   await user.selectOptions(screen.getByLabelText('Состояние'), 'active')
-  await user.click(screen.getByRole('button', { name: 'Сохранить новую ревизию' }))
+  await user.click(screen.getByRole('button', { name: 'Сохранить план' }))
   expect(await screen.findByText(/План уже изменён/)).toBeTruthy()
   expect(screen.getByLabelText('Состояние')).toHaveProperty('value', 'active')
   await act(async () => { history.back(); await new Promise(resolve => setTimeout(resolve, 30)) })
@@ -198,7 +201,8 @@ it('shows pending recovery only in its original project and fences late accepted
   expect(document.getElementById('submit-action')).toHaveProperty('disabled', true)
   expect(screen.getByRole('link', { name: 'Вернуться к отправке' }).getAttribute('href')).toBe(`/projects/${a}/new`)
   await user.click(screen.getAllByRole('link', { name: 'План работ' })[0])
-  await user.click(await screen.findByRole('button', { name: 'Добавить работу' }))
+  await user.click(await screen.findByRole('button', { name: /Добавить (?:первую )?работу/ }))
+  await user.click(within(screen.getByRole('dialog', { name: 'Выберите работу' })).getAllByRole('button', { name: /^Выбрать:/ })[0])
   await user.selectOptions(screen.getByLabelText('Состояние'), 'active')
   await act(async () => finish(json({ run_id: run }, 202)))
   expect(location.pathname).toBe(`/projects/${b}/plan`)
@@ -263,16 +267,18 @@ it('locks plan editing while loading and confirms before creating another area',
   const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
   render(<App />)
   await waitFor(() => expect(finish).toBeTruthy())
-  expect(screen.getByRole('button', { name: 'Добавить работу' })).toHaveProperty('disabled', true)
+  expect(screen.getByRole('button', { name: /Добавить (?:первую )?работу/ })).toHaveProperty('disabled', true)
   expect(screen.getByLabelText('Участок')).toHaveProperty('disabled', true)
   await act(async () => finish(json({ revision_number: 0, entries: [] })))
-  await waitFor(() => expect(screen.getByRole('button', { name: 'Добавить работу' })).toHaveProperty('disabled', false))
-  await user.click(screen.getByRole('button', { name: 'Добавить работу' }))
-  expect(screen.getByLabelText('Работа каталога')).toBeTruthy()
+  await waitFor(() => expect(screen.getByRole('button', { name: /Добавить (?:первую )?работу/ })).toHaveProperty('disabled', false))
+  await user.click(screen.getByRole('button', { name: /Добавить (?:первую )?работу/ }))
+  await user.click(within(screen.getByRole('dialog', { name: 'Выберите работу' })).getAllByRole('button', { name: /^Выбрать:/ })[0])
+  expect(screen.getByRole('button', { name: 'Заменить работу 1' })).toBeTruthy()
+  await user.click(screen.getByRole('button', { name: 'Добавить участок' }))
   await user.type(screen.getByLabelText('Новый участок'), 'Другой')
   await user.click(screen.getByRole('button', { name: 'Создать участок' }))
   expect(confirm).toHaveBeenCalled()
-  expect(screen.getByLabelText('Работа каталога')).toBeTruthy()
+  expect(screen.getByRole('button', { name: 'Заменить работу 1' })).toBeTruthy()
   expect(fetcher.mock.calls.filter(([url]) => url.endsWith('/zones'))).toHaveLength(1)
 })
 
@@ -331,7 +337,7 @@ it('bounds hung workspace GETs and exposes retry without retrying mutations', as
   } finally { vi.useRealTimers() }
 })
 
-it('locks area selection and draft editing throughout save readback and manual refresh', async () => {
+it('locks area selection and draft editing throughout save readback', async () => {
   history.replaceState({}, '', `/projects/${a}/plan`)
   let save!: (value: unknown) => void
   let refresh!: (value: unknown) => void
@@ -343,14 +349,12 @@ it('locks area selection and draft editing throughout save readback and manual r
   }))
   const user = userEvent.setup()
   render(<App />)
-  await user.click(await screen.findByRole('button', { name: 'Добавить работу' }))
-  await user.click(screen.getByRole('button', { name: 'Сохранить новую ревизию' }))
+  await user.click(await screen.findByRole('button', { name: /Добавить (?:первую )?работу/ }))
+  await user.click(within(screen.getByRole('dialog', { name: 'Выберите работу' })).getAllByRole('button', { name: /^Выбрать:/ })[0])
+  await user.click(screen.getByRole('button', { name: 'Сохранить план' }))
   expect(screen.getByLabelText('Участок')).toHaveProperty('disabled', true)
   expect(screen.getByLabelText('Состояние').closest('fieldset')).toHaveProperty('disabled', true)
   await act(async () => save(json({ revision_number: 1 })))
-  expect(screen.getByLabelText('Участок')).toHaveProperty('disabled', true)
-  await act(async () => refresh(json({ revision_number: 1, entries: [] })))
-  await user.click(screen.getByRole('button', { name: 'Обновить с сервера' }))
   expect(screen.getByLabelText('Участок')).toHaveProperty('disabled', true)
   await act(async () => refresh(json({ revision_number: 1, entries: [] })))
   await waitFor(() => expect(screen.getByLabelText('Участок')).toHaveProperty('disabled', false))
@@ -373,10 +377,11 @@ it('retains delayed IndexedDB recovery without replacing a newer dirty plan', as
   const saved = { endpoint: '/api/runs/single-image', key: 'slow-recovery', body: JSON.stringify({ project_id: a, original: true }) }
   sessionStorage.setItem('observation-pending-id', saved.key)
   let release!: () => void
-  vi.stubGlobal('indexedDB', { open: () => {
-    const read = { result: saved, onsuccess: null as null | (() => void), onerror: null }
+  vi.stubGlobal('indexedDB', { open: (database: string) => {
+    const read = { result: database === 'observation-recovery' ? saved : undefined, onsuccess: null as null | (() => void), onerror: null }
     const request = { result: { close() {}, transaction: () => ({ objectStore: () => ({ get: () => {
-      release = () => read.onsuccess?.()
+      if (database === 'observation-recovery') release = () => read.onsuccess?.()
+      else queueMicrotask(() => read.onsuccess?.())
       return read
     } }) }) }, onsuccess: null as null | (() => void), onerror: null }
     queueMicrotask(() => request.onsuccess?.())
@@ -389,7 +394,8 @@ it('retains delayed IndexedDB recovery without replacing a newer dirty plan', as
   await waitFor(() => expect(release).toBeTruthy())
   await user.selectOptions(screen.getByLabelText('Выбрать проект'), b)
   await user.click(screen.getAllByRole('link', { name: 'План работ' })[0])
-  await user.click(await screen.findByRole('button', { name: 'Добавить работу' }))
+  await user.click(await screen.findByRole('button', { name: /Добавить (?:первую )?работу/ }))
+  await user.click(within(screen.getByRole('dialog', { name: 'Выберите работу' })).getAllByRole('button', { name: /^Выбрать:/ })[0])
   await user.selectOptions(screen.getByLabelText('Состояние'), 'active')
   await act(async () => release())
   expect(location.pathname).toBe(`/projects/${b}/plan`)
@@ -398,101 +404,14 @@ it('retains delayed IndexedDB recovery without replacing a newer dirty plan', as
   expect(sessionStorage.getItem('observation-pending-id')).toBe(saved.key)
 })
 
-it('does not navigate a late training creation over a newly typed project draft', async () => {
-  history.replaceState({}, '', '/')
-  vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} })
-  let finish!: (response: ReturnType<typeof json>) => void
-  vi.stubGlobal('fetch', vi.fn(async (url: string, options?: RequestInit) => url === '/api/projects' && options?.method === 'POST' ? await new Promise(resolve => { finish = resolve }) : reads(url)))
-  render(<App />)
-  await screen.findByLabelText('Название проекта')
-  fireEvent.click(screen.getByRole('button', {name:'Как пользоваться'}))
-  fireEvent.click(screen.getByRole('button', {name:'Попробовать на примере'}))
-  await waitFor(() => expect(finish).toBeTypeOf('function'))
-  fireEvent.change(screen.getByLabelText('Название проекта'), {target:{value:'Keep my draft'}})
-  await act(async () => { finish(json(projects[0],201)) })
-  expect(location.pathname).toBe('/')
-  expect(screen.getByLabelText('Название проекта')).toHaveProperty('value','Keep my draft')
-  expect(screen.getByRole('button',{name:'Попробовать на примере'})).toHaveProperty('disabled',true)
-})
-
-it('cancels late training creation on navigation and releases preparation busy state', async () => {
-  history.replaceState({}, '', '/')
-  vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} })
-  let finish!: (response: ReturnType<typeof json>) => void
-  vi.stubGlobal('fetch', vi.fn(async (url: string, options?: RequestInit) => url === '/api/projects' && options?.method === 'POST' ? await new Promise(resolve => { finish = resolve }) : reads(url)))
-  render(<App />); await screen.findByLabelText('Название проекта')
-  fireEvent.click(screen.getByRole('button',{name:'Как пользоваться'}))
-  fireEvent.click(screen.getByRole('button',{name:'Попробовать на примере'}))
-  await waitFor(() => expect(finish).toBeTypeOf('function'))
-  fireEvent.click(screen.getByRole('link',{name:'Архив анализов без проекта'}))
-  await act(async () => { finish(json(projects[0],201)) })
-  expect(location.pathname).toBe('/archive')
-  await waitFor(() => expect(screen.getByRole('button',{name:'Попробовать на примере'})).toHaveProperty('disabled',false))
-})
-
-it('binds training readiness to the staged sample and clears it when removed or starting another analysis', async () => {
-  history.replaceState({}, '', '/')
-  vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} })
-  const frame = demoCases.cases[0].frames[1]
-  vi.spyOn(crypto.subtle,'digest').mockResolvedValue(Uint8Array.from(frame.sha256.match(/../g)!, byte => parseInt(byte,16)).buffer)
-  vi.stubGlobal('fetch', vi.fn(async (url: string, options?: RequestInit) => url.startsWith('/demo/') ? {ok:true,blob:async()=>file()} : url === '/api/projects' && options?.method === 'POST' ? json(projects[0],201) : reads(url)))
-  render(<App />); await screen.findByLabelText('Название проекта')
-  fireEvent.click(screen.getByRole('button',{name:'Как пользоваться'}))
-  fireEvent.click(screen.getByRole('button',{name:'Попробовать на примере'}))
-  await screen.findByText('Screenshot_89.jpg')
-  await screen.findByText(/Учебный проект и проверенная фотография готовы/)
-  fireEvent.click(screen.getByRole('button',{name:/Удалить: Screenshot_89.jpg/}))
-  expect(screen.queryByText(/Учебный проект и проверенная фотография готовы/)).toBeNull()
-  expect(screen.queryByText(/Учебный пример: проверенная фотография/)).toBeNull()
-})
-
-it('binds the tutorial result only to its accepted sample run and clears it for a new analysis', async () => {
-  history.replaceState({}, '', '/')
-  vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} })
-  const frame = demoCases.cases[0].frames[1]
-  vi.spyOn(crypto.subtle,'digest').mockResolvedValue(Uint8Array.from(frame.sha256.match(/../g)!, byte => parseInt(byte,16)).buffer)
-  vi.stubGlobal('fetch', vi.fn(async (url: string, options?: RequestInit) => url.startsWith('/demo/') ? {ok:true,blob:async()=>file()} : options?.method === 'POST' ? url === '/api/projects' ? json(projects[0],201) : json({run_id:run},202) : reads(url)))
-  render(<App />); await screen.findByLabelText('Название проекта')
-  fireEvent.click(screen.getByRole('button',{name:'Как пользоваться'}))
-  fireEvent.click(screen.getByRole('button',{name:'Попробовать на примере'}))
-  await screen.findByText(/Учебный проект и проверенная фотография готовы/)
-  if (!(screen.getByLabelText(/Разрешаю отправить эти фотографии/) as HTMLInputElement).checked) fireEvent.click(screen.getByLabelText(/Разрешаю отправить эти фотографии/))
-  fireEvent.click(screen.getByRole('button',{name:'Запустить анализ'}))
-  await screen.findByText(/Это ваш реальный учебный анализ/)
-  expect(location.pathname).toBe(`/projects/${a}/runs/${run}`)
-  fireEvent.click(screen.getByRole('link',{name:'Загрузить фото'}))
-  await waitFor(()=>expect(location.pathname).toBe(`/projects/${a}/new`))
-  expect(screen.queryByText(/Это ваш реальный учебный анализ/)).toBeNull()
-  expect(screen.queryByText(/Учебный проект и проверенная фотография готовы/)).toBeNull()
-})
-
-it('cancels sample preparation on navigation without installing the late photo or keeping the action busy', async () => {
-  history.replaceState({}, '', '/')
-  vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} })
-  vi.spyOn(window,'confirm').mockReturnValue(true)
-  const frame = demoCases.cases[0].frames[1]
-  vi.spyOn(crypto.subtle,'digest').mockResolvedValue(Uint8Array.from(frame.sha256.match(/../g)!, byte => parseInt(byte,16)).buffer)
-  let finish!: (value: unknown)=>void
-  vi.stubGlobal('fetch', vi.fn(async (url: string, options?: RequestInit) => url.startsWith('/demo/') ? await new Promise(resolve=>{finish=resolve}) : url === '/api/projects' && options?.method === 'POST' ? json(projects[0],201) : reads(url)))
-  render(<App />); await screen.findByLabelText('Название проекта')
-  fireEvent.click(screen.getByRole('button',{name:'Как пользоваться'}))
-  fireEvent.click(screen.getByRole('button',{name:'Попробовать на примере'}))
-  await waitFor(()=>expect(finish).toBeTypeOf('function'))
-  fireEvent.change(screen.getByLabelText('Выбрать проект'),{target:{value:b}})
-  await act(async()=>{finish({ok:true,blob:async()=>file()})})
-  expect(location.pathname).toBe(`/projects/${b}`)
-  expect(screen.queryByText('Screenshot_89.jpg')).toBeNull()
-  await waitFor(()=>expect(screen.getByRole('button',{name:'Попробовать на примере'})).toHaveProperty('disabled',false))
-})
-
-it('opens and focuses project creation from the header when existing projects collapse the disclosure',async()=>{
+it('opens and focuses project creation from the header when the form is hidden',async()=>{
  history.replaceState({},'', '/')
  const user=userEvent.setup();render(<App/> )
  await screen.findByRole('link',{name:'Первый объект'})
  const field=screen.getByLabelText('Название проекта')
- expect(field.closest('details')?.open).toBe(false)
+ expect(field.closest('form')?.hidden).toBe(true)
  await user.click(screen.getByRole('link',{name:'Создать проект'}))
- await waitFor(()=>expect(field.closest('details')?.open).toBe(true))
+ await waitFor(()=>expect(field.closest('form')?.hidden).toBe(false))
  await waitFor(()=>expect(document.activeElement).toBe(field))
 })
 
@@ -526,4 +445,55 @@ it('requires new consent after each upload, photo replacement and context change
   for (const [,options] of fetcher.mock.calls.filter(([,options])=>options?.method==='POST')) {
     expect(JSON.parse(String(options?.body))).toMatchObject({intent:'observation_only',cloud_processing_consent:true})
   }
+})
+
+it('does not recover another account pending upload in the same browser tab', async () => {
+  const saved = { endpoint: '/api/runs/single-image', key: 'private-upload', body: JSON.stringify({ project_id: a, scenario: 'Private scenario' }) }
+  sessionStorage.setItem('observation-pendingowner-a', JSON.stringify(saved))
+  render(<AccountIdentity.Provider value="owner-b"><App /></AccountIdentity.Provider>)
+  await screen.findByRole('heading', { name: 'Новый анализ' })
+  await waitFor(() => expect(screen.getByLabelText('Выбрать изображение')).toHaveProperty('disabled',false))
+  expect(screen.queryByRole('button',{name:'Повторить отправку'})).toBeNull()
+  expect(screen.queryByText('Private scenario')).toBeNull()
+  expect(sessionStorage.getItem('observation-pendingowner-a')).toBe(JSON.stringify(saved))
+})
+it('shows viewer explanation and removes upload entry without changing project navigation', async () => {
+  history.replaceState({},'',`/projects/${a}`)
+  vi.stubGlobal('fetch',vi.fn(async(url:string)=>url==='/api/projects'?json({projects:projects.map(item=>({...item,role:'viewer'}))}):reads(url)))
+  render(<App />)
+  await screen.findByText(/У вас доступ только для просмотра/)
+  expect(screen.queryByRole('link',{name:'Загрузить фото'})).toBeNull()
+  expect(screen.queryByRole('link',{name:'Загрузить фотографии'})).toBeNull()
+  expect(screen.getByLabelText('Выбрать проект')).toBeTruthy()
+})
+
+it('opens project creation as a dialog and preserves the draft when cancelled',async()=>{
+ history.replaceState({},'', '/')
+ const user=userEvent.setup();render(<App/>)
+ await screen.findByRole('link',{name:'Первый объект'})
+ await user.click(screen.getByRole('link',{name:'Создать проект'}))
+ expect(screen.getByRole('dialog',{name:'Новый проект'})).toBeTruthy()
+ expect(document.activeElement).toBe(screen.getByLabelText('Название проекта'))
+ await user.type(screen.getByLabelText('Название проекта'),'Мой новый объект')
+ await user.click(screen.getByRole('button',{name:'Отмена'}))
+ expect(screen.queryByRole('dialog',{name:'Новый проект'})).toBeNull()
+ expect(document.body.style.overflow).not.toBe('hidden')
+ await user.click(screen.getByRole('link',{name:'Создать проект'}))
+ expect(screen.getByRole('dialog',{name:'Новый проект'})).toBeTruthy()
+ expect(screen.getByLabelText('Название проекта')).toHaveProperty('value','Мой новый объект')
+})
+
+it('makes the first action clear and only offers saving when the plan changes',async()=>{
+ history.replaceState({},'',`/projects/${a}/plan`)
+ vi.stubGlobal('fetch',vi.fn(async(url:string)=>url==='/api/catalog/works'?json({works:[{id:run,title:'Подготовка',code:'10.',source_row:4}]}):reads(url)))
+ const user=userEvent.setup();render(<App/>)
+ const add=await screen.findByRole('button',{name:/Добавить (?:первую )?работу/})
+ await waitFor(()=>expect(add).toHaveProperty('disabled',false))
+ expect(add.textContent).toBe('Добавить первую работу')
+ expect(screen.queryByRole('button',{name:'Сохранить план'})).toBeNull()
+ expect(screen.queryByText('Версия плана и время')).toBeNull()
+ expect(screen.queryByRole('button',{name:'Обновить с сервера'})).toBeNull()
+ await user.click(add)
+ await user.click(within(screen.getByRole('dialog',{name:'Выберите работу'})).getByRole('button',{name:'Выбрать: Подготовка (10.)'}))
+ expect(screen.getByRole('button',{name:'Сохранить план'})).toBeTruthy()
 })

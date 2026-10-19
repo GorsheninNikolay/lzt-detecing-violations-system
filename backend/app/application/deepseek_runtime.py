@@ -8,13 +8,13 @@ from time import monotonic
 from sqlalchemy import text
 from app.config import Config
 from app.domain.site_analysis import compare_equipment
-from app.profiles.deepseek import DeepSeek, EQUIPMENT, REVISION, snapshot, oriented_image
+from app.profiles.deepseek import DeepSeek, EQUIPMENT, REVISION, snapshot, oriented_image, validate_consent, provider_label
 from app.shared.cloud import canonical_bytes, digest
 
 
-def provision(store, folder_id, hybrid=False):
+def provision(store, folder_id=None, hybrid=False, provider="yandex_ai_studio"):
     from app.profiles.hybrid import snapshot as hybrid_snapshot
-    profile = hybrid_snapshot(folder_id) if hybrid else snapshot(folder_id)
+    profile = hybrid_snapshot(folder_id, provider) if hybrid else snapshot(folder_id, provider)
     identity = digest(canonical_bytes(profile))
     parent_id = uuid.uuid5(uuid.NAMESPACE_URL, 'deepseek-draft/' + identity)
     profile_id = uuid.uuid5(uuid.NAMESPACE_URL, 'deepseek/' + identity)
@@ -44,8 +44,7 @@ def lease(db, work):
         raise ValueError('ordinary_lease_rejected')
     if row.profile_snapshot.get('kind') != 'deepseek':
         raise ValueError('profile_retired')
-    if row.request_context.get('cloud_processing_consent') is not True:
-        raise ValueError('cloud_consent_required')
+    validate_consent(row.request_context, row.profile_snapshot)
     return row
 
 
@@ -217,7 +216,7 @@ def complete(store, work, frame_results, assessment, frozen):
         projection = {'outcome': 'observations_only', 'frames': observations,
                       'ai_assessment': assessment['value'], 'series': {'usable_count': len(usable_ids), 'usable_input_ids': usable_ids,
                       'input_order': ids, 'excavator_supporting_input_ids': [o['input_id'] for o in observations if o['class_name'] == 'excavator' and o['state'] == 'detected'], 'dump_truck_persistence_input_ids': [], 'declared_observation_area': frozen.get('zone_id'), 'dump_truck_persistence_text': None},
-                      'stage_hypotheses': [], 'source': 'Yandex AI Studio · Мультимодальная модель',
+                      'stage_hypotheses': [], 'source': provider_label(work['profile_snapshot']) + ' · Мультимодальная модель',
                       'limitations': ['Фотография не доказывает отсутствие техники; выводы требуют проверки человеком.']}
         projection['context'] = frozen['declared_context']
         projection['series']['declared_observation_area'] = frozen['declared_context'].get('observation_area')
@@ -289,7 +288,11 @@ async def execute(runner, work, revision):
         def check_renewal():
             if renewal.done():
                 raise ValueError('ordinary_lease_rejected')
-        observer = DeepSeek(work['profile_snapshot'], Config.from_env().cloud_api_key)
+        def validate_work_lease():
+            with runner.store.engine.begin() as db:
+                lease(db, work)
+        await asyncio.to_thread(validate_work_lease)
+        observer = DeepSeek(work['profile_snapshot'], Config.from_env().api_key_for(work['profile_snapshot']))
         deadline = monotonic() + work['profile_snapshot']['runtime']['batch_timeout_seconds']
         results, frames, images = [], [], []
         hybrid = work['profile_snapshot'].get('observation_contract') == 'hybrid-photo-signals-v1'
@@ -336,7 +339,7 @@ async def execute(runner, work, revision):
     except Exception as exc:
         code = str(exc)
         await asyncio.to_thread(runner.store.fail_ordinary, work['id'], work['owner'],
-                                code if code in {'ordinary_lease_rejected', 'profile_retired', 'cloud_consent_required', 'cloud_credential_missing', 'observer_timeout', 'observer_response_too_large', 'observer_quota_failed', 'observer_access_failed', 'observer_http_failed', 'observer_transport_failed', 'artifact_integrity_failed'} else 'deepseek_call_failed_or_uncertain')
+                                code if code in {'deepseek_response_invalid', 'observation_normalization_failed', 'observer_redirect_rejected', 'cloud_provider_mismatch', 'cloud_provider_unavailable', 'quality_budget_provider_mismatch', 'observer_balance_failed', 'ordinary_lease_rejected', 'profile_retired', 'cloud_consent_required', 'cloud_credential_missing', 'observer_timeout', 'observer_response_too_large', 'observer_quota_failed', 'observer_access_failed', 'observer_http_failed', 'observer_transport_failed', 'artifact_integrity_failed'} else 'deepseek_call_failed_or_uncertain')
     finally:
         renewal.cancel()
         try:
@@ -350,7 +353,8 @@ def main():
     from app.adapters.postgres import PostgresStore
     store = PostgresStore(Config.database_url_from_env())
     try:
-        print(provision(store, os.environ['YANDEX_CLOUD_FOLDER_ID'], hybrid=os.getenv('HYBRID_PHOTO_SIGNALS') == '1'))
+        print(provision(store, os.getenv('YANDEX_CLOUD_FOLDER_ID'), hybrid=os.getenv('HYBRID_PHOTO_SIGNALS') == '1',
+                        provider=os.getenv('CLOUD_PROVIDER', 'yandex_ai_studio')))
     finally:
         store.close()
 

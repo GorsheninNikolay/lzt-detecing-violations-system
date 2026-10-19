@@ -1048,9 +1048,9 @@ class PostgresStore:
             raise AdmissionStoreError("profile_unauthorized")
         if expected_revision is not None and row.revision != expected_revision:
             raise AdmissionStoreError("authorization_revision_changed")
-        from app.profiles.deepseek import snapshot
+        from app.profiles.deepseek import snapshot, provider_for
         from app.profiles.hybrid import snapshot as hybrid_snapshot
-        if row.snapshot not in (snapshot(row.snapshot.get("folder_id")), hybrid_snapshot(row.snapshot.get("folder_id"))) or digest(canonical_bytes(row.snapshot)) != row.profile_hash:
+        if row.snapshot not in (snapshot(row.snapshot.get("folder_id"), provider_for(row.snapshot)), hybrid_snapshot(row.snapshot.get("folder_id"), provider_for(row.snapshot))) or digest(canonical_bytes(row.snapshot)) != row.profile_hash:
             raise AdmissionStoreError("profile_runtime_mismatch")
         return row.snapshot, row.revision
 
@@ -1064,6 +1064,16 @@ class PostgresStore:
                 {"reason": reason, "id": profile_id, "expected": expected_revision})
             if changed.rowcount != 1:
                 raise AdmissionStoreError("authorization_revision_changed")
+
+    def read_submission(self, key: str, request_hash: str) -> tuple[str, uuid.UUID | None, uuid.UUID | None, str | None] | None:
+        with self.engine.connect() as connection:
+            row = connection.execute(text("SELECT * FROM submission_requests WHERE idempotency_key = :key"),
+                                     {'key': key}).one_or_none()
+            if row is None:
+                return None
+            if row.request_hash != request_hash:
+                raise AdmissionStoreError('idempotency_key_conflict')
+            return row.state, row.run_id, row.intent_id, row.error_code
 
     def begin_submission(self, key: str, request_hash: str, media_type: str) -> tuple[str, uuid.UUID | None, uuid.UUID | None, str | None]:
         intent_id = uuid.uuid4()
@@ -1097,8 +1107,9 @@ class PostgresStore:
     def _validate_workspace_binding(connection, context: dict) -> None:
         if "project_id" not in context:
             return
-        valid = connection.execute(text("""SELECT 1 FROM site_zones
-            WHERE id=:zone AND project_id=:project"""),
+        valid = connection.execute(text("""SELECT 1 FROM site_zones z
+            JOIN site_projects p ON p.id=z.project_id
+            WHERE z.id=:zone AND p.id=:project FOR KEY SHARE OF p"""),
             {"zone": uuid.UUID(context["zone_id"]), "project": uuid.UUID(context["project_id"])}).first()
         if valid and "plan_revision_id" in context:
             valid = connection.execute(text("""SELECT 1 FROM zone_plan_revisions
@@ -1124,6 +1135,11 @@ class PostgresStore:
             raise AdmissionStoreError("profile_retired")
         if context.get("cloud_processing_consent") is not True:
             raise AdmissionStoreError("cloud_consent_required")
+        from app.profiles.deepseek import validate_consent
+        try:
+            validate_consent(context, snapshot)
+        except ValueError as exc:
+            raise AdmissionStoreError(str(exc)) from None
         run_id = uuid.uuid4()
         with self.engine.begin() as connection:
             self._require_authorized(connection, profile_id, revision)
@@ -1633,9 +1649,12 @@ class PostgresStore:
                     "outcome": projection["outcome"] if projection and row.state == "succeeded" else None,
                     "result_projection": projection if projection and row.state == "succeeded" else None}
 
-    def list_ordinary(self, offset: int = 0, project_id: str | None = None, unassigned: bool = False) -> dict:
+    def list_ordinary(self, offset: int = 0, project_id: str | None = None, unassigned: bool = False, user_id: str | None = None) -> dict:
         where = "r.purpose = 'ordinary'"
         parameters = {"offset": offset}
+        if user_id:
+            where += " AND EXISTS (SELECT 1 FROM project_members m WHERE m.project_id::text=r.request_context->>'project_id' AND m.user_id=:account_user)"
+            parameters['account_user'] = user_id
         if project_id:
             where += " AND r.request_context->>'project_id' = :project"
             parameters["project"] = project_id
@@ -1716,6 +1735,13 @@ class PostgresStore:
                 raise AdmissionStoreError("run_not_found")
             if preliminary["profile_snapshot"].get("kind") != "deepseek" or snapshot.get("kind") != "deepseek":
                 raise AdmissionStoreError("profile_retired")
+            from app.profiles.deepseek import validate_consent, provider_for
+            try:
+                if provider_for(preliminary['profile_snapshot']) != provider_for(snapshot):
+                    raise ValueError('cloud_provider_mismatch')
+                validate_consent(preliminary['request_context'], snapshot)
+            except ValueError as exc:
+                raise AdmissionStoreError(str(exc)) from None
             if preliminary["request_context"].get("cloud_processing_consent") is not True:
                 raise AdmissionStoreError("cloud_consent_required")
             if connection.execute(text("SELECT 1 FROM deepseek_calls WHERE run_id=:id LIMIT 1"), {"id": source_id}).first():

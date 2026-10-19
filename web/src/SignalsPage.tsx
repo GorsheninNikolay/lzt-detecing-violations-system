@@ -139,7 +139,7 @@ function SignalBasis({ signal }: { signal: Signal }) {
   </section>
 }
 
-function SignalDetail({ signal, context, contextLoading, draft, busy, saveError, onDraft, onSave, onOpenRun, onRetry }: {
+function SignalDetail({ signal, context, contextLoading, draft, busy, saveError, onDraft, onSave, onOpenRun, onRetry, readOnly = false }: { readOnly?: boolean;
   signal: Signal
   context: SignalContext
   contextLoading: boolean
@@ -180,16 +180,16 @@ function SignalDetail({ signal, context, contextLoading, draft, busy, saveError,
     <section className="signals-detail-section signals-review" aria-labelledby={`signal-review-${signal.id}`}>
       <h3 id={`signal-review-${signal.id}`}>Ручная обработка</h3>
       {signal.state === 'closed' && <p className="signals-caution">Закрыт означает завершение ручной обработки, а не подтверждение безопасности.</p>}
-      <div className="field"><label htmlFor={`signal-state-${signal.id}`}>Состояние</label><select id={`signal-state-${signal.id}`} value={draft.state} disabled={busy} onChange={event => onDraft({ ...draft, state: event.target.value as SignalState })}>{Object.entries(STATES).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></div>
-      <div className="field"><label htmlFor={`signal-comment-${signal.id}`}>Комментарий</label><textarea id={`signal-comment-${signal.id}`} maxLength={2000} value={draft.comment} disabled={busy} onChange={event => onDraft({ ...draft, comment: event.target.value })} /></div>
-      <button type="button" className="primary" disabled={busy || (draft.state === signal.state && draft.comment === currentComment)} onClick={onSave}>{busy ? 'Сохраняем…' : 'Сохранить'}</button>
+      <div className="field"><label htmlFor={`signal-state-${signal.id}`}>Состояние</label><select id={`signal-state-${signal.id}`} value={draft.state} disabled={readOnly || busy} onChange={event => onDraft({ ...draft, state: event.target.value as SignalState })}>{Object.entries(STATES).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></div>
+      <div className="field"><label htmlFor={`signal-comment-${signal.id}`}>Комментарий</label><textarea id={`signal-comment-${signal.id}`} maxLength={2000} value={draft.comment} disabled={readOnly || busy} onChange={event => onDraft({ ...draft, comment: event.target.value })} /></div>
+      <button type="button" className="primary" disabled={readOnly || busy || (draft.state === signal.state && draft.comment === currentComment)} onClick={onSave}>{busy ? 'Сохраняем…' : 'Сохранить'}</button>
       {saveError && <p className="error" role="alert">{saveError}</p>}
     </section>
     <details className="signals-ids"><summary>Идентификаторы</summary><p>Сигнал: <code>{signal.id}</code></p><p>Участок: <code>{signal.zone_id}</code></p><p>Ревизия: <code>{signal.revision_id}</code></p></details>
   </article>
 }
 
-export default function SignalsPage({ heading, onOpenRun, projectId }: { projectId?: string; heading: RefObject<HTMLHeadingElement | null>; onOpenRun: (id: string) => void }) {
+export default function SignalsPage({ heading, onOpenRun, projectId, readOnly = false }: { readOnly?: boolean; projectId?: string; heading: RefObject<HTMLHeadingElement | null>; onOpenRun: (id: string) => void }) {
   const [filter, setFilter] = useState('')
   const [signals, setSignals] = useState<Signal[] | null>(null)
   const [newCount, setNewCount] = useState(0)
@@ -266,7 +266,7 @@ export default function SignalsPage({ heading, onOpenRun, projectId }: { project
       .finally(() => setSaving(current => ({ ...current, [signal.id]: false })))
   }
 
-  const detail = selected && <SignalDetail signal={selected} context={context.signalId === selected.id ? context : {}} contextLoading={contextLoading || context.signalId !== selected.id}
+  const detail = selected && <SignalDetail readOnly={readOnly} signal={selected} context={context.signalId === selected.id ? context : {}} contextLoading={contextLoading || context.signalId !== selected.id}
     draft={drafts[selected.id] ?? { state: selected.state, comment: selected.comment ?? '' }}
     busy={!!saving[selected.id]} saveError={saveErrors[selected.id] ?? ''}
     onDraft={draft => setDrafts(current => ({ ...current, [selected.id]: draft }))}

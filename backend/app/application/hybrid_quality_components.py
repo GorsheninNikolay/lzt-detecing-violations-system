@@ -86,6 +86,7 @@ def request_body(kind, context, profile, images):
 
 
 def response(call, profile, request):
+    require(deepseek.provider_for(profile) == "yandex_ai_studio", "quality_budget_provider_mismatch")
     require(call['request'] == request and call['request_sha256'] == digest(canonical_bytes(request)),
             'component_request_binding_mismatch')
     value = deepseek.validate_response(call['raw'], profile['requested_model_identity']['id'], 'none')

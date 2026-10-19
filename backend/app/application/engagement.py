@@ -82,10 +82,8 @@ def require_transport(request):
 
 
 def require_origin(request):
-    origin = request.headers.get('origin')
-    expected = f'{request.url.scheme}://{request.headers.get("host", "")}'
-    if origin != expected or request.headers.get('sec-fetch-site') == 'cross-site':
-        raise HTTPException(403, 'invalid_origin')
+    from app.application.accounts import require_origin as account_origin
+    account_origin(request)
 
 
 def admin_session(request: Request):

@@ -56,6 +56,10 @@ def validate_images(body: dict, series: bool) -> tuple[list[bytes], dict, list[s
     if not all(isinstance(value, str) and 0 < len(value.strip()) <= 256 for value in context.values()):
         raise SubmissionError("invalid_observation_context")
     context["cloud_processing_consent"] = True
+    if 'cloud_provider' in body:
+        if body['cloud_provider'] not in ('yandex_ai_studio', 'deepseek'):
+            raise SubmissionError('cloud_provider_unavailable')
+        context['cloud_provider'] = body['cloud_provider']
     if "stage_id" in body:
         context["stage_id"] = body["stage_id"]
     try:
@@ -127,6 +131,31 @@ def validate_images(body: dict, series: bool) -> tuple[list[bytes], dict, list[s
     return images, context, requested, hashlib.sha256(canonical.encode()).hexdigest()
 
 
+def recover_provider_mismatch(store, key, request_hash, context, snapshot) -> tuple[str, uuid.UUID | None] | None:
+    from app.profiles.deepseek import validate_consent
+    try:
+        validate_consent(context, snapshot)
+    except ValueError as exc:
+        code = str(exc)
+        if code != 'cloud_provider_mismatch':
+            raise SubmissionError(code) from None
+        try:
+            existing = store.read_submission(key, request_hash)
+        except AdmissionStoreError as lookup_error:
+            raise SubmissionError(str(lookup_error)) from None
+        if existing is None:
+            raise SubmissionError(code) from None
+        state, run_id, _, error = existing
+        if state == 'accepted':
+            return 'queued', run_id
+        if state == 'publishing':
+            raise SubmissionError('submission_in_progress')
+        if state == 'failed':
+            raise SubmissionError(error)
+        raise SubmissionError(code) from None
+    return None
+
+
 def submit(store: PostgresStore, artifacts: ArtifactStore, key: str, body: dict,
            profile_id: uuid.UUID, revision: int, snapshot: dict, browser_id: str | None = None) -> tuple[str, uuid.UUID | None]:
     if not isinstance(key, str) or not 0 < len(key) <= 128 or any(ord(char) < 33 or ord(char) > 126 for char in key):
@@ -134,6 +163,9 @@ def submit(store: PostgresStore, artifacts: ArtifactStore, key: str, body: dict,
     if snapshot.get("kind") != "deepseek":
         raise SubmissionError("profile_retired")
     image, context, requested, request_hash = validate_request(body)
+    recovered = recover_provider_mismatch(store, key, request_hash, context, snapshot)
+    if recovered is not None:
+        return recovered
     if body["intent"] != "observation_only":
         raise SubmissionError("rule_not_applicable")
     if body["intent"] == "rule_evaluation" and snapshot.get("observation_contract") == "equipment-boxes-v2":
@@ -187,6 +219,9 @@ def submit_series(store: PostgresStore, artifacts: ArtifactStore, key: str, body
     if snapshot.get("kind") != "deepseek":
         raise SubmissionError("profile_retired")
     images, context, requested, request_hash = validate_images(body, True)
+    recovered = recover_provider_mismatch(store, key, request_hash, context, snapshot)
+    if recovered is not None:
+        return recovered
     if body["intent"] != "observation_only":
         raise SubmissionError("rule_not_applicable")
     if body["intent"] == "rule_evaluation" and snapshot.get("observation_contract") == "equipment-boxes-v2":

@@ -22,6 +22,8 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse, Response
 from PIL import Image, ImageOps, UnidentifiedImageError
 from sqlalchemy import text
+
+from app.application.accounts import auth_required, current_user
 from sqlalchemy.exc import IntegrityError
 from app.application.activity import attribute
 from app.application.engagement import body as limited_body, identifier, limit, require_origin
@@ -188,7 +190,8 @@ def create_project(request: Request, body: dict):
             request_key = UUID(raw_key) if raw_key else None
         except ValueError:
             raise SiteError("invalid_idempotency_key") from None
-        body_hash = sha256(json.dumps(body, sort_keys=True).encode()).hexdigest()
+        user = current_user(request) if auth_required() else None
+        body_hash = sha256(json.dumps({'body': body, 'user': user['id'] if user else None}, sort_keys=True).encode()).hexdigest()
         project_id = uuid4()
         zone_id = uuid4()
         with engine.begin() as connection:
@@ -201,6 +204,8 @@ def create_project(request: Request, body: dict):
                     return {**previous.response, "cover_sha256": None}
             connection.execute(text("INSERT INTO site_projects (id,name,timezone) VALUES (:id,:name,:timezone)"),
                                {"id": project_id, "name": name.strip(), "timezone": tz})
+            if user:
+                connection.execute(text("INSERT INTO project_members VALUES (:p,:u,'owner')"), {'p': project_id, 'u': user['id']})
             connection.execute(text("INSERT INTO site_zones (id,project_id,name) VALUES (:id,:project,'Основной участок')"),
                                {"id": zone_id, "project": project_id})
             result = {"id": str(project_id), "name": name.strip(), "timezone": tz,
@@ -217,9 +222,11 @@ def create_project(request: Request, body: dict):
 def list_projects(request: Request):
     try:
         with _engine(request).connect() as connection:
-            rows = connection.execute(text("SELECT id,name,timezone,cover_sha256 FROM site_projects ORDER BY created_at,id")).all()
+            user = current_user(request) if auth_required() else None
+            rows = connection.execute(text("""SELECT p.id,p.name,p.timezone,p.cover_sha256,m.role FROM site_projects p
+                JOIN project_members m ON m.project_id=p.id WHERE m.user_id=:u ORDER BY p.created_at,p.id"""), {'u': user['id']}).all() if user else connection.execute(text("SELECT id,name,timezone,cover_sha256,'owner' AS role FROM site_projects ORDER BY created_at,id")).all()
         return {"projects": [{"id": str(row.id), "name": row.name, "timezone": row.timezone,
-                              "cover_sha256": row.cover_sha256} for row in rows]}
+                              "cover_sha256": row.cover_sha256, "role": row.role} for row in rows]}
     except SiteError as error:
         return _response(error)
 

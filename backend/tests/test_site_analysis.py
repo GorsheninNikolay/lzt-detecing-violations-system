@@ -83,6 +83,7 @@ def test_workspace_trio_is_independent_of_optional_plan_and_hash_bound():
 
 def test_foreign_workspace_is_rejected_before_publication():
     from app.application.submission import submit
+    from app.profiles.deepseek import snapshot
     from app.adapters.postgres import AdmissionStoreError
     from unittest.mock import Mock
     buffer = io.BytesIO()
@@ -94,7 +95,7 @@ def test_foreign_workspace_is_rejected_before_publication():
     store, artifacts = Mock(), Mock()
     store.validate_plan_binding.side_effect = AdmissionStoreError('invalid_plan_binding')
     with pytest.raises(SubmissionError, match='invalid_plan_binding'):
-        submit(store, artifacts, 'workspace-invalid', body, uuid.uuid4(), 1, {'kind':'deepseek'})
+        submit(store, artifacts, 'workspace-invalid', body, uuid.uuid4(), 1, snapshot('mock-folder'))
     store.begin_submission.assert_not_called()
     assert artifacts.mock_calls == []
 

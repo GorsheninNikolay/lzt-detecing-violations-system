@@ -22,7 +22,8 @@ CORRECTION = obj({'id': UUID, 'class_name': field('string', 'Явное сопо
 OBJECTS = field('array', 'Исправленные человеком объекты; свободные гипотезы требуют явного сопоставления.', items=CORRECTION, maxItems=300)
 SUBMISSION = obj({
     'intent': field('string', 'Новый анализ наблюдений и контекста.', enum=['observation_only']),
-    'cloud_processing_consent': field('boolean', 'Явное согласие отправить эти фотографии и контекст в Yandex AI Studio. Без true облачных вызовов нет.', const=True),
+    'cloud_provider': field('string', 'Провайдер, которому пользователь разрешил передать данные.', enum=['yandex_ai_studio', 'deepseek']),
+    'cloud_processing_consent': field('boolean', 'Явное согласие отправить фотографии и контекст выбранному cloud_provider. Без true облачных вызовов нет; отсутствие cloud_provider допустимо только для прежних отправок в Yandex AI Studio.', const=True),
     'scenario': field('string', 'Цель наблюдения.', minLength=1, maxLength=256),
     'observation_area': field('string', 'Название участка наблюдения.', minLength=1, maxLength=256),
     'period': TIME, 'stage': field('string', 'Заданный пользователем контекст, не вывод модели.', enum=['excavation','other']),
@@ -128,7 +129,9 @@ FEEDBACK = obj({'id':UUID,'category':TEXT,'message':TEXT,'context':field('object
 RESPONSES = {
     'live':obj({'live':field('boolean','Процесс отвечает.')},('live',)),
     'ready':obj({'ready':field('boolean','Стартовые проверки завершены.'),'code':TEXT},('ready','code')),
-    'analysis_choices':obj({'stages':array(obj({'id':TEXT,'label':TEXT,'rule':field(['object','null'],'Историческое правило; для новых запусков null.')}),'Доступные сценарии.')}),
+    'analysis_choices':obj({'cloud_provider':field(['string','null'],'Провайдер текущего профиля; null без активного профиля.',enum=['yandex_ai_studio','deepseek',None]),
+                            'cloud_provider_label':field(['string','null'],'Название провайдера текущего профиля.'),
+                            'cloud_profile_id':NULL_UUID, 'stages':array(obj({'id':TEXT,'label':TEXT,'rule':field(['object','null'],'Историческое правило; для новых запусков null.')}),'Доступные сценарии.')}),
     'submit_single_image':obj({'run_id':UUID,'state':TEXT,'code':TEXT}), 'retry_run':obj({'run_id':UUID},('run_id',)),
     'read_run':RUN,'list_runs':obj({'runs':array(RUN,'Страница истории.'),'total':COUNT,'next_offset':field(['integer','null'],'Следующее смещение или null.')}),
     'stage_summary':obj({'stages':array(obj({'stage_id':TEXT,'name':TEXT,'supported':field('boolean','Поддержка исторического сценария.'),'latest_result':field(['object','null'],'Последняя сохранённая проекция.'),'latest_lifecycle':field(['object','null'],'Более новый незавершённый запуск.')}),'Сводка этапов.')}),

@@ -1247,14 +1247,17 @@ describe('Zone plan and signals', () => {
       url === `/api/zones/${zoneId}/plan` ? { revision_number: 0, entries: [] } : {} }))
     vi.stubGlobal('fetch', fetchMock)
     render(<App />)
-    await screen.findByText('Подготовка')
+    await waitFor(() => expect(screen.getByRole('button', { name: /Добавить (?:первую )?работу/ })).toHaveProperty('disabled', false))
     await user.selectOptions(await screen.findByLabelText('Участок'), zoneId)
-    await user.click(await screen.findByRole('button', { name: 'Добавить работу' }))
+    await user.click(await screen.findByRole('button', { name: /Добавить (?:первую )?работу/ }))
+  await user.click(within(screen.getByRole('dialog', { name: 'Выберите работу' })).getAllByRole('button', { name: /^Выбрать:/ })[0])
     await user.selectOptions(screen.getByLabelText('Состояние'), 'active')
-    await user.selectOptions(screen.getByLabelText('Сценарий анализа'), 'excavation')
-    await user.click(within(screen.getByRole('group', { name: 'Ожидаемая техника · работа 1' })).getByRole('checkbox', { name: 'Экскаватор' }))
-    await user.click(screen.getByRole('button', { name: 'Сохранить новую ревизию' }))
-    await screen.findByText('Сохранена ревизия 1.')
+    await user.click(screen.getByText('Дополнительные настройки'))
+    await user.selectOptions(screen.getByLabelText('Ожидаемый этап работ'), 'excavation')
+    await user.click(screen.getByRole('button', { name: 'Добавить технику' }))
+    await user.click(screen.getByRole('button', { name: 'Добавить: Экскаватор' }))
+    await user.click(screen.getByRole('button', { name: 'Сохранить план' }))
+    await screen.findByText('План сохранён.')
     const request = fetchMock.mock.calls.find(([url, options]) => url === `/api/zones/${zoneId}/plan` && options?.method === 'PUT')
     const body = JSON.parse(String(request?.[1]?.body))
     expect(body.expected_revision).toBe(0)
@@ -1377,16 +1380,17 @@ describe('About project', () => {
     expect(history.state?.aboutFromApp).toBeUndefined()
   })
 
-  it('opens from secondary navigation and team attribution with heading focus and a return path', async () => {
+  it('keeps About off navigation and preserves team attribution navigation with heading focus', async () => {
     history.replaceState({}, '', '/')
     vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => ({ stages: [] }) })))
     const user = userEvent.setup()
     render(<App />)
     const secondary = screen.getByRole('navigation', { name: 'Дополнительная навигация' })
     expect(within(screen.getByRole('navigation', { name: 'Основная навигация' })).queryByRole('link', { name: 'О системе' })).toBeNull()
-    await user.click(within(secondary).getByRole('link', { name: 'О системе' }))
+    expect(within(secondary).queryByRole('link', { name: 'О системе' })).toBeNull()
+    await user.click(screen.getByRole('link', { name: '17 мгновений ИИ' }))
     expect(document.activeElement).toBe(screen.getByRole('heading', { name: 'Контроль строительства' }))
-    expect(screen.getByRole('link', { name: 'О системе' }).getAttribute('aria-current')).toBe('page')
+    expect(location.pathname).toBe('/about')
     await user.click(screen.getByRole('link', { name: 'Вернуться назад' }))
     await waitFor(() => expect(location.pathname).toBe('/'))
     history.forward()
@@ -1461,7 +1465,7 @@ function quotaBackedRequests() {
 }
 
 describe('New Analysis', () => {
-  const configuredChoices = { stages: [{ id: 'excavation', label: 'Земляные работы', rule: {
+  const configuredChoices = { cloud_provider: 'yandex_ai_studio', cloud_provider_label: 'Yandex AI Studio', cloud_profile_id: '11111111-1111-1111-1111-111111111111', stages: [{ id: 'excavation', label: 'Земляные работы', rule: {
     name: 'Проверка вывоза грунта', revision: 'v1', expectation: 'Самосвалы периодически',
     provenance: 'demonstration rule', recommendation: 'Проверить вручную',
   } }, { id: 'other', label: 'Другой этап', rule: null }] }
@@ -1474,7 +1478,7 @@ describe('New Analysis', () => {
       dataTransfer: { files: [image('first.jpg'), image('second.jpg')] },
     })
     expect(await screen.findByText('second.jpg')).toBeTruthy()
-    expect(screen.getAllByRole('img', { name: /Предпросмотр: кадр/ })).toHaveLength(2)
+    expect(await screen.findAllByRole('img', { name: /Предпросмотр: кадр/ })).toHaveLength(2)
     expect(screen.queryByText('Не удалось проверить выбранные изображения. Повторите выбор файлов.')).toBeNull()
   })
 
@@ -1638,6 +1642,128 @@ describe('New Analysis', () => {
     expect(fetchMock.mock.calls[0][0]).toBe('/api/analysis-choices')
     expect(screen.queryByRole('radio', { name: 'Только распознать технику' })).toBeNull()
     expect((screen.getByRole('button', { name: 'Запустить анализ' }) as HTMLButtonElement).disabled).toBe(false)
+  })
+
+  it.each(['DeepSeek', 'Yandex AI Studio'])('discloses DeepSeek from the provider enum even when the supplied label is %s', async (label) => {
+    const user = userEvent.setup()
+    vi.stubGlobal('__ANALYSIS_CHOICES__', undefined)
+    const directChoices = { ...configuredChoices, cloud_provider: 'deepseek', cloud_provider_label: label }
+    const fetchMock = vi.fn(async (url: string, options?: RequestInit) =>
+      url === '/api/analysis-choices' ? { ok: true, json: async () => directChoices } :
+      options?.method === 'POST' ? { status: 202, json: async () => ({ run_id: '12345678-1234-1234-1234-123456789abc' }) } :
+      { ok: true, json: async () => snapshot('queued') })
+    vi.stubGlobal('fetch', fetchMock)
+    render(<App />)
+    await screen.findByRole('checkbox', { name: /контекст анализа в DeepSeek/ })
+    expect(screen.queryByRole('checkbox', { name: /Yandex AI Studio/ })).toBeNull()
+    await fillContext(user)
+    await user.upload(screen.getByLabelText('Выбрать изображение'), image('first.jpg'))
+    await screen.findByText('Кадр 1')
+    await consentToCloud()
+    await user.click(screen.getByRole('button', { name: 'Запустить анализ' }))
+    await screen.findByRole('heading', { name: 'Анализ поставлен в очередь' })
+    const post = fetchMock.mock.calls.find(([, options]) => options?.method === 'POST')!
+    expect(post[0]).toBe('/api/runs/single-image')
+    expect(JSON.parse(String(post[1]?.body))).toMatchObject({ cloud_processing_consent: true, cloud_provider: 'deepseek' })
+  })
+
+  it('prevents a new send when no cloud provider is bound despite valid stage settings', async () => {
+    const user = userEvent.setup()
+    vi.stubGlobal('__ANALYSIS_CHOICES__', undefined)
+    const fetchMock = vi.fn(async (_url: string, _options?: RequestInit) => ({ ok: true, json: async () => ({
+      ...configuredChoices, cloud_provider: null, cloud_provider_label: null, cloud_profile_id: null,
+    }) }))
+    vi.stubGlobal('fetch', fetchMock)
+    render(<App />)
+    const consent = await screen.findByRole('checkbox', { name: /Согласие недоступно/ })
+    await screen.findByText('Облачная обработка пока недоступна. Обновите настройки или проверьте конфигурацию сервера.')
+    await fillContext(user)
+    await user.upload(screen.getByLabelText('Выбрать изображение'), image('first.jpg'))
+    await screen.findByText('Кадр 1')
+    expect(consent).toHaveProperty('disabled', true)
+    const submit = screen.getByRole('button', { name: 'Запустить анализ' })
+    expect(submit).toHaveProperty('disabled', true)
+    await user.click(submit)
+    expect(fetchMock.mock.calls.some(([, options]) => options?.method === 'POST')).toBe(false)
+    expect(sessionStorage.getItem('observation-pending')).toBeNull()
+  })
+
+  it('requires new consent when refreshed settings change provider or profile and preserves the draft', async () => {
+    const user = userEvent.setup()
+    vi.stubGlobal('__ANALYSIS_CHOICES__', undefined)
+    let liveChoices = configuredChoices
+    const fetchMock = vi.fn(async () => ({ ok: true, json: async () => liveChoices }))
+    vi.stubGlobal('fetch', fetchMock)
+    render(<App />)
+    await screen.findByRole('checkbox', { name: /контекст анализа в Yandex AI Studio/ })
+    await fillContext(user)
+    await consentToCloud()
+    expect(screen.getByRole('checkbox', { name: /Разрешаю отправить эти фотографии/ })).toHaveProperty('checked', true)
+    liveChoices = { ...configuredChoices, cloud_provider: 'deepseek', cloud_provider_label: 'DeepSeek', cloud_profile_id: '22222222-2222-2222-2222-222222222222' }
+    await user.click(screen.getByRole('button', { name: 'Обновить настройки обработки' }))
+    const directConsent = await screen.findByRole('checkbox', { name: /контекст анализа в DeepSeek/ })
+    expect(directConsent).toHaveProperty('checked', false)
+    await consentToCloud()
+    liveChoices = { ...liveChoices, cloud_profile_id: '33333333-3333-3333-3333-333333333333' }
+    await user.click(screen.getByRole('button', { name: 'Обновить настройки обработки' }))
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3))
+    expect(directConsent).toHaveProperty('checked', false)
+    expect((screen.getByLabelText('Сценарий') as HTMLInputElement).value).toBe('Земляные работы')
+    expect((screen.getByLabelText('Участок наблюдения') as HTMLInputElement).value).toBe('Северный участок')
+  })
+
+  it('disables stale cloud settings after a malformed refresh response', async () => {
+    const user = userEvent.setup()
+    vi.stubGlobal('__ANALYSIS_CHOICES__', undefined)
+    const fetchMock = vi.fn().mockResolvedValueOnce({ ok: true, json: async () => configuredChoices })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ code: 'settings_unavailable' }) })
+    vi.stubGlobal('fetch', fetchMock)
+    render(<App />)
+    await screen.findByRole('checkbox', { name: /контекст анализа в Yandex AI Studio/ })
+    await consentToCloud()
+    await user.click(screen.getByRole('button', { name: 'Обновить настройки обработки' }))
+    const consent = await screen.findByRole('checkbox', { name: /Согласие недоступно/ })
+    expect(consent).toHaveProperty('checked', false)
+    expect(consent).toHaveProperty('disabled', true)
+    expect(screen.getByRole('button', { name: 'Запустить анализ' })).toHaveProperty('disabled', true)
+  })
+
+  it.each([
+    { savedProvider: 'deepseek', currentProvider: 'yandex_ai_studio', savedLabel: 'DeepSeek' },
+    { savedProvider: 'yandex_ai_studio', currentProvider: 'deepseek', savedLabel: 'Yandex AI Studio' },
+    { savedProvider: undefined, currentProvider: 'deepseek', savedLabel: 'Yandex AI Studio' },
+  ])('keeps the original $savedLabel recipient and exact pending payload/key under $currentProvider', async ({ savedProvider, currentProvider, savedLabel }) => {
+    const user = userEvent.setup()
+    vi.stubGlobal('__ANALYSIS_CHOICES__', undefined)
+    const request = { endpoint: '/api/runs/single-image', body: JSON.stringify({
+      cloud_processing_consent: true, ...(savedProvider ? { cloud_provider: savedProvider } : {}), image_base64: 'saved bytes',
+    }, null, 2), key: 'original-provider-key' }
+    const saved = JSON.stringify(request)
+    sessionStorage.setItem('observation-pending', saved)
+    const fetchMock = vi.fn(async (url: string, options?: RequestInit) =>
+      url === '/api/analysis-choices' ? { ok: true, json: async () => ({ ...configuredChoices,
+        cloud_provider: currentProvider, cloud_provider_label: currentProvider === 'deepseek' ? 'DeepSeek' : 'Yandex AI Studio',
+      }) } : options?.method === 'POST' ? { status: 503, json: async () => ({ code: 'run_unavailable' }) } :
+      { ok: true, json: async () => ({}) })
+    vi.stubGlobal('fetch', fetchMock)
+    render(<App />)
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Повторить отправку' })).toHaveProperty('disabled', false))
+    const consent = screen.getByRole('checkbox', { name: new RegExp(`контекст анализа в ${savedLabel}`) })
+    expect(consent).toHaveProperty('checked', true)
+    expect(consent).toHaveProperty('disabled', true)
+    for (let attempt = 0; attempt < 2; attempt++) {
+      await user.click(screen.getByRole('button', { name: 'Повторить отправку' }))
+      await screen.findByText(/Результат отправки пока неизвестен/)
+      await waitFor(() => expect(screen.getByRole('button', { name: 'Повторить отправку' })).toHaveProperty('disabled', false))
+      expect(sessionStorage.getItem('observation-pending')).toBe(saved)
+    }
+    const posts = fetchMock.mock.calls.filter(([, options]) => options?.method === 'POST')
+    expect(posts).toHaveLength(2)
+    for (const [url, options] of posts) {
+      expect(url).toBe(request.endpoint)
+      expect(options?.body).toBe(request.body)
+      expect((options?.headers as Record<string, string>)['Idempotency-Key']).toBe(request.key)
+    }
   })
 
   it('retries failed live choices without losing prepared form context', async () => {

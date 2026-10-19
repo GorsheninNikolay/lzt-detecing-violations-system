@@ -64,7 +64,8 @@ def _read_json(http_request: request.Request, seconds: float) -> dict:
                 raise ValueError
             return payload
     except error.HTTPError as exc:
-        raise CloudObserverError("observer_quota_failed" if exc.code == 429 else
+        raise CloudObserverError("observer_balance_failed" if exc.code == 402 else
+                                 "observer_quota_failed" if exc.code == 429 else
                                  "observer_access_failed" if exc.code in (401, 403) else
                                  "observer_http_failed") from None
     except error.URLError as exc:

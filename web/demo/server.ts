@@ -3,6 +3,8 @@ import { readFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import type { Plugin } from 'vite'
 import sharp from 'sharp'
+import { validateTrialZip } from './trial'
+import { createAccountDemo } from './accounts'
 import { FIXED_DATE, PROJECT_A, PROJECT_B, RUN_A, RUN_B, projects, works, photos, makeRun, stageNames } from './fixtures'
 
 type Data = Record<string, any>
@@ -91,7 +93,7 @@ export function createDemoStore(now = Date.now) {
     if (path === '/analytics/events' && method === 'POST') return ok({ accepted: true }, 202)
     if (path === '/feedback' && method === 'POST') return ok({ id: randomUUID(), status: 'received' }, 201)
     if (path === '/admin/session') return error('authentication_required', 401)
-    if (path === '/analysis-choices' && method === 'GET') return ok({ stages: [{ id: 'excavation', label: 'Земляные работы', rule: null }, { id: 'concreting', label: 'Бетонирование', rule: null }, { id: 'roadwork', label: 'Дорожные работы', rule: null }] })
+    if (path === '/analysis-choices' && method === 'GET') return ok({ cloud_provider: 'yandex_ai_studio', cloud_provider_label: 'Yandex AI Studio', cloud_profile_id: '11111111-1111-4111-8111-111111111111', stages: [{ id: 'excavation', label: 'Земляные работы', rule: null }, { id: 'concreting', label: 'Бетонирование', rule: null }, { id: 'roadwork', label: 'Дорожные работы', rule: null }] })
     if (path === '/catalog/works' && method === 'GET') return ok({ works })
     const cacheKey = key ? `${method}:${path}:${key}` : ''
     const prior = cacheKey && requests.get(cacheKey)
@@ -183,16 +185,24 @@ export function createDemoStore(now = Date.now) {
   return { request }
 }
 export function demoPlugin(): Plugin {
-  const store = createDemoStore()
+  const store = createAccountDemo()
   return { name: 'isolated-demonstration', apply: 'serve', configureServer(server) {
     server.middlewares.use(async (req, res, next) => {
       if (!req.url?.startsWith('/api/')) return next()
       try {
         const chunks: Uint8Array[] = []; let size = 0
         for await (const chunk of req) { size += chunk.length; if (size > 180 * 1024 * 1024) { res.writeHead(413).end(); return } chunks.push(chunk) }
-        const raw = Buffer.concat(chunks).toString()
-        const result = await store.request(req.method || 'GET', req.url, raw ? JSON.parse(raw) : {}, String(req.headers['idempotency-key'] || ''))
-        if (result.artifact) { const bytes = typeof result.artifact === 'string' ? await readFile(resolve(server.config.root, 'public', result.artifact.slice(1))) : result.artifact; const type = bytes[0] === 0x89 ? 'image/png' : bytes[0] === 0x52 ? 'image/webp' : 'image/jpeg'; res.writeHead(200, { 'Content-Type': type, 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' }); res.end(bytes); return }
+        const buffer = Buffer.concat(chunks), raw = buffer.toString()
+        const contentType=String(req.headers['content-type'] || '')
+        if(req.url.startsWith('/api/trial/import')&&contentType.includes('multipart/form-data')&&raw.includes('filename="')){
+          const boundary=/boundary=(?:"([^"]+)"|([^;]+))/.exec(contentType),marker=Buffer.from(`--${boundary?.[1]??boundary?.[2]}`)
+          const headerEnd=buffer.indexOf(Buffer.from('\r\n\r\n')),end=buffer.indexOf(marker,headerEnd+4)
+          if(headerEnd<0||end<0)throw new Error('invalid_archive')
+          validateTrialZip(buffer.subarray(headerEnd+4,end-2))
+        }
+        const result = await store.request(req.method || 'GET', req.url, raw && String(req.headers['content-type']).includes('application/json') ? JSON.parse(raw) : {}, String(req.headers['idempotency-key'] || ''), /(?:^|; )demo_session=([^;]*)/.exec(req.headers.cookie || '')?.[1] || '')
+        if (result.session !== undefined) res.setHeader('Set-Cookie', `demo_session=${result.session}; HttpOnly; SameSite=Strict; Path=/`)
+        if (result.artifact) { const bytes = typeof result.artifact === 'string' ? await readFile(resolve(server.config.root, 'public', result.artifact.slice(1))) : result.artifact; const type = result.contentType || (bytes[0] === 0x89 ? 'image/png' : bytes[0] === 0x52 ? 'image/webp' : 'image/jpeg'); res.writeHead(200, { 'Content-Type': type, 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' }); res.end(bytes); return }
         res.writeHead(result.status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }); res.end(JSON.stringify(result.data))
       } catch { res.writeHead(400, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ code: 'invalid_demo_request' })) }
     })

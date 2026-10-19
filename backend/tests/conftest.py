@@ -24,3 +24,16 @@ def synthetic_diagnostic_reservations(request, tmp_path, monkeypatch):
     path = tmp_path / 'diagnostic-reservations.json'
     path.write_text(json.dumps({'frames': frames}))
     monkeypatch.setattr(hybrid_readiness, 'DIAGNOSTIC_RESERVATIONS_PATH', path)
+
+
+@pytest.fixture(autouse=True)
+def legacy_account_auth(request, monkeypatch):
+    legacy_modules = {
+        'test_site_workflow_db', 'test_annotations', 'test_engagement', 'test_startup',
+        'test_site_plan', 'test_site_analysis', 'test_single_image', 'test_ordered_series',
+        'test_cloud_profile', 'test_admission', 'test_detected_objects', 'test_evaluation_set',
+        'test_comparison_campaign', 'test_deepseek', 'test_deepseek_direct',
+        'test_hybrid', 'test_rule_intent',
+    }
+    if request.module.__name__ in legacy_modules:
+        monkeypatch.setenv('AUTH_REQUIRED', 'false')

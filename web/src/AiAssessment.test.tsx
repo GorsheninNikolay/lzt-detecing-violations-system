@@ -50,7 +50,7 @@ it('labels historical evidence without rewriting the saved provider response', (
     schema_version:'deepseek-service-v1',raw:{provider:'DeepSeek'},
   }}]
   const saved = JSON.stringify(evidence)
-  render(<AiAssessmentPanel inputs={[]} evidence={evidence} assessment={{
+  render(<AiAssessmentPanel inputs={[]} evidence={evidence} adapterCode="yandex_deepseek" assessment={{
     summary:'Сохранённая аналитика',stage_hypothesis:{stage:'unknown',reason:'Мало данных'},
     risks:[],recommendations:[],limitations:[],
   }} />)
@@ -73,4 +73,15 @@ it('shows hybrid activity, frame stage hypotheses and applicable plan links', ()
   expect(screen.getByRole('link', {name:'Работа плана'}).getAttribute('href')).toBe('#work-work')
   screen.getAllByRole('button',{name:'Кадр 1'})[0].click()
   expect(open).toHaveBeenCalledWith('frame')
+})
+
+
+it('labels direct DeepSeek from the saved adapter and leaves unknown sources unspecified', () => {
+  const { rerender } = render(<AiAssessmentPanel inputs={[]} evidence={[]} adapterCode="deepseek_direct" />)
+  expect(screen.getByText(/Источник: DeepSeek\./)).toBeTruthy()
+  expect(screen.queryByText(/Yandex AI Studio/)).toBeNull()
+  rerender(<AiAssessmentPanel inputs={[]} evidence={[]} adapterCode="future_adapter" />)
+  expect(screen.getByText(/Источник облачной обработки не указан/)).toBeTruthy()
+  expect(screen.queryByText(/Источник: DeepSeek/)).toBeNull()
+  expect(screen.queryByText(/Yandex AI Studio/)).toBeNull()
 })

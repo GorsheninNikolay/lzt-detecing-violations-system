@@ -12,5 +12,6 @@ COPY backend/ ./
 COPY artifacts/dataset/Свод*.xlsx /app/artifacts/dataset/
 RUN pip install --no-cache-dir --no-deps .
 COPY evaluation/ /app/evaluation/
+COPY shared/trial-project/ /app/shared/trial-project/
 COPY infra/deploy/init.py /app/init.py
 CMD ["python", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

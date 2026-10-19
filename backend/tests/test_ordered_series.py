@@ -21,6 +21,7 @@ from app.adapters.artifacts import ArtifactGateError, ArtifactStore
 from app.adapters.postgres import AdmissionStoreError, PostgresStore
 from app.application import executor, submission
 from app.config import Config
+from app.profiles.deepseek import snapshot as cloud_snapshot
 from app.main import create_app
 from test_admission import isolated_admission_database
 from test_single_image import jpeg
@@ -47,7 +48,7 @@ def test_stalled_duplicate_has_bounded_retry(monkeypatch):
     store = Store()
     with pytest.raises(submission.SubmissionError, match="submission_in_progress"):
         submission.submit_series(store, None, "stalled", body(jpeg((0, 0, 0)), jpeg((0, 0, 0))),
-                                 uuid.uuid4(), 1, {"kind":"deepseek"})
+                                 uuid.uuid4(), 1, cloud_snapshot('mock-folder'))
     assert store.calls == 2
 
 

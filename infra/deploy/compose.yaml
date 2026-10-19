@@ -37,6 +37,7 @@ services:
       dockerfile: infra/deploy/backend.Dockerfile
     environment: &backend_environment
       API_ROOT_PATH: /api
+      PUBLIC_APP_URL: ${PUBLIC_APP_URL:-}
       DATABASE_URL: postgresql+psycopg://evidence:${POSTGRES_PASSWORD}@postgres:5432/evidence
       S3_ENDPOINT: http://minio:9000
       S3_BUCKET: evidence
@@ -44,6 +45,8 @@ services:
       S3_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
       YANDEX_AI_STUDIO_API_KEY: ${YANDEX_AI_STUDIO_API_KEY:-}
       YANDEX_CLOUD_FOLDER_ID: ${YANDEX_CLOUD_FOLDER_ID:-}
+      CLOUD_PROVIDER: ${CLOUD_PROVIDER:-yandex_ai_studio}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
       OBSERVER_PROFILE_ID: ${OBSERVER_PROFILE_ID:-}
       HYBRID_PHOTO_SIGNALS: ${HYBRID_PHOTO_SIGNALS:-1}
       YOLO_MODELS_DIR: /app/artifacts/Models

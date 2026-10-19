@@ -42,9 +42,9 @@ export function EntryScene({ projects }: { projects: ProjectVisual[] }) {
   })}</motion.div>)}</div></div>
 }
 // Adapted from Aceternity ContainerScroll; working images never enter this container.
-export function OverviewScene() {
+export function OverviewScene({ project }: { project?: ProjectVisual }) {
   const ref = useRef<HTMLDivElement>(null); const inView = useVisible(ref); const { enabled } = useMotionPreference(); const fine = useFinePointer()
   const { scrollYProgress } = useScroll({ target: ref, offset: ['start end', 'end start'] })
   const rotate = useTransform(scrollYProgress, [0, .6], [14, 0]); const scale = useTransform(scrollYProgress, [0, .6], [.94, 1])
-  return <div className="overview-presentation" ref={ref} aria-hidden="true"><motion.div style={{ rotateX: enabled && fine && inView ? rotate : 0, scale: enabled && fine && inView ? scale : 1 }}><Architecture /><p>От фотографии<br />к обоснованному решению</p></motion.div></div>
+  return <div className="overview-presentation" ref={ref} aria-hidden="true"><motion.div style={{ rotateX: enabled && fine && inView ? rotate : 0, scale: enabled && fine && inView ? scale : 1 }}><div className="overview-cover-visual"><Architecture />{project && <CoverPhoto project={project} className="overview-cover-photo" />}</div><p>От фотографии<br />к обоснованному решению</p></motion.div></div>
 }

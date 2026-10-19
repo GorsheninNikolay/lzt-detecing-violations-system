@@ -20,6 +20,21 @@ const photo = () => new File([new Uint8Array([0x89, 0x50, 0x4e, 0x47])], 'site.p
 const drawImage = vi.fn()
 const fillRect = vi.fn()
 
+async function openCoverSettings() {
+  if (location.pathname === '/') {
+    expect(screen.queryByLabelText('Загрузить обложку проекта Второй объект')).toBeNull()
+    expect(screen.queryByText('JPEG, PNG или WEBP, до 5 МБ.')).toBeNull()
+    fireEvent.click(await screen.findByRole('link', { name: 'Второй объект' }))
+  }
+  return await screen.findByLabelText('Загрузить обложку проекта Второй объект') as HTMLInputElement
+}
+
+async function returnToProjects() {
+  fireEvent.change(screen.getByLabelText('Выбрать проект'), { target: { value: '' } })
+  await screen.findByRole('link', { name: 'Второй объект' })
+}
+
+
 beforeEach(() => {
   history.replaceState({}, '', '/')
   localStorage.setItem('construction-onboarding', 'completed')
@@ -32,11 +47,12 @@ beforeEach(() => {
 })
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.unstubAllEnvs(); vi.restoreAllMocks() })
 
-it('shows a compact demo marker without the removed sentence', async () => {
+it('does not show the obsolete demo badge on the project list', async () => {
   vi.stubEnv('MODE', 'demo')
   vi.stubGlobal('fetch', vi.fn(async () => json({ projects })))
   render(<App />)
-  expect(await screen.findByText('Демо')).toBeTruthy()
+  await screen.findByRole('link', { name: 'Первый объект' })
+  expect(screen.queryByText('Демо', { exact: true })).toBeNull()
   expect(screen.queryByText(/Демонстрация интерфейса · фотографии и разметка/)).toBeNull()
 })
 
@@ -52,9 +68,8 @@ it('shows individual covers and updates only the uploaded project and its cube',
   vi.stubGlobal('fetch', fetcher)
   render(<App />)
 
-  const input = await screen.findByLabelText('Загрузить обложку проекта Второй объект') as HTMLInputElement
-  await waitFor(() => expect(input.disabled).toBe(false))
-  const cards = document.querySelectorAll('.project-card')
+  await screen.findByRole('link', { name: 'Второй объект' })
+  let cards = document.querySelectorAll('.project-card')
   expect(cards).toHaveLength(2)
   expect(cards[0].querySelector('img.project-cover-photo')?.getAttribute('src')).toBe(`/api/projects/${firstId}/cover?revision=${firstSha}`)
   expect(cards[1].querySelector('img.project-cover-photo')).toBeNull()
@@ -63,10 +78,17 @@ it('shows individual covers and updates only the uploaded project and its cube',
   expect(document.querySelectorAll('.marquee-column:nth-child(1) .marquee-slot:nth-child(3).marquee-slot--photo')).toHaveLength(1)
   expect(document.querySelectorAll('.marquee-column:nth-child(2) .marquee-slot:nth-child(3).marquee-slot--filled')).toHaveLength(1)
   expect(document.querySelectorAll('.marquee-column:nth-child(1) .marquee-slot:nth-child(1).marquee-slot--empty')).toHaveLength(1)
-  expect(screen.getByText('Обложки видны всем. Любой посетитель может их заменить.')).toBeTruthy()
+  expect(screen.queryByText('Обложка видна участникам проекта. Изменять её могут владелец и редакторы.')).toBeNull()
   expect(screen.queryByText(/Демонстрация интерфейса · фотографии и разметка/)).toBeNull()
 
+  const input = await openCoverSettings()
+  await waitFor(() => expect(input.disabled).toBe(false))
+  expect(screen.getByText('Обложка видна участникам проекта. Изменять её могут владелец и редакторы.')).toBeTruthy()
   await userEvent.setup().upload(input, photo())
+  await screen.findByText('Обложка обновлена.')
+  expect(document.querySelector('img.overview-cover-photo')?.getAttribute('src')).toBe(`/api/projects/${secondId}/cover?revision=${secondSha}`)
+  await returnToProjects()
+  cards = document.querySelectorAll('.project-card')
   await waitFor(() => expect(cards[1].querySelector('img.project-cover-photo')?.getAttribute('src')).toBe(`/api/projects/${secondId}/cover?revision=${secondSha}`))
   expect(cards[0].querySelector('img.project-cover-photo')?.getAttribute('src')).toBe(`/api/projects/${firstId}/cover?revision=${firstSha}`)
   expect(document.querySelectorAll('.marquee-cover-photo')).toHaveLength(2)
@@ -82,7 +104,7 @@ it('rejects unsupported or oversized covers before upload', async () => {
   const fetcher = vi.fn(async (_url: string, _options?: RequestInit) => json({ projects }))
   vi.stubGlobal('fetch', fetcher)
   render(<App />)
-  const input = await screen.findByLabelText('Загрузить обложку проекта Второй объект') as HTMLInputElement
+  const input = await openCoverSettings()
   await waitFor(() => expect(input.disabled).toBe(false))
   fireEvent.change(input, { target: { files: [new File(['image'], 'site.gif', { type: 'image/gif' })] } })
   expect(await screen.findByText('Выберите фотографию JPEG, PNG или WEBP.')).toBeTruthy()
@@ -95,7 +117,7 @@ it('does not send a cover when browser storage cannot preserve its retry request
   const fetcher = vi.fn(async (_url: string, _options?: RequestInit) => json({ projects }))
   vi.stubGlobal('fetch', fetcher)
   render(<App />)
-  const input = await screen.findByLabelText('Загрузить обложку проекта Второй объект') as HTMLInputElement
+  const input = await openCoverSettings()
   await waitFor(() => expect(input.disabled).toBe(false))
   vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('quota') })
   vi.stubGlobal('indexedDB', { open: () => { throw new Error('blocked') } })
@@ -109,7 +131,7 @@ it('rejects a corrupt image and oversized normalized JPEG before saving or sendi
   const fetcher = vi.fn(async (_url: string, _options?: RequestInit) => json({ projects }))
   vi.stubGlobal('fetch', fetcher)
   render(<App />)
-  const input = await screen.findByLabelText('Загрузить обложку проекта Второй объект') as HTMLInputElement
+  const input = await openCoverSettings()
   await waitFor(() => expect(input.disabled).toBe(false))
   vi.stubGlobal('createImageBitmap', vi.fn(async () => { throw new Error('decode_failed') }))
   await userEvent.setup().upload(input, photo())
@@ -137,7 +159,7 @@ it('retries an unknown outcome after remount with the exact body and key', async
   })
   vi.stubGlobal('fetch', fetcher)
   const view = render(<App />)
-  const input = await screen.findByLabelText('Загрузить обложку проекта Второй объект') as HTMLInputElement
+  const input = await openCoverSettings()
   await waitFor(() => expect(input.disabled).toBe(false))
   await userEvent.setup().upload(input, photo())
   expect(await screen.findByText(/Ответ сервера не получен/)).toBeTruthy()
@@ -145,6 +167,9 @@ it('retries an unknown outcome after remount with the exact body and key', async
 
   render(<App />)
   await userEvent.setup().click(await screen.findByRole('button', { name: 'Повторить отправку обложки' }))
+  await screen.findByText('Обложка обновлена.')
+  expect(document.querySelector('img.overview-cover-photo')?.getAttribute('src')).toBe(`/api/projects/${secondId}/cover?revision=${secondSha}`)
+  await returnToProjects()
   await waitFor(() => expect(document.querySelectorAll('img.project-cover-photo')).toHaveLength(2))
   const requests = fetcher.mock.calls.filter(([url, options]) => url === `/api/projects/${secondId}/cover` && options?.method === 'PUT')
   expect(requests).toHaveLength(2)
@@ -160,10 +185,11 @@ it('shows the current cover after a replay whose original result was superseded'
       : json({ projects: projects.map(item => item.id === secondId ? { ...item, cover_sha256: latestSha } : item) }))
   vi.stubGlobal('fetch', fetcher)
   render(<App />)
-  const input = await screen.findByLabelText('Загрузить обложку проекта Второй объект') as HTMLInputElement
+  const input = await openCoverSettings()
   await waitFor(() => expect(input.disabled).toBe(false))
   await userEvent.setup().upload(input, photo())
   expect(await screen.findByText('Другой посетитель уже заменил обложку. Показана актуальная фотография.')).toBeTruthy()
+  await returnToProjects()
   const second = document.querySelectorAll('.project-card')[1]
   expect(second.querySelector('img.project-cover-photo')?.getAttribute('src')).toBe(`/api/projects/${secondId}/cover?revision=${latestSha}`)
 })
@@ -175,4 +201,18 @@ it('keeps an outlined slot for every unfilled position beyond the initial twelve
   expect(container.querySelectorAll('.marquee-slot--filled')).toHaveLength(13)
   expect(container.querySelectorAll('.marquee-slot--empty')).toHaveLength(3)
   expect(container.querySelector('.marquee-scene')?.getAttribute('data-moving')).toBe('false')
+})
+
+it('renders the saved cover after reopening the project without the training block', async () => {
+  history.replaceState({}, '', `/projects/${secondId}`)
+  const saved = projects.map(project => project.id === secondId ? {...project, cover_sha256:secondSha} : project)
+  vi.stubGlobal('fetch', vi.fn(async () => json({projects:saved})))
+  const view = render(<App />)
+  await screen.findByRole('heading', {name:'Второй объект'})
+  expect(document.querySelector('img.overview-cover-photo')?.getAttribute('src')).toBe(`/api/projects/${secondId}/cover?revision=${secondSha}`)
+  expect(screen.queryByRole('heading', {name:'Учебные материалы проекта'})).toBeNull()
+  view.unmount()
+  render(<App />)
+  await screen.findByRole('heading', {name:'Второй объект'})
+  expect(document.querySelector('img.overview-cover-photo')?.getAttribute('src')).toBe(`/api/projects/${secondId}/cover?revision=${secondSha}`)
 })

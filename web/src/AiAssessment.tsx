@@ -1,16 +1,17 @@
-import { equipmentLabel, stageLabel, sceneLabel, callStateLabel, explanationLabel } from './displayLabels'
+import { equipmentLabel, stageLabel, sceneLabel, callStateLabel, explanationLabel, savedCloudProviderLabel } from './displayLabels'
 import type { Input } from './EvidenceViewer'
 export type AiAssessment = { summary: string; stage_hypothesis: { stage: string; reason: string }; risks: { category: 'process' | 'plan' | 'safety'; text: string; frame_ids: string[]; observation_ids: string[]; cause?: string; work_entry_id?: string | null; impact?: string; recommended_check?: string; limitations?: string[] }[]; activity?: { state: string; reason: string; uncertainty: string; frame_ids: string[] }[]; stage_hypotheses?: { stage: string; reason: string; frame_ids: string[]; work_entry_id: string | null }[]; recommendations: string[]; limitations: string[] }
 type Ground = { id: string; type_ru?: string; type_en?: string; catalog_class?: string | null; evidence?: string; name?: string; state?: string; status?: string }
 export type AiEvidence = { id: string; kind: string; input_id?: string | null; state: string; context: { frames?: { input_id: string; observations: Ground[] }[] }; result: { model: string | null; usage: unknown; instruction_version: string; schema_version: string; raw: unknown } | null }
 const categories = { process: 'Организация работ', plan: 'План работ', safety: 'Возможный риск безопасности' }
-export function AiAssessmentPanel({ assessment, evidence, inputs, workTitles = {}, onOpenFrame }: { assessment?: AiAssessment | null; evidence: AiEvidence[]; inputs: Input[]; workTitles?: Record<string, string>; onOpenFrame?: (id: string) => void }) {
+export function AiAssessmentPanel({ assessment, evidence, inputs, adapterCode, workTitles = {}, onOpenFrame }: { assessment?: AiAssessment | null; evidence: AiEvidence[]; inputs: Input[]; adapterCode?: string; workTitles?: Record<string, string>; onOpenFrame?: (id: string) => void }) {
+  const provider = savedCloudProviderLabel(adapterCode)
   const frames = evidence.find(call => call.kind === 'assessment')?.context.frames ?? []
   const grounds = new Map(frames.flatMap(frame => frame.observations.map(item => [item.id, { ...item, input_id: frame.input_id }] as const)))
   const explain = (text: string) => explanationLabel(text, workTitles)
   return <section className="panel" aria-labelledby="ai-assessment">
     <h2 id="ai-assessment">{assessment ? 'Аналитика мультимодальной модели' : 'Сохранённые вызовы мультимодальной модели'}</h2>
-    <p>Источник: Yandex AI Studio. Вывод модели, требующий проверки человеком.</p>
+    <p>{provider ? `Источник: ${provider}.` : 'Источник облачной обработки не указан в сохранённом профиле.'} Вывод модели, требующий проверки человеком.</p>
     {assessment ? <><p>{explain(assessment.summary)}</p>
       {!!assessment.activity?.length && <><h3>Признаки работы</h3><ul>{assessment.activity.map((item, index) => <li key={index}><strong>{{ working_signs: 'Видны признаки работы', possible_idle: 'Возможный простой', insufficient_data: 'Недостаточно данных' }[item.state] ?? 'Состояние не определено'}</strong>: {explain(item.reason)}<p>{explain(item.uncertainty)}</p>{item.frame_ids.map(id => <button key={id} type="button" className="secondary" onClick={() => onOpenFrame?.(id)}>Кадр {(inputs.find(input => input.input_id === id)?.ordinal ?? -1) + 1}</button>)}</li>)}</ul></>}
       {!!assessment.stage_hypotheses?.length && <><h3>Этапы и работы по кадрам</h3><ul>{assessment.stage_hypotheses.map((item, index) => <li key={index}>{stageLabel(item.stage)}: {explain(item.reason)}{item.work_entry_id && <p>Работа плана: <a href={`#work-${item.work_entry_id}`}>{workTitles[item.work_entry_id] ?? 'Работа плана'}</a></p>}{item.frame_ids.map(id => <button key={id} type="button" className="secondary" onClick={() => onOpenFrame?.(id)}>Кадр {(inputs.find(input => input.input_id === id)?.ordinal ?? -1) + 1}</button>)}</li>)}</ul></>}
