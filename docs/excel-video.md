@@ -1,130 +1,57 @@
-# Excel plans and video analysis
+# План Excel и видеоанализ
 
-The plan editor accepts `.xlsx` through selection or drag and drop. Download the
-empty template or the filled tutorial example for the selected area. The first
-sheet uses `Работа`, `Начало`, `Окончание` followed by optional state, stage and
-equipment columns. The reference sheet lists current work IDs and supported
-values. Use an ID when several catalog works have the same title. Equipment
-values are separated by semicolons. Formulas are rejected rather than evaluated.
+Редактор плана принимает `.xlsx` через выбор файла или перетаскивание. Для выбранного участка доступны пустой шаблон и заполненный учебный пример. На первом листе идут `Работа`, `Начало`, `Окончание`, затем необязательные столбцы состояния, этапа и техники. Справочный лист перечисляет текущие ID работ и допустимые значения. Если названия нескольких работ совпадают, используйте ID. Технику разделяйте точкой с запятой. Формулы отклоняются без вычисления.
 
-Preview is read-only. Any row error blocks replacement. Confirm `Заменить план`
-to use the existing optimistic revision API; a stale revision returns a conflict.
-Date-only start/end values mean the start/end of that day in the project's time
-zone. Existing revisions and analysis bindings remain intact. The tutorial plan
-step finishes only after the newly saved revision is read back.
+Предпросмотр не меняет план. Ошибка любой строки блокирует замену. Кнопка `Заменить план` использует проверку ревизии: устаревшая версия возвращает конфликт. Даты без времени означают начало/конец дня в часовом поясе проекта. Прежние ревизии и привязки анализа сохраняются. Учебный шаг завершается только после чтения новой сохранённой ревизии.
 
-Video upload accepts one MP4/MOV, at most 200,000,000 bytes and 120 seconds, with
-H.264/H.265, up to 4096×2160 (or rotated), and at most 60 FPS. Validation occurs
-before inference. FFmpeg/ffprobe must be installed. All decoded frames are sent
-to both YOLO detectors; up to eight selected frames are sent to the configured
-DeepSeek provider. Image input follows the [DeepSeek Responses API](https://api-docs.deepseek.com/guides/responses_api/).
-No audio is sent to the provider. The output is H.264 MP4 up to 1280×720 with
-retained audio, annotated with distinct detector labels. Relative timestamps
-remain available without a known shooting start. Plan comparisons require a
-confirmed start with timezone. Cloud explanations only concern sampled moments.
+## Видео
 
-Video jobs and cloud call reservations are persisted in migrations `0027_video`
-and `0028_video_authorization`. Every new paid reservation rechecks the stored
-authorization revision; a CPU retry has one durable successor.
-An unknown external call outcome must never be retried automatically. Completed
-YOLO video remains accessible even when cloud explanation fails. Download and
-playback use an authenticated endpoint with byte Range support. Existing photo
-contracts remain unchanged; project history includes video jobs.
+Загрузка принимает один MP4/MOV до 200,000,000 байт и 120 секунд, H.264/H.265, до 4096×2160 (включая поворот), не более 60 FPS. Проверка выполняется до распознавания. Нужны FFmpeg/ffprobe. Оба YOLO-детектора обрабатывают все декодированные кадры; до восьми выбранных кадров передаются настроенному облачному провайдеру для Мультимодальной модели. Формат изображений описан в [DeepSeek Responses API](https://api-docs.deepseek.com/guides/responses_api/). Звук провайдеру не передаётся.
 
-## Runtime and GPU verification
+Результат представляет собой H.264 MP4 до 1280×720 с сохранённым звуком и раздельными метками детекторов. Относительное время доступно без известного начала съёмки. Сравнение с планом требует подтверждённого начала с часовым поясом. В форме дата и время задаются отдельными полями. Облачные объяснения относятся только к выбранным моментам. Интерфейс автоматически передаёт разрешение облачной обработки при отправке без отдельного флажка.
 
-The standard Docker image and Windows bootstrap install FFmpeg. Existing hosts
-need FFmpeg installed before activation. The standard Linux Python lock selects
-CPU PyTorch. Do not assume a CUDA-capable GPU or install a different wheel
-blindly. First inspect the Windows GPU/driver and WSL `nvidia-smi`, then choose a
-compatible PyTorch CUDA build for the fixed torch/torchvision versions on that
-host. Driver installation is a separate host operation.
+Задачи видео и резервации облачных вызовов сохраняются миграциями `0027_video` и `0028_video_authorization`. Каждая новая платная резервация повторно проверяет сохранённую ревизию разрешения. Повтор на CPU имеет одного сохранённого преемника. Неизвестный исход внешнего вызова автоматически не повторяется. Готовое YOLO-видео доступно и при неуспешном облачном объяснении. Скачивание и просмотр используют авторизованный endpoint с поддержкой byte Range. История проекта включает видеозадачи. Восстановление этапов описано в [жизненном цикле анализа](ANALYSIS_LIFECYCLE.md).
 
-Run the read-only probe with the actual service account and configured models:
+## Проверка среды и GPU
+
+Стандартный Docker-образ и установщик Windows устанавливают FFmpeg. На существующем хосте установите FFmpeg до активации. Стандартный Linux lock выбирает CPU PyTorch; фотоанализ работает на CPU. Для видео сначала проверьте GPU/драйвер Windows и `nvidia-smi` в WSL, затем подберите совместимую CUDA-сборку PyTorch для закреплённых torch/torchvision. Установка драйвера требует отдельного изменения хоста.
+
+Запустите проверку от имени пользователя сервиса с реальными весами. Из корня копии репозитория пример команды выглядит так:
 
 ```sh
 sudo -u lzt env PYTHONPATH=/opt/lzt/current/backend \
   YOLO_MODELS_DIR=/opt/lzt/current/artifacts/Models \
-  /opt/lzt/venv/bin/python /path/to/probe_video_runtime.py --require-cuda
+  /opt/lzt/venv/bin/python infra/windows11/probe_video_runtime.py --require-cuda
 ```
 
-The probe records the driver, actual execution device, package/CUDA versions and
-weight hashes, and executes both models. Without `--require-cuda`, it accepts a
-verified CPU fallback and records its warning. Each job records its own actual
-device. GPU failure during inference stops that job; an explicit CPU successor
-is available before any cloud reservation. It does not retry a paid call.
+На удалённом хосте используйте фактический путь к `infra/windows11/probe_video_runtime.py`. Проверка сохраняет драйвер, реальное устройство исполнения, версии пакетов/CUDA и хеши весов, запускает обе модели. Без `--require-cuda` допускается проверенный CPU с предупреждением. Каждая задача записывает фактическое устройство. Ошибка GPU останавливает задачу; до облачной резервации доступен явный преемник на CPU. Платный вызов при этом не повторяется.
 
-## Release
+## Выпуск
 
-Preserve the existing URL `https://nikolay.tailaf11dc.ts.net:8443/`. Follow the
-Windows deployment instructions: take and verify `backup_app.py`, package the
-committed source and built assets, verify archive and release hashes, apply the
-additive migration, switch the immutable release, and check readiness, existing
-accounts/projects/files plus authenticated playback. Never run `reset_app.py`.
-Do not treat a successful local test or package as deployment evidence.
+Сохраните существующий адрес `https://nikolay.tailaf11dc.ts.net:8443/`. Следуйте [инструкции Windows](../infra/windows11/README.md): создайте и проверьте бэкап через `backup_app.py`, упакуйте закоммиченные исходники и собранные ресурсы, проверьте хеши архива/релиза, примените добавочную миграцию, переключите неизменяемый релиз. Проверьте готовность, существующие аккаунты/проекты/файлы и авторизованное воспроизведение. Не запускайте `reset_app.py`. Локальные тесты и упаковка не подтверждают развёртывание.
 
-On 2026-10-20, the initial SSH preflight timed out. Access subsequently returned;
-the host reports an RTX 3060 through WSL and driver 610.88. The original Python
-environment is CPU-only. Runtime and deployment acceptance are recorded separately
-from local verification.
+## Историческая локальная проверка, 2026-10-20
 
-## Local verification, 2026-10-20
+Эти результаты относятся к проверенной тогда версии и условиям. Они не подтверждают текущий стенд.
 
-- Web: 307 passed, one timezone-specific test skipped in the normal full run;
-  the separate Europe/Berlin video/time suite passed all 10 tests. Production
-  build passed. IndexedDB tests exercise the actual recovery module, including
-  File bytes and concurrent tabs.
-- Backend: the broad isolated PostgreSQL/Moto run had 548 passes, one skip and
-  three S3 reconciliation failures. The same three failures reproduced on the
-  pristine starting commit in another isolated database using the same emulator.
-  They do not establish compatibility with real MinIO and are retained as evidence.
-- Final video suite: 29 passed with both real CPU YOLO detectors. Includes MOV
-  rotation, VFR, audio offset verified by decoded frequency, silent trailing-frame
-  duration, current authorization, concurrent CPU retries and immutable plan times.
-- Excel parser: nine tests passed, including numeric date formats, explicit
-  midnight, optional row/cell addresses and corrupt compressed XML. Database/API
-  checks cover access, revision conflicts and atomic replacement.
-- The resumable deployment acceptance CLI has two offline tests; its receipt
-  contains private test credentials and must not be published.
+Первый SSH preflight завершился таймаутом, затем доступ восстановился. Хост показал RTX 3060 через WSL и драйвер 610.88. Исходное Python-окружение поддерживало только CPU. Приёмка среды и развёртывания фиксировалась отдельно от локальной проверки.
 
-CUDA packages use the fixed torch 2.10.0 / torchvision 0.25.0 versions from the
-[official PyTorch installation matrix](https://pytorch.org/get-started/previous-versions/).
-The original CPU virtual environment is preserved when preparing a separate CUDA
-environment; do not replace the service interpreter before both model checks pass.
+- Интерфейс: 307 тестов прошли, один тест часового пояса пропущен в обычном полном запуске. Отдельная серия Europe/Berlin для видео/времени прошла все 10 тестов. Production-сборка прошла. IndexedDB-тесты проверяли реальный модуль восстановления, включая байты File и одновременные вкладки.
+- Backend: широкий изолированный запуск PostgreSQL/Moto дал 548 успешных тестов, один пропуск и три ошибки согласования S3. Те же ошибки воспроизвелись на исходном чистом коммите в другой изолированной БД с тем же эмулятором. Это не проверка совместимости с реальным MinIO; ошибки сохранены как результат.
+- Финальные видеотесты: 29 прошли с обоими реальными CPU YOLO. Проверены поворот MOV, VFR, смещение звука по декодированной частоте, длительность последних кадров без звука, текущее разрешение, конкурентные CPU-повторы и неизменяемое время плана.
+- Парсер Excel: девять тестов прошли, включая числовые форматы дат, явную полночь, необязательные адреса ячеек/строк и повреждённый сжатый XML. Проверки БД/API покрывали доступ, конфликты ревизий и атомарную замену.
+- CLI возобновляемой приёмки развёртывания имеет два автономных теста. Его квитанция содержит приватные тестовые данные доступа и не подлежит публикации.
 
-## Verified Windows deployment
+CUDA-пакеты используют закреплённые torch 2.10.0 / torchvision 0.25.0 из [официальной матрицы PyTorch](https://pytorch.org/get-started/previous-versions/). Исходное CPU-окружение сохраняется при подготовке отдельного CUDA-окружения. Не меняйте интерпретатор сервиса до успешной проверки обеих моделей.
 
-The application commit `c73b61315ddd518cd187b07d0f90d781f89854dc` is deployed as
-immutable release `98b77ca0b130dbfb`. All 105 installed file hashes and the compiled
-JavaScript/CSS returned by the public URL were checked against the package.
-The source tree SHA-256 is
-`98b77ca0b130dbfb43c3de3e2c567ae000a25ceea7f1f4dd2ea30ae9c416d771`.
-Documentation-only commits can follow this deployed application commit.
+## Историческая приёмка Windows, 2026-10-20
 
-The final verified backup is
-`C:\ProgramData\LztEvidence\backups\20261020T134608Z`. Existing three accounts,
-seven projects/areas and five plan revisions remained present. Password/recovery
-hashes for all three existing accounts and the administrator matched the
-pre-deployment PostgreSQL backup. Runtime configuration and backed-up credential
-files were unchanged. No accounts, projects or uploads were reset.
+На момент проверки коммит приложения `c73b61315ddd518cd187b07d0f90d781f89854dc` был установлен как релиз `98b77ca0b130dbfb`. Все 105 хешей установленных файлов и JavaScript/CSS публичного адреса сверены с пакетом. SHA-256 дерева исходников: `98b77ca0b130dbfb43c3de3e2c567ae000a25ceea7f1f4dd2ea30ae9c416d771`. После этого коммита могли следовать изменения документации; текущую версию нужно читать заново.
 
-WSL exposes NVIDIA RTX 3060, driver 610.88. Both models passed as the actual
-service user with torch `2.10.0+cu130`, torchvision `0.25.0+cu130`, CUDA 13.0 and
-ultralytics `8.4.163`. The original CPU environment and previous release remain
-available. The backend uses a separate CUDA environment through its service
-drop-in; `/usr/lib/wsl/lib` is appended to that service's PATH for driver evidence.
+Итоговый проверенный бэкап: `C:\ProgramData\LztEvidence\backups\20261020T134608Z`. Существующие три аккаунта, семь проектов/участков и пять ревизий плана сохранились. Хеши паролей/восстановления всех трёх аккаунтов и администратора совпали с PostgreSQL-бэкапом до установки. Runtime-конфигурация и сохранённые файлы учётных данных не изменились. Сброса аккаунтов, проектов и загрузок не было.
 
-One synthetic three-frame video passed the real public HTTPS workflow: tutorial
-XLSX download, preview, revision save/readback, dual YOLO on `cuda:0`, successful
-DeepSeek explanation, MP4 integrity/codec/audio checks, authorized Range and
-outsider denial. A backend restart followed by receipt recovery preserved the
-same analysis; the cloud ledger stayed at four calls before and after recovery.
-This verifies execution and integration, not detector accuracy on construction
-incidents. GUI/browser visual acceptance was not performed.
+WSL предоставлял NVIDIA RTX 3060, драйвер 610.88. Обе модели прошли проверку от реального пользователя сервиса с torch `2.10.0+cu130`, torchvision `0.25.0+cu130`, CUDA 13.0 и ultralytics `8.4.163`. Исходное CPU-окружение и предыдущий релиз сохранены. Backend использовал отдельное CUDA-окружение через service drop-in; `/usr/lib/wsl/lib` добавлен в PATH сервиса для чтения сведений драйвера.
 
-Private acceptance receipts, logs and final checks are under
-`C:\ProgramData\LztEvidence\staging\excel-video-20261020`; receipts contain
-test credentials and must remain private. A separate marked acceptance project
-and two test accounts were created; existing user projects were not used.
-All four application units are active, and
-<https://nikolay.tailaf11dc.ts.net:8443/> remains the public URL.
+Одно синтетическое видео из трёх кадров прошло реальный публичный HTTPS-процесс: скачивание учебного XLSX, предпросмотр, сохранение/чтение ревизии, оба YOLO на `cuda:0`, успешное объяснение DeepSeek, проверку MP4/кодека/звука, авторизованный Range и отказ постороннему. После перезапуска backend восстановление по квитанции сохранило тот же анализ; облачный журнал содержал четыре вызова до и после восстановления. Это проверка исполнения и интеграции, не точности обнаружения строительных нарушений. Визуальная приёмка в GUI/браузере не выполнялась.
+
+Приватные квитанции, логи и финальные проверки находятся в `C:\ProgramData\LztEvidence\staging\excel-video-20261020`. Квитанции содержат тестовые данные доступа и должны оставаться приватными. Созданы отдельный отмеченный приёмочный проект и два тестовых аккаунта; существующие проекты не использовались. На момент проверки все четыре службы приложения были активны, публичный адрес оставался <https://nikolay.tailaf11dc.ts.net:8443/>.

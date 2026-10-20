@@ -1,17 +1,19 @@
-# Local design experiment
+# Локальный эксперимент с интерфейсом
 
-All changes and uploads in `npm run dev:demo` are in memory. No demo API requests are proxied. Demo controls and fixture middleware are absent from a normal production build. Restarting the demo server resets its state.
+Документы этого раздела сохраняют историю эксперимента. Его измерения относятся к указанным версиям и условиям и не подтверждают текущий стенд. Исторические команды `node scripts/*.mjs` используют локальные инструменты из `web/scripts`, которые больше не поставляются с репозиторием.
 
-Run `npm ci`, `npm run dev:demo` in `web`. The branch script chooses a strict local port. Normal `npm run dev` continues to use API_PROXY_TARGET (default localhost:8000).
+## Запуск демо
 
-Verification: `npm test -- --run`, `npm run build`, `node scripts/verify-demo.mjs` (set VARIANTS to limit named variants; set CHROMIUM_PATH and PLAYWRIGHT_PACKAGE as needed; the harness uses the fixed demo ports 5174/5175/5176). Headless tooling is installed separately under `/private/tmp/lzt-design-experiment/tooling` so only motion is added as a runtime dependency.
+Из каталога `web` выполните `npm ci`, затем `npm run dev:demo`. В текущей интеграции используется строгий порт `5177`; три исходных ветки эксперимента использовали `5174`–`5176`. Обычный `npm run dev` использует `API_PROXY_TARGET`, по умолчанию localhost:8000.
 
-Demo presets are available in the disclosure at the end of the page. Selecting a preset resets demo-owned pending submissions and annotation drafts on this origin. The recovery preset rejects the first upload with HTTP 503 and then accepts the exact idempotent retry. Analyzing holds an authoritative server stage for reproducible comparison. Ordinary uploads progress by server time.
+Изменения и загрузки в `dev:demo` хранятся в памяти. Запросы демо не проксируются в API; перезапуск сервера сбрасывает состояние. Элементы управления демо и middleware с примерами отсутствуют в обычной production-сборке.
 
-The fixed photography and manually prepared boxes demonstrate interaction and evidence presentation, not model quality. No real backend write is part of verification.
+Наборы состояний доступны в раскрывающейся панели в конце страницы. Выбор набора сбрасывает принадлежащие демо ожидающие отправки и черновики разметки на этом origin. Набор восстановления отклоняет первую отправку с HTTP 503, затем принимает её точный идемпотентный повтор. Состояние обработки удерживает серверный этап для воспроизводимого сравнения; обычные загрузки продвигаются по серверному времени.
 
-The selected 3D integration adds persistent public project cover uploads. Any visitor can replace a cover; the browser and backend decode and resize it, output JPEG, and strip source metadata. Covers are separate from analysis evidence. The local demo keeps cover changes in memory and uses the two existing demonstration photographs for its initial project covers. The compact `Демо` marker and the state-panel explanation remain demo-only.
+Фиксированные фотографии и подготовленные вручную рамки показывают взаимодействие с интерфейсом и представление оснований, а не качество модели. Проверки демо не записывают данные в реальный backend. Изменения обложек также живут в памяти. Два исходных проекта используют разные демонстрационные фотографии; подробности текущего доступа и хранения описаны в [обложках проектов](PROJECT_COVERS.md).
 
-In this integration worktree `npm run dev:demo` uses strict port `5177`; the original three experiment branches retain `5174`–`5176`. The historical comparison scripts below still address those three original branches. Cover API/storage details are in [PROJECT_COVERS.md](PROJECT_COVERS.md).
+## Проверки и история
 
-Comparison, full commit manifest, screenshots and verification history are saved under `/private/tmp/lzt-design-experiment/`; start with [COMPARISON.md](../../../COMPARISON.md). Final source verification is recorded in [final-validation-summary.json](../../../final-validation-summary.json). Root DESIGN.md and .impeccable/design.json document this branch's approved visual world.
+Текущие команды проверки из `web`: `npm test -- --run` и `npm run build`. Исторические локальные сценарии принимали `VARIANTS`, `CHROMIUM_PATH` и `PLAYWRIGHT_PACKAGE` и обращались к трём исходным портам `5174`–`5176`. Их headless-инструменты устанавливались отдельно в `/private/tmp/lzt-design-experiment/tooling`; из библиотек исполнения добавлялась только motion.
+
+[Сравнение](COMPARISON.md), полные SHA коммитов, снимки и история проверок исходно сохранялись в `/private/tmp/lzt-design-experiment/`, включая `final-validation-summary.json`. Это временные локальные артефакты, их наличие сейчас не гарантируется. Корневые DESIGN.md и .impeccable/design.json исходной ветки описывали выбранное оформление. Маркер `Демо` и объяснение панели состояний доступны только в демо.

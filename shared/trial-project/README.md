@@ -1,41 +1,15 @@
-# Curated trial archive v1
+# Учебный архив v1
 
-`manifest.json` and the original JPEG copies in `photos/` form the complete archive.
-Source images are the existing public application demo assets `web/public/demo/Screenshot_23.jpg`
-and `Screenshot_89.jpg`; no held-out datasets are included. Labels, observations, boxes,
-outcomes and signals are hand-authored teaching examples, not verified model inference.
+`manifest.json` и исходные JPEG-копии в `photos/` образуют полный архив. Изображения взяты из публичных демонстрационных ресурсов приложения: `web/public/demo/Screenshot_23.jpg` и `Screenshot_89.jpg`. Независимые оценочные наборы сюда не входят. Метки, наблюдения, рамки, результаты и сигналы подготовлены вручную для обучения пользователя; это не проверенные ответы модели.
 
-Schema version 1 has exact top-level fields: `schema_version`, `name`, `description`,
-`plan`, `examples`, `files`. The application validator defines strict nested fields,
-limits, timezone-aware date ordering, normalized boxes and exact JPEG SHA256 hashes.
-Archives contain only `manifest.json` and listed `photos/*.jpg`, and are read in memory,
-never extracted or executed. ZIP duplicates, traversal, symlinks, encrypted entries,
-extra files, malformed schemas, oversized payloads and invalid images are rejected.
+Версия схемы 1 допускает только поля верхнего уровня `schema_version`, `name`, `description`, `plan`, `examples`, `files`. Валидатор приложения проверяет вложенные поля, ограничения, порядок дат с часовым поясом, нормализованные рамки и точные SHA256 JPEG-файлов. Архив содержит только `manifest.json` и перечисленные `photos/*.jpg`. Он читается в памяти без распаковки на диск и исполнения. Дубликаты ZIP, выход за каталог, символьные ссылки, шифрованные записи, лишние файлы, неверные схемы, превышение размера и повреждённые изображения отклоняются.
 
-Import requires authentication, same-origin requests and UUID Idempotency-Key. Keys
-are scoped to the importing user; retries return the same project, different content
-conflicts. A new project, owner membership, zone and native editable plan revision are
-created atomically. Imported photos receive fresh IDs. Example results, annotations
-and signals remain in a separate illustrative manifest, avoiding forged immutable
-analysis evidence. `GET /projects/{id}/trial` exposes all example content and authorized
-photo URLs. Fetch those JPEG bytes for the ordinary upload/analysis flow with its normal
-explicit cloud consent. A real rerun creates ordinary independent analysis evidence.
+Импорт требует аккаунт, запрос с того же origin и UUID в `Idempotency-Key`. Ключ принадлежит импортирующему пользователю: повтор возвращает тот же проект, другое содержимое вызывает конфликт. Проект, членство владельца, участок и редактируемая ревизия плана создаются атомарно. Фотографии получают новые ID. Примерные результаты, аннотации и сигналы хранятся в отдельном учебном манифесте и не подменяют неизменяемые основания анализа. `GET /projects/{id}/trial` возвращает примеры и доступные пользователю URL фотографий.
 
-Public fixture APIs: `/trial/project.zip`, `/trial/photos.zip`, `/trial/preview`,
-`/trial/photos/{filename}`. Private imported APIs enforce current membership on each
-request. Download responses never include private project content.
+Интерактивное обучение запускается прямо из приложения. Для обычного анализа используются JPEG-файлы учебного набора. Интерфейс автоматически передаёт разрешение облачной обработки при отправке; отдельного флажка нет. Реальный запуск создаёт собственные записи анализа и может расходовать платные токены. Пошаговые действия описаны в [руководстве пользователя](../../docs/USER_GUIDE.md).
 
-Assistant configuration uses existing DEEPSEEK_API_KEY (direct Responses API) or
-YANDEX_AI_STUDIO_API_KEY plus YANDEX_CLOUD_FOLDER_ID. It sends only the authorized
-project's bounded current plan, signals and saved normalized results, never credentials
-or raw provider responses. Without a working provider, responses explicitly disclose
-unavailability and offer deterministic product help. Project conversations are private
-to user+project and expire after 30 days; general help is not persisted.
+Публичные API набора: `/trial/project.zip`, `/trial/photos.zip`, `/trial/preview`, `/trial/photos/{filename}`. Приватные API импорта проверяют текущее членство при каждом запросе. Загрузки никогда не содержат приватные проекты.
 
-Each example also includes nonempty `corrections`: records with exact fields `photo`,
-`original_annotations`, `corrected_annotations`, `comment`. Both annotation arrays use
-`{label, box:[left,top,right,bottom]}` with bounded normalized ordered boxes. Corrections
-must differ, retain a nonempty comment, and reference a photo belonging to that example.
-Both source and corrected teaching annotations are preserved separately; neither is
-machine evidence. Preview APIs remap correction `photo` to the same authorized/public
-photo URL and add `illustrative:true` for display.
+Помощник использует `DEEPSEEK_API_KEY` для прямого Responses API либо `YANDEX_AI_STUDIO_API_KEY` и `YANDEX_CLOUD_FOLDER_ID`. В контекст входят ограниченные данные доступного проекта: текущий план, сигналы, сохранённые нормализованные результаты и состояние обработки. Секреты и исходные ответы провайдера не передаются. Без рабочего провайдера помощник сообщает о недоступности и выдаёт встроенную справку. Он объясняет действия пользователя и известное состояние анализа, но не запускает обработку. Диалоги принадлежат паре пользователь+проект и хранятся 30 дней; общая справка не сохраняется.
+
+Каждый пример также содержит непустой массив `corrections`. У записи точные поля `photo`, `original_annotations`, `corrected_annotations`, `comment`. Оба массива аннотаций используют `{label, box:[left,top,right,bottom]}` с упорядоченными нормализованными координатами. Исправления должны отличаться от исходных аннотаций, содержать непустой комментарий и ссылаться на фотографию того же примера. Исходная и исправленная учебные разметки сохраняются отдельно; ни одна не считается машинным результатом. API предпросмотра заменяет `photo` на соответствующий публичный или разрешённый URL и добавляет `illustrative:true`.

@@ -1,48 +1,50 @@
-# Hybrid control scenes and current quality limits
+# Контрольные сцены и ограничения оценки качества
 
-The organizer archive contains 100 original PNGs. `control-review-queue.json` selects 15 for review, without changing their bytes or assigning invented camera/site/time identities. `independent-visual-review.json` records a separate agent's inspection of 14 originals and 36 approximate boxes. Neither file is human-adjudicated ground truth. Unlisted equipment is not an exhaustive negative label.
+Документ описывает сохранённый диагностический эксперимент. Он не подтверждает качество текущих весов или профиля. В частности, замена Kaggle checkpoint требует отдельной оценки.
 
-Reproduce the selection:
+Архив организатора содержит 100 исходных PNG. `control-review-queue.json` выбирает 15 для проверки без изменения байтов и без вымышленных идентификаторов камер, площадок и времени. `independent-visual-review.json` сохраняет отдельную проверку агентом 14 оригиналов и 36 приблизительных рамок. Ни один файл не прошёл итоговое согласование человеком как эталон. Отсутствие техники в списке не считается исчерпывающей отрицательной меткой.
+
+Воспроизведение выборки:
 
 ```sh
 python evaluation/hybrid/prepare.py --archive artifacts/dataset/Строительная_техника.zip --output output/hybrid-review/images
 ```
 
-The extractor checks the archive and every image hash and refuses to overwrite different bytes. `draft-annotations.json` under the older expansion directory remains unchanged.
+Экстрактор проверяет архив и хеш каждого изображения, отказывается перезаписывать отличающиеся байты. Старый `draft-annotations.json` в каталоге expansion сохранён.
 
-| Candidate | Useful evidence | Limits |
+| Кадры | Полезные основания | Ограничения |
 | --- | --- | --- |
-| 15 | Cargo truck, partly visible excavator | Crane manipulator is unconfirmed |
-| 23, 78 | Clear single excavator | A bucket pose does not prove working or idle |
-| 24, 67 | Wheeled mobile crane, lifting setup | Movement/duration not established |
-| 47, 48 | Several excavators, falling/transferred soil | Small/occluded machines require box review |
-| 60 | Road roller on prepared soil | Roadwork is a hypothesis; active compaction unconfirmed |
-| 61 | Excavators, compact loader, road-like area | Keep unsupported loader separate |
-| 71 | Dump truck and excavators | No schedule or work rate evidence |
-| 87 | Several machinery types | Piling rigs/tower cranes remain outside catalog |
-| 97, 99, 100 | Mixer, excavators, concrete-related surroundings | Mixer presence does not establish pouring |
-| 1 | Partial small excavator | Poor coverage for class absence |
+| 15 | Грузовик, частично видимый экскаватор | Кран-манипулятор не подтверждён |
+| 23, 78 | Хорошо видимый одиночный экскаватор | Положение ковша не доказывает работу или простой |
+| 24, 67 | Колёсный автокран, подготовка к подъёму | Движение и длительность не установлены |
+| 47, 48 | Несколько экскаваторов, падающий/перемещаемый грунт | Малые и закрытые машины требуют проверки рамок |
+| 60 | Дорожный каток на подготовленном грунте | Дорожные работы остаются гипотезой, уплотнение не подтверждено |
+| 61 | Экскаваторы, компактный погрузчик, похожий на дорогу участок | Погрузчик вне каталога учитывается отдельно |
+| 71 | Самосвал и экскаваторы | Нет оснований для вывода о графике или темпе |
+| 87 | Несколько типов техники | Сваебойные установки и башенные краны вне каталога |
+| 97, 99, 100 | Бетономешалка, экскаваторы, окружение бетонных работ | Наличие бетономешалки не доказывает заливку |
+| 1 | Частично видимый малый экскаватор | Плохое покрытие для вывода об отсутствии класса |
 
-## Acceptance matrix
+## Матрица приёмки
 
-The required matrix is excavation / concreting / roadwork × normal / grounded risk / ambiguous / unusable. Current independent candidates support observation and ambiguity checks. A synthetic blank image is appropriate for an unusable-input regression. An explicitly simulated plan can exercise HTTP binding and signal persistence, but does not establish an authentic site delay.
+Нужна матрица земляные / бетонные / дорожные работы × норма / обоснованный риск / неоднозначность / непригодные данные. Независимые кандидаты позволяют проверять наблюдения и неоднозначность. Синтетическое пустое изображение подходит для регрессии непригодного ввода. Явно смоделированный план проверяет привязку HTTP и сохранение сигнала, но не доказывает реальное отставание площадки.
 
-Authentic normal/risk labels for every scenario, reliable comparable time series, and confirmed idle cases are missing. Confident bulldozer and truck-mounted crane examples are missing in this selection. No class precision/recall, false-warning rate, or stage correctness is claimed as acceptance evidence: labels are partial and unadjudicated, and a zero from an unrun metric would be false evidence. Localization candidates are approximate, not reference-quality boxes. The quality endpoint remains blocked.
+Не хватает подлинных меток нормы/риска для каждого сценария, сопоставимых временных серий и подтверждённых простоев. В выборке нет уверенных примеров бульдозера и крана-манипулятора. Precision/recall по классам, частота ложных предупреждений и правильность этапа не представлены как приёмочные результаты: метки частичные и не согласованы человеком. Нулевое значение незапущенной метрики было бы ложным результатом. Рамки приблизительные, не эталонные. Допуск качества остаётся незакрытым по этим материалам.
 
-## Observed model errors and targeted next data
+## Сохранённые ошибки моделей и необходимые данные
 
-Both supplied checkpoints loaded and ran on 15 originals. Preserve these errors for retraining and evaluation, never move the same frames into both sets:
+Оба предоставленных checkpoint загрузились и отработали на 15 оригиналах в этом эксперименте. Сохраните ошибки для обучения и оценки, не помещая одни кадры одновременно в оба набора:
 
-- Screenshot 60: APOCE produced five excavator detections on a roller scene; Kaggle predicted Trailer. Add manually reviewed rollers and soil-compaction scenes, with hard negatives for excavation machines.
-- Screenshot 24: both models missed the visible mobile crane. Add wheeled mobile cranes with deployed supports, truncated booms, snow and lifting loads. Keep tower cranes and drilling rigs as separate negatives.
-- Screenshot 99: APOCE returned no detections; Kaggle predicted Trailer and Mixer. Add multiple excavators and dump-truck loading scenes with overlap/occlusion. Review distinct physical machine boxes.
-- Screenshot 15/87: several unsupported or confused classes. Preserve raw source classes and resolve truck, loader, trailer and crane distinctions manually.
-- Kaggle checkpoint metadata records epoch 4 (fifth epoch), despite a configured 100-epoch training request. APOCE is an optimizer-stripped checkpoint (epoch -1), so that field does not prove training duration. Retain checkpoint hashes and original training metadata.
+- Кадр 60: APOCE выдал пять экскаваторов на сцене с катком; Kaggle предсказал Trailer. Нужны проверенные человеком катки и сцены уплотнения грунта с трудными отрицательными примерами экскаваторов.
+- Кадр 24: обе модели пропустили видимый автокран. Нужны колёсные автокраны с опорами, обрезанными стрелами, снегом и грузами. Башенные краны и буровые установки учитывайте отдельно.
+- Кадр 99: APOCE не дал детекций; Kaggle предсказал Trailer и Mixer. Нужны сцены с несколькими экскаваторами, загрузкой самосвала, перекрытиями и закрытыми объектами. Проверяйте рамку каждой физической машины.
+- Кадры 15/87: есть классы вне каталога и путаница классов. Сохраняйте исходные имена и вручную различайте грузовик, погрузчик, прицеп и кран.
+- В метаданных Kaggle записана эпоха 4 (пятая эпоха), хотя запрос обучения задавал 100 эпох. У APOCE удалён optimizer, эпоха равна -1; поле не доказывает длительность обучения. Сохраняйте хеши и исходные метаданные обучения.
 
-Before training, adjudicate every proposed object, scene, stage, activity and expected signal. Record reviewer/date and resolve disagreement separately. Obtain additional source scenes for the two missing classes and actual same-camera timed work/idle sequences. Split by verified site/camera/series before any fitting; unknown grouping cannot support a site-independent generalization claim. Keep organizer review scenes as a frozen diagnostic set once used to tune prompts or parameters, and acquire a separate acceptance set. Export approved labels through the existing eight-class YOLO/COCO workflow and train new checkpoints into a new output directory using `training/windows`; never replace user originals. Re-evaluate all required cases with zero false warnings before release.
+До обучения согласуйте каждый объект, сцену, этап, активность и ожидаемый сигнал. Запишите проверяющего и дату, отдельно разрешите разногласия. Соберите недостающие два класса и реальные серии одной камеры с временем работы/простоя. Разделите данные по подтверждённым площадке/камере/серии до подбора параметров. Неизвестная группировка не подтверждает обобщение на независимые площадки. После настройки промптов или параметров заморозьте сцены организатора как диагностический набор и соберите отдельный приёмочный. Экспортируйте согласованные метки существующим восьмиклассовым YOLO/COCO-процессом, обучайте новые веса в новом каталоге через `training/windows`, не заменяя оригиналы. Перед релизом повторите все обязательные случаи с требованием нулевых ложных предупреждений.
 
-## Costs and latency
+## Исторические расходы и задержка
 
-`budget.json` records every paid verification reservation, actual returned token usage when available, and conservative unresolved exposure. Pricing source: https://aistudio.yandex.ru/ru/docs/ai-studio/pricing (checked 2026-09-27), RUB 0.3 / 1000 uncached input tokens and RUB 0.5 / 1000 output tokens. These are usage-based estimates, not a billing statement. A request with an unknown outcome retains its full upper reserve. The total authorized cap is RUB 1000.
+`budget.json` сохраняет резервации платных проверок, фактические токены при наличии ответа и консервативную оценку неразрешённых расходов. Источник цен: https://aistudio.yandex.ru/ru/docs/ai-studio/pricing (проверено 2026-09-27), 0.3 RUB / 1000 некешированных входных токенов и 0.5 RUB / 1000 выходных. Это оценки по использованию, не счёт провайдера и не актуальный прайс для новых запусков. При неизвестном исходе сохраняется полный верхний резерв. Общий разрешённый лимит эксперимента: 1000 RUB.
 
-`yolo-smoke-summary.json` contains measured local CPU times. Startup/import/cache time is separate from warm detector inference. This is a local hardware observation, not a server throughput guarantee. The current detector comparison is diagnostic and cannot qualify the model by itself.
+`yolo-smoke-summary.json` содержит измеренные локальные времена CPU. Запуск, импорт и кеш отделены от прогретого инференса. Измерения относятся к локальному оборудованию и не гарантируют пропускную способность сервера. Диагностическое сравнение детекторов само по себе не подтверждает качество модели.

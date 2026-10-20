@@ -1,3 +1,5 @@
+> Исторический материал эксперимента с интерфейсом. Результаты относятся к указанным здесь версиям и условиям, а не к текущему стенду. Команды `node scripts/*.mjs` используют локальные инструменты из `web/scripts`, которые больше не поставляются с репозиторием. Для текущих проверок интерфейса используйте `npm test -- --run` и `npm run build` из `web`.
+
 # Three local construction-control variants
 
 No overall winner is selected. The variants share one deterministic demo service and the original project, upload, polling, evidence, annotation, plan and signal flows. Comparison focuses on demonstration clarity.

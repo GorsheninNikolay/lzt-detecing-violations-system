@@ -1,17 +1,22 @@
-# Исторические эксперименты
+# Историческая оценка качества
 
-DINO/Qwen выведены из активного исполнения. Описанные ниже результаты и форматы сохранены для аудита; старые команды запуска и допуска не являются текущим способом работы. Актуальный путь: [Сервис мультимодальной модели](../README.md).
+DINO/Qwen выведены из активного исполнения. Результаты и форматы здесь сохранены для аудита. Старые команды допуска не описывают текущий способ работы. Актуальные инструкции находятся в [документации сервиса](../README.md).
 
-# Evaluation
+Независимые оценочные примеры и отчёты хранятся отдельно от интеграционных тестов backend.
 
-Held-out evaluation fixtures and reports belong here, separately from backend integration fixtures.
+`held-out-v1.json` связывает одиннадцать проверенных кадров, контрольные суммы исходного архива, ручные метки, контекст, достаточность данных и решение владельца об использовании в прототипе. `human-review-2026-09-24.json` сохраняет ответы владельца; `owner-attestation-2026-09-24.json` фиксирует подтверждение неиспользования и разрешение облачной загрузки с оговоркой о происхождении исходной съёмки. Манифест связывает оба файла по SHA-256. `freeze-decision-v1.json` сохраняет принятое решение допуска и сведения об инвентаризации. Группы по префиксам имён служат консервативными единицами исключения; это не подтверждённые идентификаторы камер. Имена элементов `train/` внутри архива не доказывают использование для обучения. Подтверждение владельца относится только к этому проекту.
 
-`held-out-v1.json` binds the eleven reviewed frames, source archive checksums, manual labels, context, sufficiency, and the owner's prototype-use decision. `human-review-2026-09-24.json` retains the owner's answers; `owner-attestation-2026-09-24.json` records non-use and cloud-upload authorization with the original-capture provenance caveat. The manifest binds both files by SHA-256. `freeze-decision-v1.json` records the accepted gate result and inventory evidence. The source groups are conservative filename-prefix exclusion units, not verified camera identities. The archive's `train/` member names do not establish model-training use; the owner's non-use confirmation is scoped to this project.
+Принятая ревизия и одиннадцать зарезервированных примеров были прочитаны из изолированной локальной PostgreSQL. Развёртывание и сохранение в БД приложения требуют отдельной проверки. Исходный архив не входит в репозиторий; использованный путь: `/private/tmp/kaggle-construction-equipment.zip`.
 
-The accepted revision and its eleven reserved fixtures were read back from an isolated local PostgreSQL database. Deployment and persistence in an application database remain separate steps. The source archive stays outside the repository at `/private/tmp/kaggle-construction-equipment.zip`.
+Историческая команда установки ревизии после миграций целевой БД:
 
-After migrating the intended application database, install the revision through `cd backend && uv run evidence-evaluation freeze --archive /private/tmp/kaggle-construction-equipment.zip` with `DATABASE_URL` set for that database. The command returns the persisted revision ID and refuses an incomplete or overlapping set.
+```sh
+cd backend
+uv run evidence-evaluation freeze --archive /private/tmp/kaggle-construction-equipment.zip
+```
 
-`historical-comparison-v1.json` records both earlier eleven-frame cohorts used during local and cloud comparison. Both are excluded from the new held-out revision; neither is a pre-campaign freeze.
+`DATABASE_URL` должен указывать на выбранную БД. Команда возвращает ID сохранённой ревизии и отклоняет неполный или пересекающийся набор. Это исторический процесс оценки, не инструкция запуска текущего фотоанализа.
 
-Required verification of the checked-in set uses `EVALUATION_ARCHIVE_PATH=/private/tmp/kaggle-construction-equipment.zip` with `tests/test_evaluation_set.py` and an isolated migrated `TEST_DATABASE_URL`. The acceptance test skips when the archive path is absent, so a run without that variable does not verify this frozen source set.
+`historical-comparison-v1.json` сохраняет две прежние группы по одиннадцать кадров для локального и облачного сравнения. Обе исключены из нового независимого набора; ни одна не была заморожена до кампании.
+
+Проверка сохранённого набора требует `EVALUATION_ARCHIVE_PATH=/private/tmp/kaggle-construction-equipment.zip`, теста `tests/test_evaluation_set.py` и изолированной БД с миграциями в `TEST_DATABASE_URL`. Без пути к архиву приёмочный тест пропускается. Такой запуск не проверяет замороженные исходные данные.

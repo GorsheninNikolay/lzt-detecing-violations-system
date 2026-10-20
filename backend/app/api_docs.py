@@ -23,7 +23,7 @@ OBJECTS = field('array', 'Исправленные человеком объек
 SUBMISSION = obj({
     'intent': field('string', 'Новый анализ наблюдений и контекста.', enum=['observation_only']),
     'cloud_provider': field('string', 'Провайдер, которому пользователь разрешил передать данные.', enum=['yandex_ai_studio', 'deepseek']),
-    'cloud_processing_consent': field('boolean', 'Явное согласие отправить фотографии и контекст выбранному cloud_provider. Без true облачных вызовов нет; отсутствие cloud_provider допустимо только для прежних отправок в Yandex AI Studio.', const=True),
+    'cloud_processing_consent': field('boolean', 'Разрешение отправить фотографии и контекст выбранному cloud_provider. Интерфейс передаёт true при отправке без отдельного флажка. Без true облачных вызовов нет; отсутствие cloud_provider допустимо только для прежних отправок в Yandex AI Studio.', const=True),
     'scenario': field('string', 'Цель наблюдения.', minLength=1, maxLength=256),
     'observation_area': field('string', 'Название участка наблюдения.', minLength=1, maxLength=256),
     'period': TIME, 'stage': field('string', 'Заданный пользователем контекст, не вывод модели.', enum=['excavation','other']),
@@ -211,9 +211,9 @@ def install(app):
         if app.openapi_schema:
             return app.openapi_schema
         value = get_openapi(title='Контроль строительства', version='1.0.0', routes=app.routes,
-            description='Фотографии → наблюдения мультимодальной модели → аналитика → отдельная проверка человеком. '
+            description='Фотографии → наблюдения Мультимодальной модели → аналитика → отдельная проверка человеком. '
             'Исторические данные доступны без новой аналитики (ai_assessment=null). '
-            'Публичные операции не требуют входа. Административные операции требуют сессии, HTTPS (кроме loopback), Origin и CSRF.')
+            'При AUTH_REQUIRED=true операции с проектами и анализами требуют аккаунта и доступа к проекту. Владелец управляет участниками; редактор изменяет данные, наблюдатель читает. Административные операции используют отдельную сессию и требуют HTTPS (кроме loopback), Origin и CSRF.')
         value['servers'] = [{'url':app.root_path or '/', 'description':'Настроенный root_path'}]
         if app.root_path:
             value['servers'].append({'url':'/','description':'Прямой backend'})
@@ -263,10 +263,10 @@ def install(app):
                     image = field('string','Полные байты JPEG/PNG в base64, до 16 МБ после декодирования, до 40 Мп.',contentEncoding='base64')
                     body['properties'][key] = field('array','От 2 до 8 кадров в фиксированном порядке.',items=image,minItems=2,maxItems=8) if key=='images_base64' else image
                     body['required'].append(key)
-                    operation['description'] += ' Требуется cloud_processing_consent=true. Лимит HTTP: 25 100 000 байт для одного кадра, 200 000 000 для серии. Выведенные из исполнения профили и зарезервированные контрольные примеры запрещены.'
+                    operation['description'] += ' Требуется cloud_processing_consent=true. Интерфейс ожидает ответ о приёме запроса до 180 секунд; распознавание выполняется в фоне и может продолжаться дольше. Лимит HTTP: 25 100 000 байт для одного кадра, 200 000 000 для серии. Выведенные из исполнения профили и зарезервированные контрольные примеры запрещены.'
                 if name == 'retry_run_stage':
                     operation['parameters'] = [*operation.get('parameters', []), {'name':'Idempotency-Key','in':'header','required':True,'schema':UUID,'description':'UUID одной явной попытки. После потери ответа повторить тот же ключ; новая загрузка страницы POST не отправляет.'}]
-                    operation['description'] += ' Доступ owner/editor; только упавший этап. Восстановление сохраняет run_id/URL, исходный профиль, согласие, источники и контекст уже зарезервированной оценки. Успешные вызовы не повторяются. Сначала выполняется полная локальная проверка сохранённого raw; производная квитанция содержит source_call_id и validation_revision, usage=null. Невалидный/неизвестный результат не считается успешным. При необходимости допускается один новый вызов для неуспешного элемента в явной попытке. Клиент ожидает fetch и JSON до180 секунд.'
+                    operation['description'] += ' Доступ owner/editor; только упавший этап. Восстановление сохраняет run_id/URL, исходный профиль, согласие, источники и контекст уже зарезервированной оценки. Успешные вызовы не повторяются. Сначала выполняется полная локальная проверка сохранённого raw; производная квитанция содержит source_call_id и validation_revision, usage=null. Невалидный/неизвестный результат не считается успешным. При необходимости допускается один новый вызов для неуспешного элемента в явной попытке. Интерфейс ожидает ответ о приёме восстановления до 180 секунд, включая чтение JSON; это не срок завершения распознавания.'
                 if body:
                     operation['requestBody'] = {'required':name != 'retry_run','content':{'application/json':{'schema':body,'example':example(body)}}}
                 errors = {'400':('Некорректные данные.','invalid_request'),'401':('Требуется сессия.','authentication_required'),

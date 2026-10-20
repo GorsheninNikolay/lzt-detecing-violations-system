@@ -366,7 +366,7 @@ def test_documentation_direct_and_proxy_schema(monkeypatch):
         assert './openapi.json' in client.get(prefix + '/redoc').text
         schema = client.get(prefix + '/openapi.json').json()
         assert schema['servers'] == [{'url':'/api','description':'Настроенный root_path'}, {'url':'/','description':'Прямой backend'}]
-        assert 'наблюдения мультимодальной модели' in schema['info']['description']
+        assert 'наблюдения Мультимодальной модели' in schema['info']['description']
         assert 'DeepSeek' not in json.dumps(schema, ensure_ascii=False)
         request = schema['paths']['/runs/single-image']['post']['requestBody']['content']['application/json']['schema']
         assert 'cloud_processing_consent' in request['required']

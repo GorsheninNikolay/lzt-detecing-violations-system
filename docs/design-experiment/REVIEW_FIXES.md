@@ -1,3 +1,5 @@
+> Исторический материал эксперимента с интерфейсом. Результаты относятся к указанным здесь версиям и условиям, а не к текущему стенду. Команды `node scripts/*.mjs` используют локальные инструменты из `web/scripts`, которые больше не поставляются с репозиторием. Для текущих проверок интерфейса используйте `npm test -- --run` и `npm run build` из `web`.
+
 # Review repairs — focused verification
 
 Specs remain in-review. Root-authored Review Triage Log entries are preserved. These repairs do not modify the original workspace or the separately documented visual direction.
