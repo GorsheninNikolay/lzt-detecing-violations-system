@@ -103,3 +103,13 @@ The project assistant reads photo and video lifecycle state, prioritizes active
 jobs in its bounded slice, and distinguishes missing timestamps from zero time.
 Its context and fallback include known error descriptions; old assistant replies
 are rendered with generic model wording without rewriting stored conversations.
+
+
+The keepalive checks services every30 seconds and may restart them during an
+installation. Before a consistent backup/cutover, pause only the exact
+`/bin/sh /usr/local/sbin/lzt-keepalive` process, close web admission, and verify
+there are no queued/running jobs or publishing submissions. Always resume the
+keepalive and web service in cleanup. After selection restart the backend,
+then verify `/proc/<MainPID>/cwd` resolves to the selected backend directory
+and check the compact API through public HTTPS. A ready response and a correct
+release symlink alone do not prove the running process imported that source.

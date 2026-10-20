@@ -404,3 +404,23 @@ def test_older_active_analysis_survives_recent_terminal_limit(isolated_tools, mo
     assert all(row['state'] != 'running' for row in context['recent_analyses'][1:])
     assert context['analysis_context_truncated'] is True
     assert {row['state']: row['count'] for row in context['analyses']} == {'running': 1, 'succeeded': 16, 'failed': 16}
+
+
+def test_photo_progress_does_not_count_skipped_stages_as_success(isolated_tools, monkeypatch):
+    client, engine, users = isolated_tools
+    headers = {'origin': 'http://testserver', 'x-test-user': str(users[0]), 'idempotency-key': str(uuid4())}
+    project = client.post('/trial/import', headers=headers).json()['project_id']
+    run = uuid4()
+    with engine.begin() as db:
+        db.execute(text("""INSERT INTO analysis_runs(id,state,purpose,analysis_intent,request_context)
+            VALUES (:id,'failed','ordinary','observation_only',jsonb_build_object('project_id',CAST(:project AS text)))"""),
+            {'id': run, 'project': project})
+        for ordinal, state in enumerate(['succeeded', 'succeeded', 'succeeded', 'failed', 'skipped', 'skipped']):
+            db.execute(text('INSERT INTO analysis_stages(run_id,ordinal,name,state) VALUES (:id,:ordinal,:name,:state)'),
+                       {'id': run, 'ordinal': ordinal, 'name': 'stage-' + str(ordinal), 'state': state})
+    contexts = []
+    monkeypatch.setattr(assistant, 'provider_answer', lambda _, context: contexts.append(context) or 'Статус проверен.')
+    assert client.post('/assistant/messages', json={'project_id': project, 'message': 'Статус анализа?'}, headers=headers).status_code == 200
+    job = contexts[-1]['recent_analyses'][0]
+    assert job['completed_stages'] == 3
+    assert job['total_stages'] == 6

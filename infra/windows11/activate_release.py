@@ -22,4 +22,5 @@ try:
     release = unpack_release(args.archive, args.sha256)
     print(json.dumps({'release': str(release), 'previous_release_backup': str(backup)}))
 finally:
-    subprocess.run(['systemctl', 'start', 'lzt-backend', 'lzt-web'], check=True)
+    # Keepalive can start the old source during extraction; restart after selection.
+    subprocess.run(['systemctl', 'restart', 'lzt-backend', 'lzt-web'], check=True)

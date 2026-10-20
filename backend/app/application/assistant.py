@@ -129,7 +129,7 @@ def project_context(request, project_id):
             SELECT 'photo' AS media_kind,r.state,r.created_at,NULL::timestamptz AS updated_at,
                 (SELECT name FROM analysis_stages WHERE run_id=r.id AND state IN ('running','failed') ORDER BY ordinal LIMIT 1) AS stage,
                 r.error_code AS error,NULL::double precision AS progress,
-                (SELECT count(*) FROM analysis_stages WHERE run_id=r.id AND state IN ('succeeded','skipped')) AS completed_stages,
+                (SELECT count(*) FROM analysis_stages WHERE run_id=r.id AND state='succeeded') AS completed_stages,
                 (SELECT count(*) FROM analysis_stages WHERE run_id=r.id) AS total_stages,
                 r.id AS sort_id
             FROM analysis_runs r WHERE r.purpose='ordinary' AND r.request_context->>'project_id'=:project_text
