@@ -247,7 +247,12 @@ def oriented_image(payload):
 
 
 def unsupported_claim(text, pattern):
+    subjects = r'(?:рисках\s+плана|задержках|графике|сроках|отставании|отставаниях)'
+    disclaimer = (rf'\s*(?:план\s+не\s+привязан\s*:\s*)?выводы\s+(?:о|об)\s+{subjects}'
+                  rf'(?:\s*(?:,|и)\s*{subjects})*\s+не\s+(?:делаются|формируются)\s*')
     for clause in re.split(r'[.!?;\n]|\b(?:но|однако|but|however)\b', text, flags=re.I):
+        if re.fullmatch(disclaimer, clause, re.I):
+            continue
         if re.search(pattern, clause, re.I) and not re.search(
                 r'невозможн(?:о|а|ы)\b|нельзя|недостаточно|нет данных|данных.*нет|не подтвержд|не установл|'
                 r'cannot|insufficient|not (?:verified|confirmed|established)', clause, re.I):

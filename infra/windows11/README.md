@@ -80,3 +80,11 @@ before changing `current` or `current.txt`. Failed access validation leaves the
 previous selection intact. This guard covers initial setup and activation.
 Private admission logs identify validation, registration and publication failure
 stages, exception classes and code locations without request bodies or secrets.
+
+The additional real-photo series exposed a separate validation false positive:
+“План не привязан: выводы о рисках плана, задержках и графике не делаются”.
+The legacy guard interpreted the disclaimer as a delay claim. It now accepts
+only a complete negated list of specific plan subjects; mixed affirmative
+statements remain rejected. Twenty-four focused delay/safety cases passed.
+The stored provider response passed full hybrid validation in memory without
+another provider call. The original failed run and paid receipts remain intact.
