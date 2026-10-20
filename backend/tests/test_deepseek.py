@@ -463,6 +463,24 @@ def test_no_plan_affirmative_claim_and_insufficiency(statement,accepted):
             deepseek.validate_assessment(value,context)
 
 
+@pytest.mark.parametrize('suffix,accepted', [
+    ('', True),
+    ('; задержка 2 дня', False),
+    (', задержка составляет 2 дня', False),
+    (' но задержка 2 дня', False),
+])
+def test_absent_plan_limitation_disclaimer_is_bounded(suffix, accepted):
+    value = assessment()
+    statement = 'План отсутствует: риски плана, задержки и выводы о сроках не формируются'
+    value['limitations'] = [statement + suffix + '.']
+    context = {'frames': [], 'plan': None}
+    if accepted:
+        assert deepseek.validate_assessment(value, context)['limitations'][0] == statement + '.'
+    else:
+        with pytest.raises(ValueError, match='assessment_delay_claim_without_plan'):
+            deepseek.validate_assessment(value, context)
+
+
 @pytest.mark.parametrize('visible,statement,accepted', [
     (False,'Проверить взаимное расположение людей и техники',False),
     (True,'Проверить взаимное расположение людей и техники',True),
