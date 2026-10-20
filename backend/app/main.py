@@ -13,7 +13,7 @@ from fastapi.responses import JSONResponse, Response
 from app.adapters.artifacts import ArtifactGateError, ArtifactStore
 from app.adapters.postgres import AdmissionStoreError, DatabaseGateError, PostgresStore, ReconciliationGateError, RecoveryGateError
 from app.application.executor import ClaimLoop
-from app.application.submission import SubmissionError, submit, submit_series
+from app.application.submission import SubmissionError, submit, submit_series, log_submission_failure
 from app.domain.rule import ANALYSIS_CHOICES
 from app.domain.comparison_campaign import CampaignGateError
 from app.config import Config
@@ -214,14 +214,17 @@ def create_app() -> FastAPI:
         binding = app.state.claim_loop.runtime_binding
         if binding is None:
             return JSONResponse({"code": "profile_unauthorized"}, status_code=503)
+        admission_stage = "authorization"
         try:
             key = request.headers.get("Idempotency-Key")
             snapshot, revision = await asyncio.to_thread(app.state.store.require_authorized, binding[0], binding[1])
+            admission_stage = "submission"
             status, run_id = await asyncio.to_thread(submit_series if series else submit,
                 app.state.store, app.state.artifacts,
                 key, body, binding[0], revision, snapshot,
                 **({"browser_id": request.headers["x-browser-id"]} if "x-browser-id" in request.headers else {}))
             if run_id:
+                admission_stage = "readback"
                 current = await asyncio.to_thread(app.state.store.read_ordinary, run_id)
                 return JSONResponse({"run_id": str(run_id), "state": current["state"]}, status_code=202)
             return JSONResponse({"code": "submission_in_progress"}, status_code=202)
@@ -234,7 +237,8 @@ def create_app() -> FastAPI:
         except AdmissionStoreError as exc:
             retired = str(exc) == "profile_retired"
             return JSONResponse({"code": "profile_retired" if retired else "profile_unauthorized"}, status_code=409 if retired else 503)
-        except Exception:
+        except Exception as exc:
+            log_submission_failure(admission_stage, series, exc)
             return JSONResponse({"code": "submission_unavailable"}, status_code=503)
 
     @app.get("/stages/summary")

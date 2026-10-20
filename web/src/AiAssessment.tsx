@@ -1,4 +1,4 @@
-import { equipmentLabel, stageLabel, sceneLabel, callStateLabel, explanationLabel, savedCloudProviderLabel } from './displayLabels'
+import { equipmentLabel, stageLabel, sceneLabel, explanationLabel, savedCloudProviderLabel } from './displayLabels'
 import type { Input } from './EvidenceViewer'
 export type AiAssessment = { summary: string; stage_hypothesis: { stage: string; reason: string }; risks: { category: 'process' | 'plan' | 'safety'; text: string; frame_ids: string[]; observation_ids: string[]; cause?: string; work_entry_id?: string | null; impact?: string; recommended_check?: string; limitations?: string[] }[]; activity?: { state: string; reason: string; uncertainty: string; frame_ids: string[] }[]; stage_hypotheses?: { stage: string; reason: string; frame_ids: string[]; work_entry_id: string | null }[]; recommendations: string[]; limitations: string[] }
 type Ground = { id: string; type_ru?: string; type_en?: string; catalog_class?: string | null; evidence?: string; name?: string; state?: string; status?: string }
@@ -10,7 +10,7 @@ export function AiAssessmentPanel({ assessment, evidence, inputs, adapterCode, w
   const grounds = new Map(frames.flatMap(frame => frame.observations.map(item => [item.id, { ...item, input_id: frame.input_id }] as const)))
   const explain = (text: string) => explanationLabel(text, workTitles)
   return <section className="panel" aria-labelledby="ai-assessment">
-    <h2 id="ai-assessment">{assessment ? 'Аналитика мультимодальной модели' : 'Сохранённые вызовы мультимодальной модели'}</h2>
+    <h2 id="ai-assessment">{assessment ? 'Аналитика мультимодальной модели' : 'Выводы по фотографиям'}</h2>
     <p>{provider ? `Источник: ${provider}.` : 'Источник облачной обработки не указан в сохранённом профиле.'} Вывод модели, требующий проверки человеком.</p>
     {assessment ? <><p>{explain(assessment.summary)}</p>
       {!!assessment.activity?.length && <><h3>Признаки работы</h3><ul>{assessment.activity.map((item, index) => <li key={index}><strong>{{ working_signs: 'Видны признаки работы', possible_idle: 'Возможный простой', insufficient_data: 'Недостаточно данных' }[item.state] ?? 'Состояние не определено'}</strong>: {explain(item.reason)}<p>{explain(item.uncertainty)}</p>{item.frame_ids.map(id => <button key={id} type="button" className="secondary" onClick={() => onOpenFrame?.(id)}>Кадр {(inputs.find(input => input.input_id === id)?.ordinal ?? -1) + 1}</button>)}</li>)}</ul></>}
@@ -27,14 +27,12 @@ export function AiAssessmentPanel({ assessment, evidence, inputs, adapterCode, w
             {ground.evidence && <>: {explain(ground.evidence)}</>}
             {ground.state && <> · {ground.state === 'present' ? 'виден в кадре' : 'видимость не подтверждена'}</>}
             {onOpenFrame && <button type="button" className="secondary" onClick={() => onOpenFrame(ground.input_id)}>Открыть кадр {(inputs.find(input => input.input_id === ground.input_id)?.ordinal ?? -1) + 1}</button>}
-            <details><summary>Идентификатор наблюдения</summary><code>{id}</code></details>
-          </> : <code>{id}</code>}</li>
+          </> : 'Наблюдение недоступно'}</li>
         })}</ul></details>
       </li>)}</ul> : <p>Риски не выделены. Это не подтверждает безопасность или отсутствие проблем.</p>}
       <h3>Рекомендации</h3><ul>{assessment.recommendations.map((text, i) => <li key={i}>{explain(text)}</li>)}</ul>
       <h3>Ограничения</h3><ul>{assessment.limitations.map((text, i) => <li key={i}>{explain(text)}</li>)}</ul>
-    </> : <p>Успешная аналитика отсутствует. Сохранённый ответ или резервация не являются успешным результатом; повтор вызова запрещён.</p>}
+    </> : <p>Выводы по фотографиям недоступны.</p>}
     <p>Необнаружение техники не доказывает её отсутствие. Расстояния и нормативные нарушения по этим фотографиям не подтверждены.</p>
-    <details><summary>Сохранённые источники и ответы модели</summary>{evidence.map(call => <details key={call.id}><summary>{call.kind === 'frame' ? 'Наблюдение кадра' : 'Итоговая аналитика'} · {callStateLabel(call.state)}</summary><p>{call.result?.model} · инструкция {call.result?.instruction_version} · схема {call.result?.schema_version}</p><pre>{JSON.stringify(call, null, 2)}</pre></details>)}</details>
   </section>
 }

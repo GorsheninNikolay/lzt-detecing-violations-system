@@ -1,4 +1,5 @@
 import PlanExcelImport from './PlanExcelImport'
+import CaptureDateTime from './CaptureDateTime'
 import { validLocalPeriod } from './localPeriod'
 import { hasPendingVideo, videoScope } from './videoRecovery'
 import { readFile, validateImage } from './imageValidation'
@@ -29,7 +30,6 @@ import { AnnotationEditor } from './Annotations'
 import { AiAssessmentPanel, type AiAssessment, type AiEvidence } from './AiAssessment'
 
 type Frame = { id: string; file: File }
-type DemoCase = (typeof demoCases.cases)[number]
 type Pending = { endpoint: string; body: string; key: string }
 type Errors = Partial<Record<'scenario' | 'observation_area' | 'period' | 'images' | 'submit', string>>
 type Stage = { name: string; state: string; reason?: string | null; timestamp?: string | null }
@@ -63,7 +63,6 @@ function ObservationResult({ run, runId, pageHeading, onOpen, readOnly = false }
   const [selected, setSelected] = useState<number | null>(null)
   const [activeInputId, setActiveInputId] = useState<string | null>(null)
   const [showBoxes, setShowBoxes] = useState(true)
-  const [detectorLayer, setDetectorLayer] = useState('reconciled')
   const [selectedObject, setSelectedObject] = useState<number | null>(null)
   const [editing, setEditing] = useState(false)
   const correction = useRef<HTMLDetailsElement>(null)
@@ -75,7 +74,7 @@ function ObservationResult({ run, runId, pageHeading, onOpen, readOnly = false }
   const complete = run.state === 'succeeded' && !!projection?.outcome
   const observations = [...(complete ? projection.frames ?? [] : run.observations ?? [])].sort((a, b) => Number(b.state === 'detected') - Number(a.state === 'detected'))
   const frames = makeResultFrames(observations, inputs, complete ? projection.series?.usable_input_ids : undefined, complete)
-  const objects: DetectedObject[] = detectorLayer === 'reconciled' ? run.objects ?? [] : (projection?.hybrid_frames ?? []).flatMap(frame => frame.detectors.models.filter(model => model.model_id === detectorLayer).flatMap(model => model.detections.map(item => ({ ...item, class_name: item.catalog_class ?? item.raw_class, image_size: model.image_size, invocation_id: model.model_id }))))
+  const objects = run.objects ?? []
   const outcome = complete ? projection.outcome : null
   const inputOnly = !complete && !observations.length && frames.length > 0 && (run.purpose === 'comparison_campaign' || !!run.ai_evidence?.length)
   if (!complete && !observations.length && !inputOnly) return null
@@ -110,7 +109,7 @@ function ObservationResult({ run, runId, pageHeading, onOpen, readOnly = false }
         <section className={`result-visual ${editing?'is-editing':''}`} aria-labelledby="source-heading">
           <div className="result-visual-heading">
             <h3 id="source-heading">Исходные кадры</h3>
-            {!!projection?.hybrid_frames?.length && <label>Источник рамок<select value={detectorLayer} onChange={event => { setDetectorLayer(event.target.value); setSelectedObject(null) }}><option value="reconciled">Согласованные объекты</option><option value="apoce">YOLO APOCE</option><option value="kaggle">YOLO Kaggle</option></select></label>}{objects.length > 0 && <label className="box-toggle"><input type="checkbox" checked={showBoxes} onChange={event => setShowBoxes(event.target.checked)} /> Показывать рамки объектов</label>}
+            {objects.length > 0 && <label className="box-toggle"><input type="checkbox" checked={showBoxes} onChange={event => setShowBoxes(event.target.checked)} /> Показывать рамки объектов</label>}
           </div>
           {activeFrame ? <>
             <div className="result-feature-image">
@@ -162,7 +161,7 @@ function ObservationResult({ run, runId, pageHeading, onOpen, readOnly = false }
             <h4 id="rule-provenance-heading">Правило и его источник</h4>
             {ruleRun ? <>
               {projection?.rule ? <>
-                <p>Правило: {projection.rule.name || 'не указано'}, ревизия {projection.rule.revision || 'не указана'}.</p>
+                <p>Правило: {projection.rule.name || 'не указано'}.</p>
                 <p>Источник правила: {projection.rule.provenance || 'не указан'}.</p>
                 <p>Ожидание: {projection.rule.expectation || 'не указано'}.</p>
               </> : <p>Данные о правиле в проекции недоступны.</p>}
@@ -187,12 +186,6 @@ function ObservationResult({ run, runId, pageHeading, onOpen, readOnly = false }
 
       </div>
 
-      <details className="result-details">
-        <summary>Подробности анализа и кадров</summary>
-        <p>Подтверждающие входные ID: {supportingIds.join(', ') || 'не указаны'}.</p>
-        {series && <p>Пригодные входные ID: {series.usable_input_ids?.join(', ') || 'не указаны'}. Порядок: {series.input_order?.join(' → ') || 'не указан'}.</p>}
-        <ol>{frames.map(frame => <li key={frame.input_id}>Кадр {frame.ordinal + 1}. Входной ID: <code>{frame.input_id}</code>. Исходный артефакт ID: <code>{frame.artifact_id ?? 'не указан'}</code>. SHA-256: <code>{frame.sha256 ?? 'не указан'}</code>.</li>)}</ol>
-      </details>
     </section>
     {!!projection?.created_signals?.length && <section className="panel"><h2>Сохранённые сигналы</h2><ul>{projection.created_signals.map(signal => <li key={signal.id}><a href={run.project_id ? `/projects/${run.project_id}/signals` : '/signals'} onClick={event => { event.preventDefault(); onOpen?.(run.project_id ? `/projects/${run.project_id}/signals` : '/signals') }}>{signalKindLabel(signal.kind)}</a> · {signalStateLabel(signal.state)}</li>)}</ul></section>}
     {(run.ai_assessment || !!run.ai_evidence?.length) && <AiAssessmentPanel assessment={run.ai_assessment} evidence={run.ai_evidence ?? []} inputs={inputs} adapterCode={run.profile_snapshot?.adapter?.code} workTitles={Object.fromEntries((run.planned_works ?? []).filter(work => work.id).map(work => [work.id!, work.title]))} onOpenFrame={id => { const index = frames.findIndex(frame => frame.input_id === id); if (index >= 0) setSelected(index) }} />}
@@ -226,7 +219,7 @@ function RunPipeline({ run, runId, disconnected }: { run: RunSnapshot; runId: st
     <ol className="pipeline-stages">{run.stages.map(stage => <li key={stage.name} className={'pipeline-stage stage-' + stage.state}>
       <h3>{STAGE_LABELS[stage.name] ?? 'Этап анализа'}</h3>
       <p>{STAGE_STATES[stage.state] ?? 'Состояние доступно на сервере'}</p>
-      {stage.reason && <><p className="stage-reason">{STAGE_REASONS[stage.reason] ?? 'Причина не описана для пользователя.'}</p>{!STAGE_REASONS[stage.reason] && <details><summary>Техническая причина</summary><code>{stage.reason}</code></details>}</>}
+      {stage.reason && <><p className="stage-reason">{STAGE_REASONS[stage.reason] ?? 'Причина не описана для пользователя.'}</p></>}
       {stage.timestamp && <time dateTime={stage.timestamp}>{new Date(stage.timestamp).toLocaleString('ru-RU')}</time>}
     </li>)}</ol>
   </details></>
@@ -613,8 +606,8 @@ export default function App() {
   const [workspaceReadError, setWorkspaceReadError] = useState('')
   const [workspaceReadAttempt, setWorkspaceReadAttempt] = useState(0)
   const [frames, setFrames] = useState<Frame[]>([])
-  const [demoLoading, setDemoLoading] = useState(false)
-  const [demoError, setDemoError] = useState('')
+  const [trainingPhotoLoading, setTrainingPhotoLoading] = useState(false)
+  const [trainingPhotoError, setTrainingPhotoError] = useState('')
   const [trainingProject, setTrainingProject] = useState('')
   const [trainingBusy, setTrainingBusy] = useState(false)
   const [trainingFrameId, setTrainingFrameId] = useState('')
@@ -630,9 +623,8 @@ export default function App() {
   const trainingReady = !!trainingFrameId && frames.length === 1 && frames[0].id === trainingFrameId
   const trainingOwner = useRef('')
   const [trainingError, setTrainingError] = useState('')
-  const [selectedDemo, setSelectedDemo] = useState<DemoCase | null>(null)
-  const demoGeneration = useRef(0)
-  const demoLoadingRef = useRef(false)
+  const uploadGeneration = useRef(0)
+  const trainingPhotoLoadingRef = useRef(false)
   const framesRef = useRef<Frame[]>([])
   const validationQueue = useRef<Promise<void>>(Promise.resolve())
   const [validating, setValidating] = useState(false)
@@ -641,25 +633,12 @@ export default function App() {
   const [notice, setNotice] = useState('')
   const [offline, setOffline] = useState(!navigator.onLine)
   const [sending, setSending] = useState(false)
-  const [cloudConsent, setCloudConsent] = useState(false)
   const [pending, setPending] = useState<Pending | null>(null)
-  const consentScope = JSON.stringify({ projectId, route, frames: frames.map(frame => frame.id),
-    cloudProvider: cloudProcessing?.provider, cloudProfileId: cloudProcessing?.profileId,
-    scenario, area, period, stage, captureTimes, analysisProjectId, analysisZoneId,
-    planPickerOpen, planRevisionId: analysisPlan?.revision_id })
-  useEffect(() => {
-    if (pending) {
-      try { setCloudConsent(JSON.parse(pending.body).cloud_processing_consent === true) }
-      catch { setCloudConsent(false) }
-    } else setCloudConsent(false)
-  }, [pending, consentScope])
   let pendingProject = ''
   let pendingProvider: CloudProvider | null = null
-  let pendingConsent = false
   try {
     const body = pending ? JSON.parse(pending.body) : null
     pendingProject = body?.project_id ?? ''
-    pendingConsent = body?.cloud_processing_consent === true
     if (body?.cloud_provider === 'deepseek' || body?.cloud_provider === 'yandex_ai_studio') pendingProvider = body.cloud_provider
     else if (body?.cloud_provider === undefined && body?.cloud_processing_consent === true) pendingProvider = 'yandex_ai_studio'
   } catch { /* Legacy request remains unchanged. */ }
@@ -700,7 +679,7 @@ export default function App() {
   const cameraGeneration = useRef(0)
   const mounted = useRef(true)
   const busy = useRef(false)
-  draftDirty.current = planDirty || (route === 'new' && (uploadDirty || frames.length > 0 || !!pending || sending || validating || demoLoading))
+  draftDirty.current = planDirty || (route === 'new' && (uploadDirty || frames.length > 0 || !!pending || sending || validating || trainingPhotoLoading))
 
   useEffect(() => {
     if (!projectId && route !== 'projects') return
@@ -890,7 +869,7 @@ export default function App() {
         announcedStages.current = states
         if (data.state === 'queued' || data.state === 'running') timer = setTimeout(read, 3000)
       } catch {
-        if (active && routeRef.current === route) { setRunError('Связь потеряна. Анализ может продолжаться на сервере.'); setRunChecked(true) }
+        if (active && routeRef.current === route) { setRunError('Обратитесь к администратору'); setRunChecked(true) }
       } finally {
         clearTimeout(timeout)
         if (active && routeRef.current === route) setRunReading(false)
@@ -961,15 +940,15 @@ export default function App() {
       const data = await response.json() as { run_id?: string; code?: string }
       if (routeRef.current !== sourceRoute || !mounted.current) return
       if (!response.ok || !data.run_id) {
-        setRetryError(data.code === 'retry_source_unavailable' ? 'Исходные данные повреждены или недоступны. Повторить анализ нельзя.' :
-          data.code === 'profile_unauthorized' || data.code === 'profile_runtime_mismatch' ? 'Текущий профиль наблюдателя недоступен для повтора.' :
-          data.code === 'retry_ineligible' ? 'Этот анализ нельзя повторить.' : 'Не удалось создать повторный анализ. Попробуйте позже.')
+        setRetryError(response.status >= 500 ? 'Обратитесь к администратору' : data.code === 'retry_source_unavailable' ? 'Исходные данные повреждены или недоступны. Повторить анализ нельзя.' :
+          data.code === 'profile_unauthorized' || data.code === 'profile_runtime_mismatch' ? 'Обратитесь к администратору' :
+          data.code === 'retry_ineligible' ? 'Этот анализ нельзя повторить.' : 'Обратитесь к администратору')
         return
       }
       navigate(`/runs/${data.run_id}`)
     } catch {
       if (routeRef.current === sourceRoute && mounted.current)
-        setRetryError('Связь потеряна. Проверьте историю перед повторной попыткой.')
+        setRetryError('Обратитесь к администратору')
     } finally { if (routeRef.current === sourceRoute && mounted.current) setRetrying(false) }
   }
 
@@ -988,9 +967,9 @@ export default function App() {
   }, [cameraOpen])
 
   function cancelUpload() {
-    demoGeneration.current++
-    demoLoadingRef.current = false
-    setDemoLoading(false); setValidating(false)
+    uploadGeneration.current++
+    trainingPhotoLoadingRef.current = false
+    setTrainingPhotoLoading(false); setValidating(false)
     validationQueue.current = Promise.resolve()
   }
 
@@ -1088,7 +1067,7 @@ export default function App() {
     const generation = trainingGeneration.current
     setTrainingProject('')
     trainingLoading.current = true
-    void loadDemo('truck', true).finally(() => { trainingLoading.current = false; if (generation === trainingGeneration.current) setTrainingBusy(false) })
+    void loadTrainingPhoto().finally(() => { trainingLoading.current = false; if (generation === trainingGeneration.current) setTrainingBusy(false) })
   }, [trainingProject, projectId, route, analysisZoneId, recovering, choicesLoading])
 
   function newAnalysis() { if (readOnly) return; navigate(projectId ? '/new' : '/'); if (!projectId) { setCreatingProject(true); requestAnimationFrame(() => document.getElementById('project-name')?.focus()) } }
@@ -1098,21 +1077,20 @@ export default function App() {
     if (!keepTrainingRun) { trainingRun.current = ''; setTrainingRunId('') }
     framesRef.current = next
     setFrames(next)
-    setSelectedDemo(null)
   }
 
-  async function loadDemo(caseId: string, training = false) {
-    const selected = demoCases.cases.find(item => item.id === caseId)
-    if (!selected || pending || sending || recovering || busy.current || demoLoadingRef.current) return
-    const generation = ++demoGeneration.current
-    demoLoadingRef.current = true
-    setDemoLoading(true)
-    setDemoError('')
+  async function loadTrainingPhoto() {
+    const selected = demoCases.cases.find(item => item.id === 'truck')
+    if (!selected || pending || sending || recovering || busy.current || trainingPhotoLoadingRef.current) return
+    const generation = ++uploadGeneration.current
+    trainingPhotoLoadingRef.current = true
+    setTrainingPhotoLoading(true)
+    setTrainingPhotoError('')
     const controller = new AbortController()
     let timeout: ReturnType<typeof setTimeout> | undefined
     try {
       await validationQueue.current
-      const loaded = await Promise.race([Promise.all((training ? [selected.frames[1]] : selected.frames).map(async frame => {
+      const loaded = await Promise.race([Promise.all([selected.frames[1]].map(async frame => {
         const response = await fetch(frame.path, { signal: controller.signal })
         if (!response.ok) throw new Error('asset_unavailable')
         const file = new File([await response.blob()], frame.path.split('/').pop()!, { type: 'image/jpeg' })
@@ -1124,37 +1102,35 @@ export default function App() {
       })), new Promise<never>((_, reject) => {
         timeout = setTimeout(() => { controller.abort(); reject(new Error('demo_timeout')) }, 10000)
       })])
-      if (!mounted.current || routeRef.current !== "new" || generation !== demoGeneration.current || busy.current) return
+      if (!mounted.current || routeRef.current !== "new" || generation !== uploadGeneration.current || busy.current) return
       closeCamera()
       updateFrames(loaded)
       setStage(selected.stage)
-      setScenario(training ? 'Учебный пример: техника на стройплощадке' : selected.scenario)
-      if (!training) setArea(selected.observationArea)
+      setScenario('Учебный пример: техника на стройплощадке')
       setPeriod(selected.period)
-      setSelectedDemo(training ? null : selected)
-      if (training) { trainingFrame.current = loaded[0].id; setTrainingFrameId(loaded[0].id) }
+      trainingFrame.current = loaded[0].id; setTrainingFrameId(loaded[0].id)
       setRemoved(null)
       setErrors({})
-      setNotice(training ? 'Учебная фотография загружена. Время демонстрационное; запуск анализа требует отдельного нажатия.' : `Загружен демонстрационный пример: ${selected.label}. Три кадра можно изменить перед отправкой.`)
+      setNotice('Учебная фотография загружена. Время демонстрационное; запуск анализа требует отдельного нажатия.')
     } catch {
-      if (mounted.current && generation === demoGeneration.current) setDemoError('Не удалось загрузить и проверить все кадры примера. Текущая форма сохранена; повторите выбор.')
+      if (mounted.current && generation === uploadGeneration.current) setTrainingPhotoError('Не удалось загрузить и проверить все кадры примера. Текущая форма сохранена; повторите выбор.')
     } finally {
       controller.abort()
       clearTimeout(timeout)
-      if (generation === demoGeneration.current) {
-        demoLoadingRef.current = false
-        if (mounted.current) setDemoLoading(false)
+      if (generation === uploadGeneration.current) {
+        trainingPhotoLoadingRef.current = false
+        if (mounted.current) setTrainingPhotoLoading(false)
       }
     }
   }
 
   async function addFiles(files: FileList | File[]) {
-    if (pending || sending || busy.current || demoLoadingRef.current) return
-    const generation = demoGeneration.current
+    if (pending || sending || busy.current || trainingPhotoLoadingRef.current) return
+    const generation = uploadGeneration.current
     const batch = Array.from(files)
     setValidating(true)
     const task = validationQueue.current.then(async () => {
-      if (generation !== demoGeneration.current) return
+      if (generation !== uploadGeneration.current) return
       const next = [...framesRef.current]
       const originalCount = next.length
       const rejected: string[] = []
@@ -1164,14 +1140,14 @@ export default function App() {
         if (error) rejected.push(`${file.name}: ${error}`)
         else next.push({ id: randomUUID(), file })
       }
-      if (!mounted.current || routeRef.current !== 'new' || generation !== demoGeneration.current) return
+      if (!mounted.current || routeRef.current !== 'new' || generation !== uploadGeneration.current) return
       updateFrames(next)
       if (next.length !== originalCount) setNotice(`Добавлено кадров: ${next.length - originalCount}. Всего ${next.length}.`)
       setErrors(current => ({ ...current, images: rejected.join(' ') || undefined }))
-    }).catch(() => { if (generation !== demoGeneration.current) return; setErrors(current => ({ ...current, images: 'Не удалось проверить выбранные изображения. Повторите выбор файлов.' })) })
+    }).catch(() => { if (generation !== uploadGeneration.current) return; setErrors(current => ({ ...current, images: 'Не удалось проверить выбранные изображения. Повторите выбор файлов.' })) })
     validationQueue.current = task
     await task
-    if (generation === demoGeneration.current && validationQueue.current === task) setValidating(false)
+    if (generation === uploadGeneration.current && validationQueue.current === task) setValidating(false)
   }
 
   function move(index: number, delta: number) {
@@ -1200,16 +1176,16 @@ export default function App() {
   }
 
   async function openCamera() {
-    if (demoLoadingRef.current) return
+    if (trainingPhotoLoadingRef.current) return
     if (!navigator.mediaDevices?.getUserMedia) {
       setErrors(current => ({ ...current, images: 'Камера недоступна. Выберите изображения из файлов.' }))
       return
     }
     const generation = ++cameraGeneration.current
-    const presetGeneration = demoGeneration.current
+    const presetGeneration = uploadGeneration.current
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: false })
-      if (!mounted.current || generation !== cameraGeneration.current || (routeRef.current !== 'new' || presetGeneration !== demoGeneration.current || demoLoadingRef.current)) {
+      if (!mounted.current || generation !== cameraGeneration.current || (routeRef.current !== 'new' || presetGeneration !== uploadGeneration.current || trainingPhotoLoadingRef.current)) {
         stream.getTracks().forEach(track => track.stop())
         return
       }
@@ -1245,9 +1221,9 @@ export default function App() {
     if (!context) { setErrors(current => ({ ...current, images: 'Не удалось получить снимок. Повторите попытку.' })); return }
     context.drawImage(video, 0, 0)
     const generation = cameraGeneration.current
-    const presetGeneration = demoGeneration.current
+    const presetGeneration = uploadGeneration.current
     canvas.toBlob(blob => {
-      if (!mounted.current || generation !== cameraGeneration.current || (routeRef.current !== 'new' || presetGeneration !== demoGeneration.current || demoLoadingRef.current)) return
+      if (!mounted.current || generation !== cameraGeneration.current || (routeRef.current !== 'new' || presetGeneration !== uploadGeneration.current || trainingPhotoLoadingRef.current)) return
       if (!blob) { setErrors(current => ({ ...current, images: 'Не удалось получить снимок. Повторите попытку.' })); return }
       void addFiles([new File([blob], `camera-${Date.now()}.jpg`, { type: 'image/jpeg' })])
       closeCamera()
@@ -1287,16 +1263,23 @@ export default function App() {
           }
           return { response, data: await response.json() }
         })(),
-        new Promise<never>((_, reject) => { timeout = setTimeout(() => { controller.abort(); reject(new Error('timeout')) }, 10000) }),
+        new Promise<never>((_, reject) => { timeout = setTimeout(() => { controller.abort(); reject(new Error('timeout')) }, 180000) }),
       ])
       clearTimeout(timeout)
       if (navigation !== navigationGeneration.current) return
       if (response.status >= 400 && response.status < 500) {
         await clearPending(accountId)
         setPending(null)
-        setErrors(current => ({ ...current, submit: data.code === 'idempotency_key_conflict'
-          ? 'Ключ отправки уже связан с другим запросом. Проверьте данные и начните новую отправку.'
-          : cloudErrorLabels[data.code] ?? 'Сервер отклонил запрос. Проверьте контекст и файлы, затем повторите.' }))
+        const fieldErrors: Record<string, string> = {
+          invalid_image_file: 'Не удалось прочитать фотографии. Выберите JPEG или PNG в пределах допустимого размера.',
+          invalid_image_count: 'Добавьте от одного до восьми кадров.',
+          invalid_observation_context: 'Проверьте сценарий, участок и время наблюдения.',
+          invalid_stage: 'Выберите этап строительства.',
+          invalid_stage_id: 'Выберите этап строительства.',
+          invalid_plan_binding: 'Проверьте выбранные проект, участок и время съёмки.',
+          plan_revision_conflict: 'План изменился. Обновите страницу и проверьте выбранный план.',
+        }
+        setErrors(current => ({ ...current, submit: fieldErrors[data.code] ?? 'Обратитесь к администратору' }))
         queueMicrotask(() => summary.current?.focus())
         return
       }
@@ -1306,20 +1289,13 @@ export default function App() {
         if (navigation !== navigationGeneration.current) return
         if (trainingFrame.current && framesRef.current.length === 1 && framesRef.current[0].id === trainingFrame.current && JSON.parse(request.body).project_id === trainingOwner.current) { trainingRun.current = data.run_id; setTrainingRunId(data.run_id) }
         navigate(JSON.parse(request.body).project_id ? `/projects/${JSON.parse(request.body).project_id}/runs/${data.run_id}` : `/runs/${data.run_id}`, true)
-      } else if (response.status === 503 && (data?.code === 'submission_publication_failed' || data?.code === 'submission_interrupted')) {
-        await clearPending(accountId)
-        setPending(null)
-        setErrors(current => ({ ...current, submit: 'Отправка завершилась ошибкой. Проверьте данные и явно запустите новый анализ: будет создан новый ключ отправки.' }))
-        queueMicrotask(() => summary.current?.focus())
       } else {
-        setErrors(current => ({ ...current, submit: cloudErrorLabels[data?.code]
-          ? `${cloudErrorLabels[data.code]} Исходный запрос и ключ отправки сохранены.`
-          : 'Результат отправки пока неизвестен. Повторите запрос с тем же ключом; изображения и контекст сохранены.' }))
+        setErrors(current => ({ ...current, submit: 'Обратитесь к администратору' }))
         queueMicrotask(() => summary.current?.focus())
       }
     } catch {
       if (navigation !== navigationGeneration.current) return
-      setErrors(current => ({ ...current, submit: 'Ответ сервера не получен. Повторите отправку: исходный запрос и ключ сохранены.' }))
+      setErrors(current => ({ ...current, submit: 'Обратитесь к администратору' }))
       queueMicrotask(() => summary.current?.focus())
     } finally {
       clearTimeout(timeout)
@@ -1330,28 +1306,27 @@ export default function App() {
 
   async function submit(event: FormEvent) {
     event.preventDefault()
-    if (busy.current || offline || recovering || demoLoading || foreignPending) return
-    const generation = demoGeneration.current
+    if (busy.current || offline || recovering || trainingPhotoLoading || foreignPending) return
+    const generation = uploadGeneration.current
     if (pending) { await send(pending); return }
     const approvedFrames = [...framesRef.current]
     busy.current = true
     await validationQueue.current
-    if (generation !== demoGeneration.current) { busy.current = false; return }
+    if (generation !== uploadGeneration.current) { busy.current = false; return }
     const framesChanged = approvedFrames.length !== framesRef.current.length
       || approvedFrames.some((frame, index) => frame.id !== framesRef.current[index].id)
     const next = validateForm()
-    if (framesChanged) setCloudConsent(false)
-    if (!cloudProcessing || choicesLoading) next.submit = cloudErrorLabels.cloud_provider_unavailable
-    else if (!cloudConsent || framesChanged) next.submit = `Для анализа требуется согласие на обработку фотографий в ${cloudProcessing.label}.`
+    if (!cloudProcessing || choicesLoading) next.submit = 'Обратитесь к администратору'
+    else if (framesChanged) next.images = 'Список кадров изменился. Проверьте фотографии и повторите отправку.'
     setErrors(next)
     if (Object.keys(next).length) { busy.current = false; queueMicrotask(() => summary.current?.focus()); return }
     setSending(true)
     try {
       const images: string[] = []
       for (const frame of approvedFrames) images.push(await base64(frame.file))
-      if (generation !== demoGeneration.current) return
+      if (generation !== uploadGeneration.current) return
       const body = JSON.stringify({
-        cloud_processing_consent: cloudConsent, cloud_provider: cloudProcessing!.provider, intent, stage, ...(stage === "excavation" ? { stage_id: stage } : {}), scenario: scenario.trim(), observation_area: area.trim(),
+        cloud_processing_consent: true, cloud_provider: cloudProcessing!.provider, intent, stage, ...(stage === "excavation" ? { stage_id: stage } : {}), scenario: scenario.trim(), observation_area: area.trim(),
         period: periodWithOffset(period), requested_classes: EQUIPMENT,
         ...(analysisProjectId && analysisZoneId ? { project_id: analysisProjectId, zone_id: analysisZoneId,
           ...(planPickerOpen && analysisPlan?.revision_id ? { plan_revision_id: analysisPlan.revision_id } : {}),
@@ -1361,11 +1336,11 @@ export default function App() {
       const request = { endpoint: images.length === 1 ? '/api/runs/single-image' : '/api/runs/series', body, key: randomUUID() }
       await storePending(request, accountId)
       setPending(request)
-      if (generation !== demoGeneration.current) return
+      if (generation !== uploadGeneration.current) return
       busy.current = false
       await send(request)
     } catch {
-      if (generation !== demoGeneration.current) return
+      if (generation !== uploadGeneration.current) return
       setErrors(current => ({ ...current, submit: 'Не удалось безопасно подготовить или сохранить запрос. Форма сохранена; повторите попытку.' }))
       queueMicrotask(() => summary.current?.focus())
     } finally {
@@ -1377,7 +1352,7 @@ export default function App() {
   return <div className="app-shell">
     <a className="skip-link" href="#main">К основному содержимому</a>
     <AppHeader projectId={projectId} projects={projects} projectName={project?.name} route={route} historyPath={historyPath.current} navigate={navigate} onNewAnalysis={newAnalysis} readOnly={readOnly} />
-    <PublicSupport safe={!recovering && !pending && !draftDirty.current && !projectDraft} projectId={projectId} analysisId={route && /^[0-9a-f-]{36}$/i.test(route) ? route : undefined} start={newAnalysis} training={{ start: startTraining, busy: trainingBusy, ready: trainingReady && projectId === trainingOwner.current, allowed: !draftDirty.current && !projectDraft && !pending && !recovering, error: trainingError || (trainingReady ? '' : demoError), runId: projectId === trainingOwner.current && route === trainingRunId ? trainingRunId : undefined }} />
+    <PublicSupport safe={!recovering && !pending && !draftDirty.current && !projectDraft} projectId={projectId} analysisId={route && /^[0-9a-f-]{36}$/i.test(route) ? route : undefined} start={newAnalysis} training={{ start: startTraining, busy: trainingBusy, ready: trainingReady && projectId === trainingOwner.current, allowed: !draftDirty.current && !projectDraft && !pending && !recovering, error: trainingError || (trainingReady ? '' : trainingPhotoError), runId: projectId === trainingOwner.current && route === trainingRunId ? trainingRunId : undefined }} />
     <main id="main" className="page">
       {readOnly && <p className="attention">У вас доступ только для просмотра. Изменение плана, фотографий и сигналов недоступно.</p>}
       {trainingReady && projectId === trainingOwner.current && route === 'new' && <p className="attention">Учебный пример: проверенная фотография из демонстрационного набора. Дата и время съёмки демонстрационные; их можно уточнить. Анализ запускается только кнопкой «Запустить анализ».</p>}
@@ -1399,29 +1374,20 @@ export default function App() {
               <div><dt>Цель</dt><dd>{run.intent === 'rule_evaluation' ? 'Проверить правило этапа' : 'Только распознать технику'}</dd></div>
               <div><dt>Состояние</dt><dd>{RUN_STATES[run.state] ?? 'Состояние доступно на сервере'}</dd></div>
               {run.outcome && run.state === 'succeeded' && <div><dt>Итог</dt><dd>{OUTCOME_LABELS[run.outcome] ?? 'Результат анализа'}</dd></div>}</dl>
-            {predecessor && <p>Предыдущий анализ: <a href={`/runs/${predecessor}`} onClick={event => { event.preventDefault(); navigate(`/runs/${predecessor}`) }}>{predecessor}</a></p>}
-            {successor && <p>Следующий анализ: <a href={`/runs/${successor}`} onClick={event => { event.preventDefault(); navigate(`/runs/${successor}`) }}>{successor}</a></p>}
+            {predecessor && <p>Предыдущий анализ: <a href={`/runs/${predecessor}`} onClick={event => { event.preventDefault(); navigate(`/runs/${predecessor}`) }}>Открыть исходный анализ</a></p>}
+            {successor && <p>Следующий анализ: <a href={`/runs/${successor}`} onClick={event => { event.preventDefault(); navigate(`/runs/${successor}`) }}>Открыть следующий анализ</a></p>}
           </li>
         })}</ol>}
         {historyNextOffset !== null && !historyError && <button type="button" className="secondary" disabled={historyPageLoading} onClick={() => setHistoryPage(historyNextOffset)}>{historyPageLoading ? 'Загружаем…' : 'Показать ещё'}</button>}
-      </section> : route === 'readiness' ? <ReadinessPage heading={pageHeading} onOpen={navigate} /> : route === 'provider-comparison' ? <ProviderComparisonPage heading={pageHeading} onOpen={navigate} /> : route === 'about' ? <About heading={pageHeading} returnPath={history.state?.aboutFromApp ? history.state.returnPath : '/'} onReturn={returnFromAbout} /> : route === null ? <section className="panel" aria-labelledby="not-found-heading"><h1 ref={pageHeading} tabIndex={-1} id="not-found-heading">Страница не найдена</h1><p>Проверьте адрес или откройте обзор этапов.</p></section> : route !== 'new' && visibleRunSnapshot?.media_kind === 'video' ? <VideoResult key={route} runId={route!} initial={visibleRunSnapshot} readOnly={readOnly} onOpen={navigate} /> : route !== 'new' ? <section className="run-workspace" aria-labelledby="run-heading" aria-busy={runReading}>{visibleRunSnapshot && visibleRunSnapshot.state !== 'succeeded' && <RunPipeline run={visibleRunSnapshot} runId={route!} disconnected={offline || !!runError} />}{visibleRunSnapshot?.state === 'succeeded' && visibleRunSnapshot.result_projection?.outcome && <ObservationResult readOnly={readOnly} onOpen={navigate} run={visibleRunSnapshot} runId={route!} pageHeading={pageHeading} />}{visibleRunSnapshot?.state === 'succeeded' && <RunPipeline run={visibleRunSnapshot} runId={route!} disconnected={offline || !!runError} />}{visibleRunSnapshot && !readOnly && <StageConfirmation key={route} run={visibleRunSnapshot} runId={route!} />}{visibleRunSnapshot && <section className="panel"><h2>Этап по сохранённому плану</h2>{visibleRunSnapshot.plan_binding ? (visibleRunSnapshot.planned_works?.length ? <ul>{visibleRunSnapshot.planned_works.map((work, index) => <li key={work.id ?? index} id={work.id ? `work-${work.id}` : undefined}>{work.title}: {work.stage_key ? stageLabel(work.stage_key) : 'этап не указан'}; {new Date(work.starts_at).toLocaleString('ru-RU')} — {new Date(work.ends_at).toLocaleString('ru-RU')}</li>)}</ul> : <p>В выбранной версии плана нет работ.</p>) : <p>Этот анализ выполнен без сопоставления с планом. Добавленный позже план не меняет сохранённый результат.</p>}</section>}{visibleRunSnapshot?.plan_binding && <details className="panel run-plan-binding"><summary>Привязка к плану</summary><p>Участок <code>{visibleRunSnapshot.plan_binding.zone_id}</code>, ревизия <code>{visibleRunSnapshot.plan_binding.revision_id}</code>. Время кадров: {visibleRunSnapshot.plan_binding.capture_times.join(', ')}.</p></details>}<div className="panel run-header"><details className="run-meta" open={visibleRunSnapshot?.state !== 'succeeded' || !visibleRunSnapshot?.result_projection?.outcome || !!runError}><summary>{visibleRunSnapshot?.state === 'succeeded' && visibleRunSnapshot.result_projection?.outcome ? 'Технические сведения' : 'Данные анализа'}</summary><p className="eyebrow">{visibleRunSnapshot?.purpose === "comparison_campaign" ? "Доказательство сравнительной кампании" : "Анализ"}</p>{visibleRunSnapshot?.state === 'succeeded' && visibleRunSnapshot.result_projection?.outcome ? <h2 id="run-status-heading">Анализ завершён</h2> : <h1 ref={pageHeading} tabIndex={-1} id="run-heading">{runMissing ? 'Анализ не найден' : visibleRunSnapshot ? RUN_HEADINGS[visibleRunSnapshot.state] ?? 'Статус анализа неизвестен' : runChecked ? 'Статус анализа неизвестен' : 'Проверяем анализ…'}</h1>}<p>Номер анализа: <code>{route}</code></p>{(visibleRunSnapshot?.stage ?? visibleRunSnapshot?.context?.stage_id) === 'excavation' && <p>Этап строительства: <strong>Земляные работы котлована</strong></p>}{visibleRunSnapshot && <p>Состояние сервера: <strong>{RUN_STATES[visibleRunSnapshot.state] ?? 'Состояние доступно на сервере'}</strong></p>}{runError && <div className="attention"><p>{runError}</p><button type="button" className="secondary" disabled={runReading} onClick={() => { if (!runReading) { setRunReading(true); setRunReadAttempt(value => value + 1) } }}>{runReading ? 'Проверяем статус…' : 'Проверить статус'}</button></div>}<p role="status" className="sr-only">{runError || runAnnouncement}</p>{(visibleRunSnapshot?.retry_predecessor_id ?? visibleRunSnapshot?.retry_of_run_id) && <p>Повтор анализа <a href={`/runs/${(visibleRunSnapshot.retry_predecessor_id ?? visibleRunSnapshot.retry_of_run_id)}`} onClick={event => { event.preventDefault(); navigate(`/runs/${(visibleRunSnapshot.retry_predecessor_id ?? visibleRunSnapshot.retry_of_run_id)}`) }}>{(visibleRunSnapshot.retry_predecessor_id ?? visibleRunSnapshot.retry_of_run_id)}</a></p>}{(visibleRunSnapshot?.retry_successor_id ?? visibleRunSnapshot?.successor_run_id) && <p>Следующий анализ <a href={`/runs/${(visibleRunSnapshot.retry_successor_id ?? visibleRunSnapshot.successor_run_id)}`} onClick={event => { event.preventDefault(); navigate(`/runs/${(visibleRunSnapshot.retry_successor_id ?? visibleRunSnapshot.successor_run_id)}`) }}>{(visibleRunSnapshot.retry_successor_id ?? visibleRunSnapshot.successor_run_id)}</a></p>}{visibleRunSnapshot?.retry_eligible && <p>Повтор использует текущий профиль <code>{visibleRunSnapshot.retry_profile_id}</code>, ревизия допуска {visibleRunSnapshot.retry_authorization_revision}.{visibleRunSnapshot.profile_id !== visibleRunSnapshot.retry_profile_id && <> Исходный анализ использовал профиль <code>{visibleRunSnapshot.profile_id}</code>.</>}</p>}{visibleRunSnapshot?.retry_eligible && <button type="button" className="primary" disabled={readOnly || retrying || offline} onClick={() => void retryRun()}>{retrying ? 'Создаём повтор…' : 'Повторить анализ'}</button>}{retryError && <p className="error" role="alert">{retryError}</p>}</details></div>{visibleRunSnapshot && !(visibleRunSnapshot.state === 'succeeded' && visibleRunSnapshot.result_projection?.outcome) && <ObservationResult readOnly={readOnly} onOpen={navigate} run={visibleRunSnapshot} runId={route!} />}</section> : readOnly ? <p>Загрузка доступна редакторам проекта.</p> : <NewAnalysisPage>
+      </section> : route === 'readiness' ? <ReadinessPage heading={pageHeading} onOpen={navigate} /> : route === 'provider-comparison' ? <ProviderComparisonPage heading={pageHeading} onOpen={navigate} /> : route === 'about' ? <About heading={pageHeading} returnPath={history.state?.aboutFromApp ? history.state.returnPath : '/'} onReturn={returnFromAbout} /> : route === null ? <section className="panel" aria-labelledby="not-found-heading"><h1 ref={pageHeading} tabIndex={-1} id="not-found-heading">Страница не найдена</h1><p>Проверьте адрес или откройте обзор этапов.</p></section> : route !== 'new' && visibleRunSnapshot?.media_kind === 'video' ? <VideoResult key={route} runId={route!} initial={visibleRunSnapshot} readOnly={readOnly} onOpen={navigate} /> : route !== 'new' ? <section className="run-workspace" aria-labelledby="run-heading" aria-busy={runReading}>{visibleRunSnapshot && visibleRunSnapshot.state !== 'succeeded' && <RunPipeline run={visibleRunSnapshot} runId={route!} disconnected={offline || !!runError} />}{visibleRunSnapshot?.state === 'succeeded' && visibleRunSnapshot.result_projection?.outcome && <ObservationResult readOnly={readOnly} onOpen={navigate} run={visibleRunSnapshot} runId={route!} pageHeading={pageHeading} />}{visibleRunSnapshot && !readOnly && <StageConfirmation key={route} run={visibleRunSnapshot} runId={route!} />}{visibleRunSnapshot && <section className="panel"><h2>Этап по сохранённому плану</h2>{visibleRunSnapshot.plan_binding ? (visibleRunSnapshot.planned_works?.length ? <ul>{visibleRunSnapshot.planned_works.map((work, index) => <li key={work.id ?? index} id={work.id ? `work-${work.id}` : undefined}>{work.title}: {work.stage_key ? stageLabel(work.stage_key) : 'этап не указан'}; {new Date(work.starts_at).toLocaleString('ru-RU')} — {new Date(work.ends_at).toLocaleString('ru-RU')}</li>)}</ul> : <p>В выбранной версии плана нет работ.</p>) : <p>Этот анализ выполнен без сопоставления с планом. Добавленный позже план не меняет сохранённый результат.</p>}</section>}<div className="panel run-header"><details className="run-meta" open={visibleRunSnapshot?.state !== 'succeeded' || !visibleRunSnapshot?.result_projection?.outcome || !!runError}><summary>{visibleRunSnapshot?.state === 'succeeded' && visibleRunSnapshot.result_projection?.outcome ? 'Действия с анализом' : 'Данные анализа'}</summary><p className="eyebrow">{visibleRunSnapshot?.purpose === "comparison_campaign" ? "Доказательство сравнительной кампании" : "Анализ"}</p>{visibleRunSnapshot?.state === 'succeeded' && visibleRunSnapshot.result_projection?.outcome ? <h2 id="run-status-heading">Анализ завершён</h2> : <h1 ref={pageHeading} tabIndex={-1} id="run-heading">{runMissing ? 'Анализ не найден' : visibleRunSnapshot ? RUN_HEADINGS[visibleRunSnapshot.state] ?? 'Статус анализа неизвестен' : runChecked ? 'Статус анализа неизвестен' : 'Проверяем анализ…'}</h1>}{(visibleRunSnapshot?.stage ?? visibleRunSnapshot?.context?.stage_id) === 'excavation' && <p>Этап строительства: <strong>Земляные работы котлована</strong></p>}{visibleRunSnapshot && <p>{RUN_STATES[visibleRunSnapshot.state] ?? 'Обработка'}</p>}{runError && <div className="attention"><p>{runError}</p><button type="button" className="secondary" disabled={runReading} onClick={() => { if (!runReading) { setRunReading(true); setRunReadAttempt(value => value + 1) } }}>{runReading ? 'Проверяем статус…' : 'Проверить статус'}</button></div>}<p role="status" className="sr-only">{runError || runAnnouncement}</p>{(visibleRunSnapshot?.retry_predecessor_id ?? visibleRunSnapshot?.retry_of_run_id) && <p>Повтор анализа <a href={`/runs/${(visibleRunSnapshot.retry_predecessor_id ?? visibleRunSnapshot.retry_of_run_id)}`} onClick={event => { event.preventDefault(); navigate(`/runs/${(visibleRunSnapshot.retry_predecessor_id ?? visibleRunSnapshot.retry_of_run_id)}`) }}>Открыть исходный анализ</a></p>}{(visibleRunSnapshot?.retry_successor_id ?? visibleRunSnapshot?.successor_run_id) && <p>Следующий анализ <a href={`/runs/${(visibleRunSnapshot.retry_successor_id ?? visibleRunSnapshot.successor_run_id)}`} onClick={event => { event.preventDefault(); navigate(`/runs/${(visibleRunSnapshot.retry_successor_id ?? visibleRunSnapshot.successor_run_id)}`) }}>Открыть следующий анализ</a></p>}{visibleRunSnapshot?.retry_eligible && visibleRunSnapshot.profile_id && visibleRunSnapshot.retry_profile_id && visibleRunSnapshot.profile_id !== visibleRunSnapshot.retry_profile_id && <p>Для повтора будет использована другая модель распознавания.</p>}{visibleRunSnapshot?.retry_eligible && <button type="button" className="primary" disabled={readOnly || retrying || offline} onClick={() => void retryRun()}>{retrying ? 'Создаём повтор…' : 'Повторить анализ'}</button>}{retryError && <p className="error" role="alert">{retryError}</p>}</details></div>{visibleRunSnapshot && !(visibleRunSnapshot.state === 'succeeded' && visibleRunSnapshot.result_projection?.outcome) && <ObservationResult readOnly={readOnly} onOpen={navigate} run={visibleRunSnapshot} runId={route!} />}</section> : readOnly ? <p>Загрузка доступна редакторам проекта.</p> : <NewAnalysisPage>
         <div className="page-intro new-analysis-intro"><h1 ref={pageHeading} tabIndex={-1}>Новый анализ</h1><p>Подготовьте наблюдение за техникой: выберите цель, укажите контекст и добавьте кадры в порядке съёмки. Привязка сохранится в анализе и его повторе.</p>{unsupportedStageNotice && <p className="attention">Выбранный этап не настроен в прототипе. Выберите доступный этап и цель анализа.</p>}</div>
         <div className="media-selector" role="group" aria-label="Тип наблюдения"><button type="button" className="secondary" aria-pressed={mediaKind === 'photo'} disabled={!!pending || sending || videoLocked} onClick={() => setMediaKind('photo')}>Фотографии</button><button type="button" className="secondary" aria-pressed={mediaKind === 'video'} disabled={!!pending || sending || videoLocked} onClick={() => setMediaKind('video')}>Видео</button></div>
         {mediaKind === 'video' ? <VideoAnalysisForm key={`${accountId}:${projectId}`} accountId={accountId} projectId={projectId} onLockChange={setVideoLocked} provider={cloudProcessing?.provider} providerLabel={consentProviderLabel || 'DeepSeek'} onOpen={path => navigate(path, true)} onDirty={() => setUploadDirty(true)} /> : <>
-        <details className="demo-examples panel" aria-busy={demoLoading}>
-          <summary id="demo-heading">Включённые примеры</summary>
-          <p>Загрузите три кадра в редактируемую форму. Это примеры разработки из архива организаторов, не оценка готовности распознавания.</p>
-          <div className="upload-actions">{demoCases.cases.map(item => <button key={item.id} type="button" className="secondary" disabled={!!pending || recovering || sending || validating || demoLoading || choicesLoading} onClick={() => void loadDemo(item.id)}>{item.label}</button>)}</div>
-          {demoLoading && <p role="status">Загружаем и проверяем кадры примера…</p>}
-          {demoError && <p role="alert" className="error">{demoError}</p>}
-          {pending && <p>Пока предыдущая отправка требует восстановления, загрузка примера недоступна. Сохранённые данные и ключ отправки не изменены.</p>}
-          {selectedDemo && <div className="rule-context"><p>Источник: архив организаторов, группа <code>{selectedDemo.sourceGroup}</code>; порядок кадров соответствует архиву.</p><p>Отмеченная на кадрах дата: {selectedDemo.frames.map(frame => frame.displayedDate ?? 'не указана').join(', ')}. В исходном примере время 12:00 условное; проверьте период перед отправкой.</p><p>Участок наблюдения указан для этой серии; изображения не подтверждают его границы или отсутствие техники на всей площадке.</p></div>}
-        </details>
         <div>{workspaceReadError && <p role="alert" className="error">{workspaceReadError} <button type="button" onClick={() => setWorkspaceReadAttempt(value => value + 1)}>Повторить загрузку участка</button></p>}</div><form className="new-analysis-form" onChange={() => setUploadDirty(true)} onSubmit={submit} noValidate aria-busy={sending}>
-          <div className="form-grid"><section className="panel" aria-labelledby="images-heading"><h2 id="images-heading">Кадры наблюдения</h2><p className="muted">Выберите одно изображение JPEG или PNG либо серию из 2–8 изображений. Размер каждого файла: до 16 МБ и 40 миллионов пикселей. Порядок кадров влияет на анализ.</p><UploadZone onFiles={files => void addFiles(files)} onCamera={() => void openCamera()} disabled={!!pending || sending || validating || demoLoading} cameraDisabled={!!pending || sending || validating || demoLoading || cameraOpen || cameraDenied} invalid={!!errors.images} describedBy={errors.images ? 'images-error' : undefined} />{errors.images && <p id="images-error" className="error" role="alert">{errors.images}</p>}{cameraOpen && <div className="camera"><video ref={cameraVideo} autoPlay playsInline muted aria-label="Изображение с камеры" /><div className="upload-actions"><button type="button" onClick={capture}>Сделать снимок</button><button className="secondary" type="button" onClick={closeCamera}>Закрыть камеру</button></div></div>}
-          <h3>Порядок кадров</h3>{frames.length ? <ol className="manifest">{frames.map((frame, index) => <li key={frame.id} className="frame"><FramePreview file={frame.file} ordinal={index + 1} /><div><strong>Кадр {index + 1}</strong><span className="file-name">{frame.file.name}</span><small>{(frame.file.size / 1_000_000).toFixed(1)} МБ</small>{analysisProjectId && <label>Время съёмки<input disabled={!!pending || sending || validating} type="datetime-local" value={captureTimes[frame.id] ?? period} onChange={event => setCaptureTimes(current => ({ ...current, [frame.id]: event.target.value }))} /></label>}</div><div className="frame-actions"><button type="button" className="secondary" onClick={() => move(index, -1)} disabled={index === 0 || !!pending || sending || validating || demoLoading} aria-label={`Выше: ${frame.file.name}, кадр ${index + 1}`}>Выше</button><button type="button" className="secondary" onClick={() => move(index, 1)} disabled={index === frames.length - 1 || !!pending || sending || validating || demoLoading} aria-label={`Ниже: ${frame.file.name}, кадр ${index + 1}`}>Ниже</button><button type="button" className="secondary" onClick={() => remove(index)} disabled={!!pending || sending || validating || demoLoading} aria-label={`Удалить: ${frame.file.name}, кадр ${index + 1}`}>Удалить</button></div></li>)}</ol> : <p className="empty">Кадры ещё не выбраны.</p>}{removed && <div className="undo"><span>{removed.frame.file.name} удалён.</span><button className="secondary" type="button" onClick={restore} disabled={!!pending || sending || validating || demoLoading || frames.length >= MAX_FRAMES}>Вернуть</button></div>}<p role="status" className="sr-only">{notice}</p></section><section className="panel" aria-labelledby="context-heading"><h2 id="context-heading">Фотографии участка</h2>{projectId ? <fieldset disabled={!!pending || sending || validating || demoLoading}><p>Проект: <strong>{project?.name ?? 'Загрузка…'}</strong></p><label className="field" htmlFor="analysis-zone">Участок<select aria-label="Участок" id="analysis-zone" value={analysisZoneId} onChange={event => setAnalysisZoneId(event.target.value)}>{analysisZones.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label><p>Дополнительный участок можно добавить в разделе «План».</p><label className="field" htmlFor="period">Дата и время наблюдения<input id="period" type="datetime-local" value={period} onChange={event => setPeriod(event.target.value)} aria-invalid={!!errors.period} aria-describedby={errors.period ? 'period-error' : undefined} /></label>{errors.period && <p id="period-error" className="error">{errors.period}</p>}<p>Для каждого кадра можно уточнить время съёмки. Время вводится по часовому поясу устройства.</p>{analysisPlan?.revision_id ? <label><input aria-label="Сопоставить с сохранённым планом" type="checkbox" checked={planPickerOpen} onChange={event => setPlanPickerOpen(event.target.checked)} /> Сопоставить с сохранённым планом · ревизия {analysisPlan.revision_number}</label> : <p>Плана пока нет. Можно анализировать фотографии и добавить план позже.</p>}</fieldset> : <><h2 id="context-heading">Контекст наблюдения</h2><fieldset disabled={!!pending || sending || validating || choicesLoading || demoLoading}><div className="field"><label htmlFor="stage">Этап</label><select id="stage" value={stage} onChange={event => { const selected = event.target.value; setStage(selected);  }}>{choices.map(choice => <option key={choice.id} value={choice.id}>{choice.label}</option>)}</select></div><p>Мультимодальная модель распознаёт технику и анализирует контекст. Исторические правила доступны только в сохранённых результатах.</p>{!choicesLoading && !choices.length && <p className="error">Не удалось загрузить настройки этапов. <button type="button" className="secondary" onClick={() => setChoicesAttempt(value => value + 1)}>Повторить загрузку настроек</button></p>}<div className="field"><label htmlFor="scenario">Сценарий</label><input id="scenario" value={scenario} onChange={event => setScenario(event.target.value)} aria-invalid={!!errors.scenario} aria-describedby={errors.scenario ? 'scenario-error' : undefined} maxLength={256} /><p className="hint">Например, наблюдение за земляными работами.</p>{errors.scenario && <p id="scenario-error" className="error">{errors.scenario}</p>}</div><div className="field"><label htmlFor="area">Участок наблюдения</label><input id="area" value={area} readOnly={!!analysisZoneId} onChange={event => setArea(event.target.value)} aria-invalid={!!errors.observation_area} aria-describedby={errors.observation_area ? 'area-error' : undefined} maxLength={256} /><p className="hint">{analysisZoneId ? 'Используется название выбранного участка плана.' : 'Укажите конкретный участок, к которому относятся кадры.'}</p>{errors.observation_area && <p id="area-error" className="error">{errors.observation_area}</p>}</div><div className="field"><label htmlFor="period">Дата и время наблюдения</label><input id="period" type="datetime-local" value={period} onChange={event => setPeriod(event.target.value)} aria-invalid={!!errors.period} aria-describedby={errors.period ? 'period-error' : undefined} />{errors.period && <p id="period-error" className="error">{errors.period}</p>}</div>{!planPickerOpen ? <button type="button" className="secondary" onClick={() => setPlanPickerOpen(true)}>Привязать к плану</button> : <><div className="field"><label htmlFor="analysis-project">Проект плана</label><select id="analysis-project" value={analysisProjectId} onChange={event => setAnalysisProjectId(event.target.value)}><option value="">Без привязки к плану</option>{analysisProjects.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></div>{analysisProjectId && <div className="field"><label htmlFor="analysis-zone">Участок плана</label><select aria-label="Участок" id="analysis-zone" value={analysisZoneId} onChange={event => setAnalysisZoneId(event.target.value)}><option value="">Выберите участок</option>{analysisZones.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></div>}{analysisZoneId && <p>Ревизия плана: {analysisPlan?.revision_number ?? 'не создана'}. {analysisPlan?.revision_id && <code>{analysisPlan.revision_id}</code>}</p>}<button type="button" className="secondary" onClick={() => { setPlanPickerOpen(false); setAnalysisProjectId('') }}>Без привязки к плану</button></>}</fieldset><p className="context-summary">Участок: {area || 'не указана'}. Период: {period || 'не указан'}.</p></>}</section>
+          <div className="form-grid"><section className="panel" aria-labelledby="images-heading"><h2 id="images-heading">Кадры наблюдения</h2><UploadZone onFiles={files => void addFiles(files)} onCamera={() => void openCamera()} disabled={!!pending || sending || validating || trainingPhotoLoading} cameraDisabled={!!pending || sending || validating || trainingPhotoLoading || cameraOpen || cameraDenied} invalid={!!errors.images} describedBy={errors.images ? 'images-error' : undefined} />{errors.images && <p id="images-error" className="error" role="alert">{errors.images}</p>}{cameraOpen && <div className="camera"><video ref={cameraVideo} autoPlay playsInline muted aria-label="Изображение с камеры" /><div className="upload-actions"><button type="button" onClick={capture}>Сделать снимок</button><button className="secondary" type="button" onClick={closeCamera}>Закрыть камеру</button></div></div>}
+          <h3>Порядок кадров</h3>{frames.length ? <ol className="manifest">{frames.map((frame, index) => <li key={frame.id} className="frame"><FramePreview file={frame.file} ordinal={index + 1} /><div><strong>Кадр {index + 1}</strong><span className="file-name">{frame.file.name}</span><small>{(frame.file.size / 1_000_000).toFixed(1)} МБ</small>{analysisProjectId && <CaptureDateTime label="Время съёмки" disabled={!!pending || sending || validating} value={captureTimes[frame.id] ?? period} onChange={value => setCaptureTimes(current => ({ ...current, [frame.id]: value }))} />}</div><div className="frame-actions"><button type="button" className="secondary" onClick={() => move(index, -1)} disabled={index === 0 || !!pending || sending || validating || trainingPhotoLoading} aria-label={`Выше: ${frame.file.name}, кадр ${index + 1}`}><svg aria-hidden="true" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M12 19V5m-6 6 6-6 6 6" /></svg></button><button type="button" className="secondary" onClick={() => move(index, 1)} disabled={index === frames.length - 1 || !!pending || sending || validating || trainingPhotoLoading} aria-label={`Ниже: ${frame.file.name}, кадр ${index + 1}`}><svg aria-hidden="true" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M12 5v14m-6-6 6 6 6-6" /></svg></button><button type="button" className="secondary frame-delete" onClick={() => remove(index)} disabled={!!pending || sending || validating || trainingPhotoLoading} aria-label={`Удалить: ${frame.file.name}, кадр ${index + 1}`}><svg aria-hidden="true" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M3 6h18M9 6V3h6v3M6 6l1 15h10l1-15M10 10v7M14 10v7" /></svg></button></div></li>)}</ol> : <p className="empty">Кадры ещё не выбраны.</p>}{removed && <div className="undo"><span>{removed.frame.file.name} удалён.</span><button className="secondary" type="button" onClick={restore} disabled={!!pending || sending || validating || trainingPhotoLoading || frames.length >= MAX_FRAMES}>Вернуть</button></div>}<p role="status" className="sr-only">{notice}</p></section><section className="panel" aria-labelledby="context-heading"><h2 id="context-heading">Фотографии участка</h2>{projectId ? <fieldset disabled={!!pending || sending || validating || trainingPhotoLoading}><p>Проект: <strong>{project?.name ?? 'Загрузка…'}</strong></p><label className="field" htmlFor="analysis-zone">Участок<select aria-label="Участок" id="analysis-zone" value={analysisZoneId} onChange={event => setAnalysisZoneId(event.target.value)}>{analysisZones.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label><CaptureDateTime id="period" label="Дата и время наблюдения" value={period} onChange={setPeriod} error={errors.period} />{errors.period && <p id="period-error" className="error">{errors.period}</p>}{analysisPlan?.revision_id ? <label><input aria-label="Сопоставить с сохранённым планом" type="checkbox" checked={planPickerOpen} onChange={event => setPlanPickerOpen(event.target.checked)} /> Сопоставить с сохранённым планом</label> : null}</fieldset> : <><h2 id="context-heading">Контекст наблюдения</h2><fieldset disabled={!!pending || sending || validating || choicesLoading || trainingPhotoLoading}><div className="field"><label htmlFor="stage">Этап</label><select id="stage" value={stage} onChange={event => { const selected = event.target.value; setStage(selected);  }}>{choices.map(choice => <option key={choice.id} value={choice.id}>{choice.label}</option>)}</select></div><p>Мультимодальная модель распознаёт технику и анализирует контекст. Исторические правила доступны только в сохранённых результатах.</p>{!choicesLoading && !choices.length && <p className="error">Не удалось загрузить настройки этапов. <button type="button" className="secondary" onClick={() => setChoicesAttempt(value => value + 1)}>Повторить загрузку настроек</button></p>}<div className="field"><label htmlFor="scenario">Сценарий</label><input id="scenario" value={scenario} onChange={event => setScenario(event.target.value)} aria-invalid={!!errors.scenario} aria-describedby={errors.scenario ? 'scenario-error' : undefined} maxLength={256} /><p className="hint">Например, наблюдение за земляными работами.</p>{errors.scenario && <p id="scenario-error" className="error">{errors.scenario}</p>}</div><div className="field"><label htmlFor="area">Участок наблюдения</label><input id="area" value={area} readOnly={!!analysisZoneId} onChange={event => setArea(event.target.value)} aria-invalid={!!errors.observation_area} aria-describedby={errors.observation_area ? 'area-error' : undefined} maxLength={256} /><p className="hint">{analysisZoneId ? 'Используется название выбранного участка плана.' : 'Укажите конкретный участок, к которому относятся кадры.'}</p>{errors.observation_area && <p id="area-error" className="error">{errors.observation_area}</p>}</div><div className="field"><CaptureDateTime id="period" label="Дата и время наблюдения" value={period} onChange={setPeriod} error={errors.period} />{errors.period && <p id="period-error" className="error">{errors.period}</p>}</div>{!planPickerOpen ? <button type="button" className="secondary" onClick={() => setPlanPickerOpen(true)}>Привязать к плану</button> : <><div className="field"><label htmlFor="analysis-project">Проект плана</label><select id="analysis-project" value={analysisProjectId} onChange={event => setAnalysisProjectId(event.target.value)}><option value="">Без привязки к плану</option>{analysisProjects.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></div>{analysisProjectId && <div className="field"><label htmlFor="analysis-zone">Участок плана</label><select aria-label="Участок" id="analysis-zone" value={analysisZoneId} onChange={event => setAnalysisZoneId(event.target.value)}><option value="">Выберите участок</option>{analysisZones.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></div>}<button type="button" className="secondary" onClick={() => { setPlanPickerOpen(false); setAnalysisProjectId('') }}>Без привязки к плану</button></>}</fieldset><p className="context-summary">Участок: {area || 'не указана'}. Период: {period || 'не указан'}.</p></>}</section>
           </div>
-          <section className="submit-panel"><label><input id="cloud-consent" type="checkbox" checked={pending ? pendingConsent : cloudConsent} disabled={!!pending || sending || validating || choicesLoading || !cloudProcessing} onChange={event => setCloudConsent(event.target.checked)} /> {consentProviderLabel ? `Разрешаю отправить эти фотографии и контекст анализа в ${consentProviderLabel} (мультимодальная модель) для облачной обработки.` : 'Согласие недоступно, пока сервис облачной обработки не настроен.'}</label>{!pending && !cloudProcessing && !choicesLoading && <p className="error">{cloudErrorLabels.cloud_provider_unavailable}</p>}{!pending && !injectedChoices && <button type="button" className="secondary" disabled={sending || validating || choicesLoading} onClick={() => { setCloudConsent(false); setChoicesAttempt(value => value + 1) }}>Обновить настройки обработки</button>}<p>Фотографии передаются после запуска. Модель не подтверждает нарушения; результат требует проверки человеком.</p><div ref={summary} tabIndex={-1} className="error-summary" role={Object.values(errors).some(Boolean) ? 'alert' : undefined}>{Object.values(errors).some(Boolean) && <><strong>Проверьте данные</strong><ul>{Object.entries(errors).filter(([, message]) => message).map(([key, message]) => <li key={key}><a href={`#${key === 'observation_area' ? 'area' : key === 'images' ? 'images-heading' : key === 'submit' ? 'submit-action' : key}`}>{message}</a></li>)}</ul></>}</div>{offline && <p className="offline" role="status">Нет соединения. Изображения останутся на этом устройстве до обновления страницы.</p>}{foreignPending && <p className="attention">Сначала восстановите отправку в исходном проекте. <a href={pendingProject ? `/projects/${pendingProject}/new` : '/new'} onClick={event => { event.preventDefault(); navigate(pendingProject ? `/projects/${pendingProject}/new` : '/new', false, false) }}>Вернуться к отправке</a></p>}{pending && !foreignPending && <p className="attention">Результат предыдущей отправки неизвестен. Повторный запрос использует те же данные и ключ.</p>}<button id="submit-action" className="primary" type="submit" disabled={foreignPending || sending || offline || recovering || demoLoading || (!pending && (choicesLoading || !choices.length || !cloudProcessing))}>{sending ? 'Создаём анализ…' : pending && !foreignPending ? 'Повторить отправку' : 'Запустить анализ'}</button></section>
+          <section className="submit-panel">{!pending && !cloudProcessing && !choicesLoading && <p className="error">Обратитесь к администратору</p>}{!pending && !injectedChoices && <button type="button" className="secondary" disabled={sending || validating || choicesLoading} onClick={() => { setChoicesAttempt(value => value + 1) }}>Обновить настройки обработки</button>}<div ref={summary} tabIndex={-1} className="error-summary" role={Object.values(errors).some(Boolean) ? 'alert' : undefined}>{errors.submit === 'Обратитесь к администратору' && Object.values(errors).filter(Boolean).length === 1 ? errors.submit : Object.values(errors).some(Boolean) && <><strong>Проверьте данные</strong><ul>{Object.entries(errors).filter(([, message]) => message).map(([key, message]) => <li key={key}><a href={`#${key === 'observation_area' ? 'area' : key === 'images' ? 'images-heading' : key === 'submit' ? 'submit-action' : key}`}>{message}</a></li>)}</ul></>}</div>{offline && <p className="offline" role="status">Нет соединения. Изображения останутся на этом устройстве до обновления страницы.</p>}{foreignPending && <p className="attention">Сначала восстановите отправку в исходном проекте. <a href={pendingProject ? `/projects/${pendingProject}/new` : '/new'} onClick={event => { event.preventDefault(); navigate(pendingProject ? `/projects/${pendingProject}/new` : '/new', false, false) }}>Вернуться к отправке</a></p>}{pending && !foreignPending && <p className="attention">Результат предыдущей отправки неизвестен. Повторный запрос использует те же данные и ключ.</p>}<button id="submit-action" className="primary" type="submit" disabled={foreignPending || sending || offline || recovering || trainingPhotoLoading || (!pending && (choicesLoading || !choices.length || !cloudProcessing))}>{sending ? 'Создаём анализ…' : pending && !foreignPending ? 'Повторить отправку' : 'Запустить анализ'}</button></section>
         </form>
         </>}
       </NewAnalysisPage>}

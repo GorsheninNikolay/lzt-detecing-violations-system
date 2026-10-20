@@ -13,7 +13,7 @@ vi.mock('./videoRecovery', () => ({
 afterEach(() => { cleanup(); pending.clear(); localStorage.clear(); vi.clearAllMocks(); vi.unstubAllGlobals() })
 const json = (value: unknown) => new Response(JSON.stringify(value), { headers: { 'Content-Type': 'application/json' } })
 describe('video analysis', () => {
-  it('requires consent and preserves the upload key after an unknown response', async () => {
+  it('automatically consents and preserves the upload key after an unknown response', async () => {
     const requests: RequestInit[] = []
     vi.stubGlobal('fetch', vi.fn(async (_url: string, init?: RequestInit) => {
       if (_url.includes('/plan')) return json({ revision_number: 0 })
@@ -27,12 +27,13 @@ describe('video analysis', () => {
     await screen.findByRole('option', { name: 'Участок' })
     const submit = screen.getByRole('button', { name: 'Запустить анализ видео' }) as HTMLButtonElement
     fireEvent.change(document.getElementById('video-file')!, { target: { files: [new File(['video'], 'site.mp4', { type: 'video/mp4' })] } })
-    expect(submit.disabled).toBe(true)
-    fireEvent.click(screen.getByRole('checkbox', { name: /Разрешаю отправить/ }))
+    await waitFor(() => expect(submit.disabled).toBe(false))
+    expect(screen.queryByRole('checkbox', { name: /Разрешаю отправить/ })).toBeNull()
     fireEvent.click(submit)
     await screen.findByRole('button', { name: 'Восстановить отправку' })
     fireEvent.click(screen.getByRole('button', { name: 'Восстановить отправку' }))
     await waitFor(() => expect(open).toHaveBeenCalledWith('/runs/video-run'))
+    expect((vi.mocked(fetch).mock.calls.find(([url, init]) => String(url).includes('/runs/video') && init?.method)?.[0] as string)).toContain('cloud_processing_consent=true')
     expect(requests[0].body).toBe(requests[1].body)
     expect(requests[0].headers).toEqual(requests[1].headers)
   })
@@ -54,7 +55,7 @@ describe('video analysis', () => {
     expect(screen.getByRole('link', { name: 'Скачать MP4 с рамками' }).getAttribute('href')).toBe('/api/video-runs/run/media')
     fireEvent.click(screen.getByRole('button', { name: '5.25 с' }))
     expect((screen.getByLabelText('Видео с рамками двух YOLO') as HTMLVideoElement).currentTime).toBe(5.25)
-    await waitFor(() => expect(screen.getByRole('alert').textContent).toContain('DeepSeek'))
+    await waitFor(() => expect(screen.getByRole('alert').textContent).toContain('Обратитесь к администратору'))
   })
   it('retains the original file/query across unmount and prevents late upload navigation', async () => {
     let resolveUpload!: (response: Response) => void
@@ -69,7 +70,6 @@ describe('video analysis', () => {
     const first = render(<VideoAnalysisForm accountId="alice" projectId="project" onOpen={open} onDirty={() => {}} />)
     await waitFor(() => expect((document.getElementById('video-file') as HTMLInputElement).disabled).toBe(false))
     fireEvent.change(document.getElementById('video-file')!, { target: { files: [new File(['payload'], 'site.mov')] } })
-    fireEvent.click(screen.getByRole('checkbox', { name: /Разрешаю отправить/ }))
     await waitFor(() => expect((screen.getByRole('button', { name: 'Запустить анализ видео' }) as HTMLButtonElement).disabled).toBe(false))
     fireEvent.click(screen.getByRole('button', { name: 'Запустить анализ видео' }))
     await waitFor(() => expect(writes).toHaveLength(1))
@@ -96,7 +96,6 @@ describe('video analysis', () => {
     render(<VideoAnalysisForm projectId="project" onOpen={() => {}} onDirty={() => {}} />)
     await waitFor(() => expect((document.getElementById('video-file') as HTMLInputElement).disabled).toBe(false))
     fireEvent.change(document.getElementById('video-file')!, { target: { files: [new File(['payload'], 'site.mp4')] } })
-    fireEvent.click(screen.getByRole('checkbox', { name: /Разрешаю отправить/ }))
     await waitFor(() => expect((screen.getByRole('button', { name: 'Запустить анализ видео' }) as HTMLButtonElement).disabled).toBe(false))
     fireEvent.click(screen.getByRole('button', { name: 'Запустить анализ видео' }))
     await screen.findByRole('alert')
@@ -112,7 +111,7 @@ describe('video analysis', () => {
     }))
     const open = vi.fn()
     const view = render(<VideoResult runId="run" initial={snapshot} readOnly={false} onOpen={open} />)
-    fireEvent.click(screen.getByRole('button', { name: 'Повторить YOLO на CPU' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Повторить обработку' }))
     await waitFor(() => expect(retrySignal).toBeDefined())
     view.unmount()
     expect(retrySignal!.aborted).toBe(true)
@@ -134,11 +133,11 @@ describe('video analysis', () => {
     }))
     const open = vi.fn()
     const first = render(<VideoResult runId="run" initial={snapshot} readOnly={false} onOpen={open} />)
-    fireEvent.click(screen.getByRole('button', { name: 'Повторить YOLO на CPU' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Повторить обработку' }))
     await screen.findByRole('alert')
     first.unmount()
     render(<VideoResult runId="run" initial={snapshot} readOnly={false} onOpen={open} />)
-    fireEvent.click(screen.getByRole('button', { name: 'Повторить YOLO на CPU' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Повторить обработку' }))
     await waitFor(() => expect(open).toHaveBeenCalledWith('/runs/cpu-restored'))
     expect(keys).toHaveLength(2)
     expect(keys[1]).toBe(keys[0])
@@ -153,7 +152,6 @@ describe('video analysis', () => {
     render(<VideoAnalysisForm accountId="alice" projectId="project" onOpen={() => {}} onDirty={() => {}} />)
     await waitFor(() => expect((document.getElementById('video-file') as HTMLInputElement).disabled).toBe(false))
     fireEvent.change(document.getElementById('video-file')!, { target: { files: [new File(['new'], 'replacement.mp4')] } })
-    fireEvent.click(screen.getByRole('checkbox', { name: /Разрешаю отправить/ }))
     await waitFor(() => expect((screen.getByRole('button', { name: 'Запустить анализ видео' }) as HTMLButtonElement).disabled).toBe(false))
     const original = { key: 'other-tab', query: 'project_id=project&zone_id=zone&cloud_provider=deepseek', file: new File(['original'], 'original.mov') }
     pending.set(videoScope('alice', 'project'), original)

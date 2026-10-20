@@ -5,6 +5,8 @@ import binascii
 import hashlib
 import io
 import json
+import logging
+import traceback
 import time
 import uuid
 from datetime import datetime
@@ -14,6 +16,16 @@ from PIL import Image, UnidentifiedImageError
 
 from app.adapters.artifacts import ArtifactGateError, ArtifactStore
 from app.adapters.postgres import AdmissionStoreError, PostgresStore
+
+
+logger = logging.getLogger(__name__)
+
+
+def log_submission_failure(stage: str, series: bool, exc: Exception) -> None:
+    frames = " > ".join(f"{Path(frame.filename).name}:{frame.lineno}:{frame.name}"
+                        for frame in traceback.extract_tb(exc.__traceback__))
+    logger.error("photo_admission_failed stage=%s media=%s exception=%s stack=%s",
+                 stage, "series" if series else "single", type(exc).__name__, frames)
 
 
 class SubmissionError(ValueError):
@@ -162,7 +174,13 @@ def submit(store: PostgresStore, artifacts: ArtifactStore, key: str, body: dict,
         raise SubmissionError("invalid_idempotency_key")
     if snapshot.get("kind") != "deepseek":
         raise SubmissionError("profile_retired")
-    image, context, requested, request_hash = validate_request(body)
+    try:
+        image, context, requested, request_hash = validate_request(body)
+    except SubmissionError:
+        raise
+    except Exception as exc:
+        log_submission_failure("validation", False, exc)
+        raise
     recovered = recover_provider_mismatch(store, key, request_hash, context, snapshot)
     if recovered is not None:
         return recovered
@@ -182,8 +200,9 @@ def submit(store: PostgresStore, artifacts: ArtifactStore, key: str, body: dict,
         raise SubmissionError("cloud_image_not_authorized")
     try:
         state, existing_run, intent_id, error = store.begin_submission(key, request_hash, media_type)
-    except AdmissionStoreError as exc:
-        if str(exc) == "idempotency_key_conflict":
+    except Exception as exc:
+        log_submission_failure("registration", False, exc)
+        if isinstance(exc, AdmissionStoreError) and str(exc) == "idempotency_key_conflict":
             raise SubmissionError("idempotency_key_conflict") from None
         raise
     if state == "accepted":
@@ -207,6 +226,7 @@ def submit(store: PostgresStore, artifacts: ArtifactStore, key: str, body: dict,
                if "stage" in body or "stage_id" in body else {}))
         return "queued", run_id
     except Exception as exc:
+        log_submission_failure("publication", False, exc)
         code = "profile_unauthorized" if str(exc) == "profile_unauthorized" else "submission_publication_failed"
         store.fail_submission(key, code)
         raise SubmissionError(code) from None
@@ -218,7 +238,13 @@ def submit_series(store: PostgresStore, artifacts: ArtifactStore, key: str, body
         raise SubmissionError("invalid_idempotency_key")
     if snapshot.get("kind") != "deepseek":
         raise SubmissionError("profile_retired")
-    images, context, requested, request_hash = validate_images(body, True)
+    try:
+        images, context, requested, request_hash = validate_images(body, True)
+    except SubmissionError:
+        raise
+    except Exception as exc:
+        log_submission_failure("validation", True, exc)
+        raise
     recovered = recover_provider_mismatch(store, key, request_hash, context, snapshot)
     if recovered is not None:
         return recovered
@@ -239,8 +265,9 @@ def submit_series(store: PostgresStore, artifacts: ArtifactStore, key: str, body
         raise SubmissionError("cloud_image_not_authorized")
     try:
         state, existing_run, first_intent, error = store.begin_submission(key, request_hash, media_types[0])
-    except AdmissionStoreError as exc:
-        if str(exc) == "idempotency_key_conflict":
+    except Exception as exc:
+        log_submission_failure("registration", True, exc)
+        if isinstance(exc, AdmissionStoreError) and str(exc) == "idempotency_key_conflict":
             raise SubmissionError("idempotency_key_conflict") from None
         raise
     if state == "publishing":
@@ -265,6 +292,7 @@ def submit_series(store: PostgresStore, artifacts: ArtifactStore, key: str, body
             **({"intent": body["intent"], "stage": body.get("stage", body.get("stage_id"))}
                if "stage" in body or "stage_id" in body else {}))
     except Exception as exc:
+        log_submission_failure("publication", True, exc)
         code = "profile_unauthorized" if str(exc) == "profile_unauthorized" else "submission_publication_failed"
         store.fail_submission(key, code)
         raise SubmissionError(code) from None

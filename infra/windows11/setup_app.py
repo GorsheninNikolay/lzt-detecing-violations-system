@@ -1,6 +1,7 @@
 import argparse
 from datetime import datetime, timezone
 import hashlib
+import grp
 import json
 import os
 from pathlib import Path
@@ -38,6 +39,25 @@ def write_config(path, data, mode=0o644):
     temporary.replace(path)
 
 
+def prepare_admission_access(release):
+    admission = release / 'backend/admission'
+    group_id = grp.getgrnam('lzt').gr_gid
+    for directory in (admission, *[path for path in admission.rglob('*') if path.is_dir()]):
+        os.chown(directory, 0, group_id)
+        directory.chmod(0o750)
+    for path in admission.rglob('*.json'):
+        os.chown(path, 0, group_id)
+        path.chmod(0o640)
+
+
+def verify_admission_access(release):
+    admission = release / 'backend/admission'
+    run(['runuser', '-u', 'lzt', '--', '/usr/bin/python3', '-c',
+         "import json,pathlib,sys; root=pathlib.Path(sys.argv[1]); "
+         "files=[root/'manifest.json', *sorted((root/'exclusions').glob('*.json'))]; "
+         "[json.loads(path.read_text()) for path in files]", str(admission)])
+
+
 def unpack_release(archive, expected):
     if hashlib.file_digest(archive.open('rb'), 'sha256').hexdigest() != expected:
         raise RuntimeError('release_archive_digest_mismatch')
@@ -47,13 +67,17 @@ def unpack_release(archive, expected):
         if len(identity) != 64 or any(c not in '0123456789abcdef' for c in identity):
             raise RuntimeError('release_identity_invalid')
         target = BASE / 'releases' / identity[:16]
-        if not target.exists():
+        created = not target.exists()
+        if created:
             target.mkdir(parents=True)
             bundle.extractall(target, filter='data')
     for name, digest in manifest['files'].items():
         path = (target / name).resolve()
         if not path.is_relative_to(target.resolve()) or hashlib.file_digest(path.open('rb'), 'sha256').hexdigest() != digest:
             raise RuntimeError('release_file_digest_mismatch')
+    if created:
+        prepare_admission_access(target)
+    verify_admission_access(target)
     current = BASE / 'current'
     if current.exists() and not current.is_symlink():
         raise RuntimeError('current_release_is_not_symlink')
@@ -109,9 +133,6 @@ def main():
     LOGS.mkdir(parents=True, exist_ok=True)
     run(['chown', 'lzt:lzt', str(LOGS)])
     release = unpack_release(args.archive, args.sha256)
-    for admission_file in (release / 'backend/admission').rglob('*.json'):
-        run(['chown', 'root:lzt', str(admission_file)])
-        admission_file.chmod(0o640)
     config_file = CONFIG / 'runtime.json'
     config = json.loads(config_file.read_text()) if config_file.exists() else {
         'DATABASE_PASSWORD': secrets.token_urlsafe(32), 'S3_SECRET_KEY': secrets.token_urlsafe(32)}

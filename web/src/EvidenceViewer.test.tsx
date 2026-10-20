@@ -32,3 +32,22 @@ it('offers a new fetch after HTTP-200 bytes fail image decoding',async()=>{
  await waitFor(()=>expect(fetchMock).toHaveBeenCalledTimes(2))
  expect(await screen.findByRole('img')).toBeTruthy()
 })
+
+it('loads only the image when saved native evidence exists', async () => {
+ const fetchMock=vi.fn(async()=>({ok:true,blob:async()=>new Blob(['image'])}));vi.stubGlobal('fetch',fetchMock)
+ render(<EvidenceViewer runId="run" frames={[{input_id:'frame',ordinal:0,artifact_id:'photo',sha256:'sha',usable:true,observations:[]}]} native={[{artifact_id:'native',input_id:'frame',ordinal:0,sha256:'native-sha',invocation_id:'call',profile_id:'profile',profile_revision:1}]} objects={[]} showBoxes selected={0} onSelect={()=>{}} onClose={()=>{}} />)
+ expect(await screen.findByRole('img')).toBeTruthy()
+ expect(fetchMock.mock.calls).toEqual([['/api/runs/run/artifacts/photo',expect.anything()]])
+ expect(screen.queryByText('Технические данные наблюдателя')).toBeNull()
+ expect(screen.queryByText(/native-sha/)).toBeNull()
+})
+
+it.each(['network', 'server'])('shows only the administrator message for image %s failures', async failure => {
+ vi.stubGlobal('fetch',vi.fn(async()=>{
+  if(failure==='network')throw new TypeError('private connection details')
+  return {ok:false,status:503,json:async()=>({code:'private_server_code'})}
+ }))
+ render(<SourceImage runId="run" artifactId="artifact" label="Кадр 1" description="" />)
+ expect(await screen.findByText('Обратитесь к администратору')).toBeTruthy()
+ expect(document.body.textContent).not.toContain('private_')
+})

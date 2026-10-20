@@ -1,6 +1,5 @@
 import argparse
 from datetime import datetime, timezone
-import grp
 import json
 import os
 from pathlib import Path
@@ -21,9 +20,6 @@ shutil.copy2('/mnt/c/ProgramData/LztEvidence/current.txt', backup / 'current.txt
 subprocess.run(['systemctl', 'stop', 'lzt-web', 'lzt-backend'], check=True)
 try:
     release = unpack_release(args.archive, args.sha256)
-    for path in (release / 'backend/admission').rglob('*.json'):
-        os.chown(path, 0, grp.getgrnam('lzt').gr_gid)
-        path.chmod(0o640)
     print(json.dumps({'release': str(release), 'previous_release_backup': str(backup)}))
 finally:
     subprocess.run(['systemctl', 'start', 'lzt-backend', 'lzt-web'], check=True)

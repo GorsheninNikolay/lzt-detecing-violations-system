@@ -6,7 +6,7 @@ afterEach(() => { cleanup(); vi.unstubAllGlobals() })
 it('renders source-bound risks and limits without inventing confidence', () => {
   render(<AiAssessmentPanel inputs={[{ input_id:'frame',ordinal:0,sha256:'hash',artifact_id:null }]} evidence={[]} assessment={{summary:'Наблюдение площадки',stage_hypothesis:{stage:'unknown',reason:'Мало данных'},risks:[{category:'safety',text:'Нужен осмотр',frame_ids:['frame'],observation_ids:['object']}],recommendations:['Проверить вручную'],limitations:['Плана нет']}} />)
   expect(screen.getByText('Кадры: 1')).toBeTruthy()
-  expect(screen.getByText('object')).toBeTruthy()
+  expect(screen.getByText('Наблюдение недоступно')).toBeTruthy()
   expect(screen.getByText('Плана нет')).toBeTruthy()
   expect(screen.getByRole('heading', { name: 'Аналитика мультимодальной модели' })).toBeTruthy()
   expect(screen.queryByText(/\d+%/)).toBeNull()
@@ -32,16 +32,16 @@ it('resolves frozen risk grounds and opens the supporting frame', () => {
   screen.getByRole('button',{name:'Открыть кадр 1'}).click()
   expect(open).toHaveBeenCalledWith('frame')
 })
-it('shows retained invalid and uncertain calls without a successful assessment', () => {
+it('does not expose invalid or uncertain raw calls without an assessment', () => {
   render(<AiAssessmentPanel inputs={[]} assessment={null} evidence={[
     {id:'one',kind:'frame',state:'invalid',context:{},result:{model:null,usage:null,instruction_version:'v1',schema_version:'v1',raw:{status:'incomplete'}}},
     {id:'two',kind:'assessment',state:'uncertain',context:{},result:null},
   ]} />)
-  expect(screen.getByText('Наблюдение кадра · Ответ отклонён')).toBeTruthy()
-  expect(screen.getByText('Итоговая аналитика · Результат неизвестен')).toBeTruthy()
-  expect(screen.getByText(/Успешная аналитика отсутствует/)).toBeTruthy()
-  expect(screen.getByRole('heading', { name: 'Сохранённые вызовы мультимодальной модели' })).toBeTruthy()
-  expect(screen.getByText(/"incomplete"/)).toBeTruthy()
+  expect(screen.queryByText('Наблюдение кадра · Ответ отклонён')).toBeNull()
+  expect(screen.queryByText('Итоговая аналитика · Результат неизвестен')).toBeNull()
+  expect(screen.getByText(/Выводы по фотографиям недоступны/)).toBeTruthy()
+  expect(screen.getByRole('heading', { name: 'Выводы по фотографиям' })).toBeTruthy()
+  expect(screen.queryByText(/"incomplete"/)).toBeNull()
 })
 
 it('labels historical evidence without rewriting the saved provider response', () => {
@@ -56,7 +56,7 @@ it('labels historical evidence without rewriting the saved provider response', (
   }} />)
   expect(screen.getByRole('heading', { name: 'Аналитика мультимодальной модели' })).toBeTruthy()
   expect(screen.getByText(/Источник: Yandex AI Studio/)).toBeTruthy()
-  expect(screen.getByText(/"provider": "DeepSeek"/)).toBeTruthy()
+  expect(screen.queryByText(/"provider": "DeepSeek"/)).toBeNull()
   expect(JSON.stringify(evidence)).toBe(saved)
 })
 

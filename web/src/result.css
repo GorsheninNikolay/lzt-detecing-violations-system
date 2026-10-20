@@ -203,3 +203,12 @@ html[data-analysis-motion="off"] .result{animation:none}
 @media(max-width:900px){.analysis-scene{grid-template-columns:minmax(0,1fr)}.analysis-route{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 16px}.analysis-route li:not(:last-child)::after{display:none}}@media(max-width:420px){.analysis-route{grid-template-columns:minmax(0,1fr)}}@media(prefers-reduced-motion:reduce){.analysis-scene *{animation:none!important;transition:none!important}.analysis-sweep{display:none!important}}
 
 .analysis-photo .source-image .annotated-image,.signal-photo .source-image .annotated-image{width:100%;display:block}.analysis-photo .source-image .annotated-image img,.signal-photo .source-image .annotated-image img{width:100%;max-height:none;height:auto}.result-visual.is-editing>.result-feature-image,.result-visual.is-editing>.object-list,.result-visual.is-editing>.result-frame-caption,.result-visual.is-editing .box-toggle{display:none}.result-visual.is-editing{display:block}.correction-workspace>button{margin-top:16px}.analysis-route .route-running{color:var(--focus)}
+
+.capture-date-time { min-width: 0; }
+.capture-date-time input { width: 100%; min-width: 0; }
+.capture-date-time .hint { display: block; font-size: .85rem; line-height: 1.5; }
+.frame-actions button { min-width: 44px; min-height: 44px; display: inline-flex; align-items: center; justify-content: center; }
+.frame-actions .frame-delete { color: var(--danger); }
+@media (max-width: 600px) { .frame { display: grid; grid-template-columns: 72px minmax(0, 1fr); } .frame-actions { grid-column: 1 / -1; display: flex; justify-content: flex-end; gap: .5rem; } }
+.capture-date-time-fields { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); gap: .75rem; }
+.capture-date-time-fields label { display: grid; gap: .35rem; }

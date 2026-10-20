@@ -15,7 +15,7 @@ asset, catalog and detector file. `package_release.py` packages an explicit
 allowlist, excluding secrets, user data and previous evaluation results.
 `setup_app.py` initializes only this application's isolated services.
 `activate_release.py` verifies a release archive, records the previous selection,
-normalizes admission files to root:lzt 0640 and restarts only this application's
+checks admission readability as the service user before selecting the release and restarts only this application's
 backend and web server. Never edit an existing release in place.
 
 Owner credentials are in the protected Windows file
@@ -63,3 +63,20 @@ Actual Windows reboot and GUI/visual acceptance were not performed. Startup task
 restart and isolated backend crash recovery were checked without rebooting Windows.
 Detailed dated acceptance evidence and remote administration commands are stored
 in the owner's private network project under `deployment/lzt-evidence/README.md`.
+
+
+## Photo admission permission guard — 2026-10-20
+
+The preserved frontend release `38270177998b4504` contains
+`backend/admission/exclusions/held_out_evaluation.json` as root:root 0600.
+Running its photo validator as lzt reproduces PermissionError for both single
+and series input before submission registration. The generic API boundary
+maps that unexpected exception to HTTP 503. The installed successor already
+has corrected access, and public single/series requests completed successfully.
+
+The shared `unpack_release` now normalizes admission directories to root:lzt
+0750 and JSON files to root:lzt 0640, then parses manifest/exclusions as lzt
+before changing `current` or `current.txt`. Failed access validation leaves the
+previous selection intact. This guard covers initial setup and activation.
+Private admission logs identify validation, registration and publication failure
+stages, exception classes and code locations without request bodies or secrets.

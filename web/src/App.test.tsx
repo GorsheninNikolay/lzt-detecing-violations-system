@@ -67,8 +67,7 @@ describe('Provider comparison', () => {
     expect(screen.getByText('Запуск недоступен')).toBeTruthy()
     expect(screen.getByRole('table').querySelector('caption')?.textContent).toContain('Все запланированные ячейки')
     fireEvent.click(screen.getByRole('link', { name: `Открыть запуск ${runId}` }))
-    expect(await screen.findByText(`Номер анализа:`)).toBeTruthy()
-    expect(location.pathname).toBe(`/runs/${runId}`)
+    await waitFor(() => expect(location.pathname).toBe(`/runs/${runId}`))
   })
 
   it('retains the last successful read and its time after refresh failure and later 404', async () => {
@@ -318,7 +317,7 @@ describe('Prototype readiness', () => {
     expect(await screen.findByRole('img', { name: /Исходное изображение: Кадр 1/ })).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: 'Открыть кадр 1' }))
     expect(screen.getByRole('dialog', { name: 'Просмотр исходных кадров' }).textContent)
-      .toContain(`Исходный артефакт ID: ${artifactId}`)
+      .not.toContain(`Исходный артефакт ID: ${artifactId}`)
     expect(fetchMock.mock.calls.some(call => call[0] === `/api/runs/${runId}/artifacts/${artifactId}`)).toBe(true)
   })
 
@@ -464,10 +463,10 @@ describe('Analysis history', () => {
     expect(within(succeededRow).getByText('Завершён')).toBeTruthy()
     expect(within(succeededRow).getByText('Проверка не запрошена')).toBeTruthy()
     expect(within(succeededRow).getByText('Итог')).toBeTruthy()
-    expect(within(succeededRow).getByText(first)).toBeTruthy()
+    expect(within(succeededRow).getByRole('link', { name: 'Открыть исходный анализ' }).getAttribute('href')).toBe(`/runs/${first}`)
     expect(within(succeededRow).getByText('Создан')).toBeTruthy()
     expect(succeededRow.querySelector('time')?.getAttribute('datetime')).toBe(initial[1].created_at)
-    expect(within(links()[0].closest('li')!).getByText(second)).toBeTruthy()
+    expect(within(links()[0].closest('li')!).getByRole('link', { name: 'Открыть следующий анализ' }).getAttribute('href')).toBe(`/runs/${second}`)
     const selected = links()[0]
     selected.focus()
     await act(async () => { await vi.advanceTimersByTimeAsync(3000) })
@@ -502,12 +501,12 @@ describe('Analysis history', () => {
     expect(within(firstRow).getByText('Другой этап')).toBeTruthy()
     expect(within(firstRow).getByText('Проверить правило этапа')).toBeTruthy()
     expect(within(firstRow).getByText('Проверка не запрошена')).toBeTruthy()
-    expect(within(firstRow).getByText(older)).toBeTruthy()
+    expect(within(firstRow).getByRole('link', { name: 'Открыть следующий анализ' }).getAttribute('href')).toBe(`/runs/${older}`)
     expect(screen.getAllByRole('listitem')).toHaveLength(50)
     fireEvent.click(screen.getByRole('button', { name: 'Показать ещё' }))
     const olderRow = (await waitFor(() => { expect(runLink(older)).toBeTruthy(); return runLink(older) })).closest('li')!
     expect(within(olderRow).getByText('Время создания неизвестно')).toBeTruthy()
-    expect(within(olderRow).getByText(first)).toBeTruthy()
+    expect(within(olderRow).getByRole('link', { name: 'Открыть исходный анализ' }).getAttribute('href')).toBe(`/runs/${first}`)
     expect(screen.getAllByRole('listitem')).toHaveLength(51)
     expect(fetchMock.mock.calls.some(call => call[0] === '/api/runs?offset=50&unassigned=true')).toBe(true)
   })
@@ -532,7 +531,7 @@ describe('Analysis history', () => {
     await act(async () => { await vi.advanceTimersByTimeAsync(3000) })
     expect(fetchMock.mock.calls.filter(call => call[0] === '/api/runs?unassigned=true')).toHaveLength(2)
     expect(within(firstLink.closest('li')!).getByText('Выполняется')).toBeTruthy()
-    expect(within(firstLink.closest('li')!).getByText(older)).toBeTruthy()
+    expect(within(firstLink.closest('li')!).getByRole('link', { name: 'Открыть следующий анализ' }).getAttribute('href')).toBe(`/runs/${older}`)
     expect(runLink(older)).toBeTruthy()
     expect(screen.getAllByRole('listitem')).toHaveLength(51)
     expect(document.activeElement).toBe(firstLink)
@@ -602,15 +601,45 @@ describe('Observation result', () => {
         profile_id: 'old-profile', retry_profile_id: 'current-profile', retry_authorization_revision: 2 }) }
     }))
     render(<App />)
-    expect(await screen.findByText(/Повтор использует текущий профиль/)).toBeTruthy()
-    expect(screen.getByText(/Исходный анализ использовал профиль/)).toBeTruthy()
+    expect(await screen.findByRole('button', { name: 'Повторить анализ' })).toBeTruthy()
+    expect(screen.getByText('Для повтора будет использована другая модель распознавания.')).toBeTruthy()
+    expect(document.body.textContent).not.toContain('old-profile')
+    expect(document.body.textContent).not.toContain('current-profile')
     await user.click(await screen.findByRole('button', { name: 'Повторить анализ' }))
     expect(await screen.findByText('Повтор анализа', { exact: false })).toBeTruthy()
     expect(location.pathname).toBe(`/runs/${nextId}`)
+    expect(screen.getByRole('link', { name: 'Открыть исходный анализ' }).getAttribute('href')).toBe(`/runs/${runId}`)
+    expect(document.body.textContent).not.toContain(runId)
     expect(screen.queryByRole('button', { name: 'Повторить анализ' })).toBeNull()
     await user.click(screen.getByRole('link', { name: 'Анализы' }))
     expect(await screen.findByRole('heading', { name: 'Архив без проекта' })).toBeTruthy()
     expect(runLink(runId)).toBeTruthy()
+  })
+
+  it.each(['network', 'server'])('shows only the administrator message after a retry %s failure', async failure => {
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (url.endsWith('/retry')) {
+        if (failure === 'network') throw new TypeError('private network details')
+        return { ok: false, status: 503, json: async () => ({ code: 'retry_source_unavailable' }) }
+      }
+      return { ok: true, json: async () => ({ ...snapshot('failed'), retry_eligible: true }) }
+    }))
+    render(<App />)
+    await userEvent.setup().click(await screen.findByRole('button', { name: 'Повторить анализ' }))
+    expect((await screen.findByRole('alert')).textContent).toBe('Обратитесь к администратору')
+  })
+
+  it.each(['idempotency_key_conflict', 'cloud_consent_required', 'profile_unauthorized'])('does not expose technical recovery advice for %s', async code => {
+    const pending = { endpoint: '/api/runs/single-image', key: 'original-key', body: JSON.stringify({ cloud_processing_consent: true }) }
+    sessionStorage.setItem('observation-pending', JSON.stringify(pending))
+    history.replaceState({}, '', '/new')
+    const fetchMock = vi.fn(async () => ({ status: 409, json: async () => ({ code }) }))
+    vi.stubGlobal('fetch', fetchMock)
+    render(<App />)
+    await userEvent.setup().click(await screen.findByRole('button', { name: 'Повторить отправку' }))
+    expect((await screen.findByRole('alert')).textContent).toBe('Обратитесь к администратору')
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(screen.queryByText(/Ключ отправки|подтвердите согласие|галочк/)).toBeNull()
   })
 
   it.each(['queued', 'running', 'succeeded'])('does not offer retry for %s', async state => {
@@ -680,9 +709,9 @@ describe('Observation result', () => {
     const rows = view.container.querySelectorAll<HTMLElement>('.observation-row')
     expect(inputs[0].sha256).not.toBe(inputs[1].sha256)
     expect(within(rows[0]).getByText('Экскаватор: Обнаружен')).toBeTruthy()
-    expect(view.container.querySelector('.result-details')?.textContent).toContain('Входной ID: input-0')
+    expect(view.container.textContent).not.toContain('Входной ID: input-0')
     expect(within(rows[2]).getByText('Экскаватор: Не обнаружен в кадре')).toBeTruthy()
-    expect(view.container.querySelector('.result-details')?.textContent).toContain('Входной ID: input-1')
+    expect(view.container.textContent).not.toContain('Входной ID: input-1')
     expect(screen.getByText(/по изображениям не подтверждён/)).toBeTruthy()
     expect(view.container.querySelector('.run-workspace')?.firstElementChild?.classList.contains('result')).toBe(true)
     expect(screen.getByRole('heading', { name: 'Только наблюдения' }).tagName).toBe('H1')
@@ -695,8 +724,8 @@ describe('Observation result', () => {
     expect(dialog.contains(document.activeElement)).toBe(true)
     expect(screen.getByText('Номер кадра: 1. Пригодность: пригоден.')).toBeTruthy()
     expect(screen.getByText(/Наблюдения: Экскаватор: Обнаружен\. Самосвал: Не обнаружен в кадре\./)).toBeTruthy()
-    expect(dialog.textContent).toContain('Исходный артефакт ID: image-0')
-    expect(dialog.textContent).toContain('SHA-256 исходного кадра: hash-0')
+    expect(dialog.textContent).not.toContain('Исходный артефакт ID: image-0')
+    expect(dialog.textContent).not.toContain('SHA-256 исходного кадра: hash-0')
     const zoom = within(dialog).getByRole('button', { name: 'Увеличить' })
     zoom.focus()
     await user.keyboard('{Enter}')
@@ -705,15 +734,7 @@ describe('Observation result', () => {
     reset.focus()
     await user.keyboard('{Enter}')
     expect(within(dialog).getByRole('status').textContent).toContain('100%')
-    await user.click(screen.getByText('Технические данные наблюдателя'))
-    const nativeDetails = screen.getByText('Технические данные наблюдателя').closest('details')!
-    expect(await within(nativeDetails).findByText('{"count":1,"detections":[{"confidence":0.9,"geometry":[1,2]}]}')).toBeTruthy()
-    expect(within(nativeDetails).getByText('Данные конкретного наблюдателя. Не используются правилом этапа.')).toBeTruthy()
-    expect(screen.getByText(/grounding_dino/)).toBeTruthy()
-    expect(screen.getByText(/invocation-0/)).toBeTruthy()
-    expect(screen.getByText(/native-hash/)).toBeTruthy()
-    expect(screen.getByText(/ревизия допуска: 1/)).toBeTruthy()
-    expect(dialog.textContent).toContain('Предобработка: pre-1')
+    expect(screen.queryByText('Технические данные наблюдателя')).toBeNull()
     const next = within(dialog).getByRole('button', { name: 'Следующий кадр' })
     next.focus()
     await user.keyboard('{Enter}')
@@ -795,39 +816,18 @@ describe('Observation result', () => {
     expect(fetchMock.mock.calls.filter(([, options]) => options?.method === 'POST')).toHaveLength(1)
   })
 
-  it('switches reconciled and raw detector layers without mixing frames or losing unsupported classes', async () => {
-    const user = userEvent.setup()
-    const reconciled = [{input_id:'input-0',class_name:'excavator',score:null,box:[.1,.2,.4,.6],image_size:[1000,500],invocation_id:'call'}]
-    const models = [{model_id:'apoce',image_size:[1000,500],detections:[{id:'a',input_id:'input-0',raw_class:'lifting-equipment',catalog_class:null,score:.67,box:[.2,.2,.5,.6]}]},
-      {model_id:'kaggle',image_size:[1000,500],detections:[{id:'k',input_id:'input-0',raw_class:'Truck',catalog_class:'truck',score:.89,box:[.4,.2,.7,.6]}]}]
-    const run = {...completed,objects:reconciled,result_projection:{...completed.result_projection,
-      hybrid_frames:[{input_id:'input-0',detectors:{models}},{input_id:'input-1',detectors:{models:[{model_id:'apoce',image_size:[1000,500],detections:[{id:'other',input_id:'input-1',raw_class:'tower-crane',catalog_class:null,score:.99,box:[.7,.1,.9,.9]}]}]}}]}}
-    vi.stubGlobal('fetch', vi.fn(async (url: string) => url === `/api/runs/${runId}` ? {ok:true,json:async()=>run} : {ok:true,blob:async()=>new Blob(['image'])}))
+  it('shows reconciled objects without exposing individual detector controls', async () => {
+    const objects = [{input_id:'input-0',class_name:'excavator',score:null,box:[.1,.2,.4,.6],image_size:[1000,500],invocation_id:'call'}]
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => url === `/api/runs/${runId}`
+      ? {ok:true,json:async()=>({...completed,objects,result_projection:{...completed.result_projection,hybrid_frames:[{input_id:'input-0',detectors:{models:[{model_id:'apoce',image_size:[1000,500],detections:[{id:'detector-only',input_id:'input-0',catalog_class:'truck',raw_class:'truck',score:.9,box:[.8,.2,.9,.6]}]}]}}]}})} : {ok:true,blob:async()=>new Blob(['image'])}))
     const view = render(<App />)
-    const layer = await screen.findByLabelText('Источник рамок')
-    const box = () => view.container.querySelector('.result-feature-image .object-box') as HTMLElement
-    await waitFor(() => expect(box()?.style.left).toBe('10%'))
-    expect(screen.getByText('Числовая уверенность не предоставлена.')).toBeTruthy()
-    await user.selectOptions(layer, 'apoce')
-    expect(box().style.left).toBe('20%')
-    expect(screen.getByRole('button',{name:'1. Подъёмная техника'})).toBeTruthy()
-    expect(models[0].detections[0].raw_class).toBe('lifting-equipment')
-    expect(models[0].detections[0].catalog_class).toBeNull()
-    expect(screen.getByText(/67%: оценка модели/)).toBeTruthy()
-    expect(screen.queryByText(/99%: оценка модели/)).toBeNull()
-    expect(view.container.querySelectorAll('.result-feature-image .object-box')).toHaveLength(1)
-    await user.selectOptions(layer, 'kaggle')
-    expect(box().style.left).toBe('40%')
-    expect(screen.getByRole('button',{name:'1. Грузовик'})).toBeTruthy()
-    expect(screen.getByText(/89%: оценка модели/)).toBeTruthy()
-    expect(screen.queryByText(/67%: оценка модели/)).toBeNull()
-    await user.selectOptions(layer, 'reconciled')
-    expect(box().style.left).toBe('10%')
+    await screen.findByRole('heading', { name: 'Только наблюдения' })
+    await waitFor(() => expect((view.container.querySelector('.result-feature-image .object-box') as HTMLElement)?.style.left).toBe('10%'))
+    expect(screen.queryByLabelText('Источник рамок')).toBeNull()
     expect(screen.getByRole('button',{name:'1. Экскаватор'})).toBeTruthy()
-    expect(screen.queryByText(/89%: оценка модели/)).toBeNull()
   })
 
-  it('selects the saved supporting frame and keeps technical IDs in details', async () => {
+  it('selects the saved supporting frame without exposing technical IDs', async () => {
     const user = userEvent.setup()
     vi.stubGlobal('fetch', vi.fn(async (url: string) => url === '/api/runs/' + runId
       ? { ok: true, json: async () => ({ ...completed, result_projection: {
@@ -842,8 +842,8 @@ describe('Observation result', () => {
     expect(thumbnails[0].textContent).not.toContain('Поддерживает вывод')
     expect(thumbnails[1].textContent).toContain('Поддерживает вывод')
     expect(view.container.querySelector('.result-basis')?.textContent).not.toContain('input-1')
-    expect(view.container.querySelector('.result-details')?.textContent).toContain('Входной ID: input-1')
-    expect(screen.getByText('Этапы анализа').closest('details')?.open).toBe(false)
+    expect(view.container.textContent).not.toContain('Входной ID: input-1')
+    expect(screen.queryByText('Этапы анализа')).toBeNull()
     await user.click(within(thumbnails[0]).getByRole('button', { name: 'Выбрать кадр 1' }))
     expect(await within(feature).findByRole('img', { name: /Кадр 1/ })).toBeTruthy()
     expect(within(thumbnails[0]).getByRole('button', { name: 'Выбрать кадр 1' }).getAttribute('aria-pressed')).toBe('true')
@@ -944,7 +944,7 @@ describe('Observation result', () => {
         .filter(row => row.textContent?.includes('Кран: Не анализировалось'))
       expect(unsupported).toHaveLength(2)
       expect(unsupported[0].textContent).toContain('класс не поддерживается профилем распознавания.')
-      expect(view.container.querySelector('.result-details')?.textContent).toContain('Входной ID: input-0')
+      expect(view.container.textContent).not.toContain('Входной ID: input-0')
     }
   })
 
@@ -960,7 +960,7 @@ describe('Observation result', () => {
     const affectedRow = view.container.querySelector('.observation-row')!
     expect(affectedRow.textContent).toContain('Недостаточно данных')
     expect(affectedRow.textContent).toContain('Кадр непригоден для распознавания.')
-    expect(view.container.querySelector('.result-details')?.textContent).toContain('Входной ID: input-0')
+    expect(view.container.textContent).not.toContain('Входной ID: input-0')
     expect(screen.queryByRole('region', { name: 'Проверка человеком' })).toBeNull()
   })
 
@@ -1026,7 +1026,7 @@ describe('Observation result', () => {
     expect(view.container.querySelector('.rule-provenance')?.textContent).toContain('Подтверждающие кадры: Кадр 1.')
     expect(screen.getByText('Неопределённость не указана в проекции.')).toBeTruthy()
     expect(view.container.querySelectorAll('.source-thumbnail')).toHaveLength(inputs.length)
-    expect(view.container.querySelector('.result-details')?.textContent).toContain('Исходный артефакт ID: image-0')
+    expect(view.container.textContent).not.toContain('Исходный артефакт ID: image-0')
   })
 
   it('renders the persisted rule outcome and human-check boundary', async () => {
@@ -1061,7 +1061,7 @@ describe('Observation result', () => {
     expect(panel.textContent).toContain('Период: 2026-09-23T12:00:00+03:00. Заявленный участок: series_gate')
     expect(panel.textContent).toContain('Рекомендуемая проверка человеком: Проверить вручную.')
     expect(within(panel).getByText('Это рекомендация для проверки, а не подтверждение нарушения.')).toBeTruthy()
-    expect(screen.getByText(/ревизия rule-immutable-evidence-v1/)).toBeTruthy()
+    expect(screen.queryByText(/rule-immutable-evidence-v1/)).toBeNull()
     expect(document.querySelector('.rule-provenance')?.textContent).toContain('Ожидание: Экскаватор работает постоянно, самосвалы появляются периодически.')
     expect(screen.getByText('Источник правила: demonstration rule.')).toBeTruthy()
     expect(screen.getByText('Необнаружение в кадре не доказывает отсутствие на площадке.')).toBeTruthy()
@@ -1115,7 +1115,7 @@ describe('Observation result', () => {
     expect(await screen.findByRole('heading', { name: 'Проверка не запрошена' })).toBeTruthy()
     expect(document.querySelector('.rule-provenance')?.textContent).toContain('Самосвал обнаружен в пригодной серии; запрос проверки не сформирован.')
     expect(document.querySelector('.rule-provenance')?.textContent).toContain('Подтверждающие кадры: Кадр 1, Кадр 2.')
-    expect(screen.getByText(/ревизия rule-positive-v1/)).toBeTruthy()
+    expect(screen.queryByText(/rule-positive-v1/)).toBeNull()
     expect(screen.getByText('Необнаружение в кадре не доказывает отсутствие техники на всей площадке.')).toBeTruthy()
     expect(screen.getByText('Экскаватор: Обнаружен')).toBeTruthy()
     expect(screen.getByText('Самосвал: Обнаружен')).toBeTruthy()
@@ -1132,12 +1132,12 @@ describe('Observation result', () => {
       : { ok: false, json: async () => ({ code: 'artifact_integrity_failed' }) }))
     render(<App />)
     expect(await screen.findByRole('heading', { name: 'Только наблюдения' })).toBeTruthy()
-    expect(await screen.findByText('Целостность артефакта не подтверждена')).toBeTruthy()
+    expect(await screen.findByText('Обратитесь к администратору')).toBeTruthy()
     expect(screen.getByText('Самосвал: Не обнаружен в кадре')).toBeTruthy()
     await user.click(screen.getByRole('button', { name: 'Открыть кадр 1' }))
-    await user.click(screen.getByText('Технические данные наблюдателя'))
-    expect((await within(screen.getByRole('dialog')).findAllByText('Целостность артефакта не подтверждена')).length).toBeGreaterThan(0)
-    expect(screen.getByText(/invocation-0/)).toBeTruthy()
+    expect(screen.queryByText('Технические данные наблюдателя')).toBeNull()
+    expect((await within(screen.getByRole('dialog')).findAllByText('Обратитесь к администратору')).length).toBeGreaterThan(0)
+    expect(screen.queryByText(/invocation-0/)).toBeNull()
   })
 
   it('keeps projected metadata on source failure and uses legacy observations only for partial recovery', async () => {
@@ -1148,9 +1148,9 @@ describe('Observation result', () => {
     vi.stubGlobal('fetch', fetchMock)
     const view = render(<App />)
     expect(await screen.findAllByText('Пригодность: пригоден.')).toHaveLength(1)
-    expect(view.container.querySelector('.result-details')?.textContent).toContain('Исходный артефакт ID: image-0')
-    expect(view.container.querySelector('.result-details')?.textContent).toContain('SHA-256: hash-0')
-    expect((await screen.findAllByText('Целостность артефакта не подтверждена')).length).toBeGreaterThan(0)
+    expect(view.container.textContent).not.toContain('Исходный артефакт ID: image-0')
+    expect(view.container.textContent).not.toContain('SHA-256: hash-0')
+    expect((await screen.findAllByText('Обратитесь к администратору')).length).toBeGreaterThan(0)
     expect(view.container.querySelectorAll('.observation-row')).toHaveLength(4)
     view.unmount()
     fetchMock.mockImplementation(async (url: string) => url === `/api/runs/${runId}`
@@ -1166,7 +1166,7 @@ describe('Observation result', () => {
     expect(screen.getByText('Статус правила недоступен: анализ не завершён.')).toBeTruthy()
     expect(screen.queryByText('Правило этапа не проверялось.')).toBeNull()
     expect(screen.queryByText('Правило этапа не проверялось')).toBeNull()
-    expect((await screen.findAllByText('Не удалось открыть исходное изображение')).length).toBeGreaterThan(0)
+    expect((await screen.findAllByText('Обратитесь к администратору')).length).toBeGreaterThan(0)
   })
 
   it('retries one source without disturbing the other frame', async () => {
@@ -1191,29 +1191,21 @@ describe('Observation result', () => {
     expect(await within(feature).findByRole('img', { name: /Кадр 1/ })).toBeTruthy()
   })
 
-  it('shows a later native failure instead of stale successful content', async () => {
+  it('does not fetch raw observer artifacts when opening and navigating frames', async () => {
     const user = userEvent.setup()
-    let firstNativeReads = 0
-    const run = { ...completed, native_evidence_by_frame: [...completed.native_evidence_by_frame,
-      { ...completed.native_evidence_by_frame[0], artifact_id: 'native-1', input_id: 'input-1', ordinal: 1 }] }
-    vi.stubGlobal('fetch', vi.fn(async (url: string) => url === `/api/runs/${runId}`
-      ? { ok: true, json: async () => run }
-      : url.endsWith('native-0') ? ++firstNativeReads === 1
-        ? { ok: true, text: async () => 'old native result' }
-        : { ok: false, json: async () => ({ code: 'artifact_read_unavailable' }) }
-        : url.endsWith('native-1') ? { ok: true, text: async () => 'second native result' }
-          : { ok: true, blob: async () => new Blob(['jpeg']) }))
+    const fetchMock = vi.fn(async (url: string) => url === `/api/runs/${runId}`
+      ? { ok: true, json: async () => completed }
+      : { ok: true, blob: async () => new Blob(['jpeg']) })
+    vi.stubGlobal('fetch', fetchMock)
     render(<App />)
     await screen.findByRole('heading', { name: 'Только наблюдения' })
     await user.click(screen.getByRole('button', { name: 'Открыть кадр 1' }))
-    await user.click(screen.getByText('Технические данные наблюдателя'))
-    expect(await screen.findByText('old native result')).toBeTruthy()
     await user.click(screen.getByRole('button', { name: 'Следующий кадр' }))
-    expect(await screen.findByText('second native result')).toBeTruthy()
-    await user.click(screen.getByRole('button', { name: 'Предыдущий кадр' }))
-    expect(await within(screen.getByRole('dialog')).findByText('Не удалось открыть технические данные')).toBeTruthy()
-    expect(screen.queryByText('old native result')).toBeNull()
+    expect(screen.queryByText('Технические данные наблюдателя')).toBeNull()
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes('native-'))).toBe(false)
   })
+
+
 })
 
 beforeEach(() => {
@@ -1301,12 +1293,12 @@ describe('Zone plan and signals', () => {
     await user.click(screen.getByRole('button', { name: 'Привязать к плану' }))
     await user.selectOptions(await screen.findByLabelText('Проект плана'), projectId)
     await user.selectOptions(await screen.findByLabelText('Участок плана'), zoneId)
-    expect(await screen.findByText('Ревизия плана: 2.')).toBeTruthy()
+    await waitFor(() => expect(screen.getByLabelText('Участок плана')).toHaveProperty('value', zoneId))
+    expect(screen.queryByText(/Ревизия плана:/)).toBeNull()
     await user.upload(screen.getByLabelText('Выбрать изображение'), image('frame.jpg'))
-    const time = screen.getByLabelText('Время съёмки') as HTMLInputElement
-    fireEvent.change(time, { target: { value: '2026-09-25T12:30' } })
+    fireEvent.change(screen.getByLabelText('Время съёмки: дата'), { target: { value: '2026-09-25' } })
+    fireEvent.change(screen.getByLabelText('Время съёмки: время'), { target: { value: '12:30' } })
     expect(screen.getByLabelText('Участок наблюдения')).toHaveProperty('readOnly', true)
-    await consentToCloud()
     await user.click(screen.getByRole('button', { name: 'Запустить анализ' }))
     await waitFor(() => expect(fetchMock.mock.calls.some(([url, options]) => url === '/api/runs/single-image' && options?.method === 'POST')).toBe(true))
     const request = fetchMock.mock.calls.find(([url, options]) => url === '/api/runs/single-image' && options?.method === 'POST')
@@ -1324,7 +1316,6 @@ describe('Zone plan and signals', () => {
     await fillContext(user)
     await user.upload(screen.getByLabelText('Выбрать изображение'), image('frame.jpg'))
     await user.click(screen.getByRole('button', { name: 'Привязать к плану' }))
-    await consentToCloud()
     await user.click(screen.getByRole('button', { name: 'Запустить анализ' }))
     expect(await screen.findByText(/Выберите проект и участок с сохранённой ревизией плана/)).toBeTruthy()
     expect(fetchMock.mock.calls.some(([, options]) => options?.method === 'POST')).toBe(false)
@@ -1344,7 +1335,6 @@ describe('Zone plan and signals', () => {
     await fillContext(user)
     expect(screen.queryByRole('radio', { name: 'Проверить правило этапа' })).toBeNull()
     await user.upload(screen.getByLabelText('Выбрать изображение'), new File([png], 'frame.png', { type: 'image/png' }))
-    await consentToCloud()
     await user.click(screen.getByRole('button', { name: 'Запустить анализ' }))
     await waitFor(() => expect(fetchMock.mock.calls.some(([, options]) => options?.method === 'POST')).toBe(true))
     expect(JSON.parse(fetchMock.mock.calls.find(([, options]) => options?.method === 'POST')![1].body).intent).toBe('observation_only')
@@ -1406,12 +1396,6 @@ describe('About project', () => {
 async function fillContext(user: ReturnType<typeof userEvent.setup>) {
   await user.type(screen.getByLabelText('Сценарий'), 'Земляные работы')
   await user.type(screen.getByLabelText('Участок наблюдения'), 'Северный участок')
-}
-
-async function consentToCloud() {
-  const consent = screen.getByLabelText(/Разрешаю отправить эти фотографии/) as HTMLInputElement
-  await waitFor(() => expect(consent.disabled).toBe(false))
-  if (!consent.checked) fireEvent.click(consent)
 }
 
 function quotaBackedRequests() {
@@ -1488,7 +1472,7 @@ describe('New Analysis', () => {
     const revoke = vi.fn()
     vi.stubGlobal('URL', { ...URL, createObjectURL: create, revokeObjectURL: revoke })
     render(<App />)
-    expect(screen.getByText('Включённые примеры').closest('details')?.open).toBe(false)
+    expect(screen.queryByText('Включённые примеры')).toBeNull()
     const dropzone = screen.getByRole('group', { name: 'Загрузка кадров' })
     fireEvent.drop(dropzone, { dataTransfer: { files: [image('first.jpg'), image('second.jpg')] } })
     expect(await screen.findByText('second.jpg')).toBeTruthy()
@@ -1503,134 +1487,12 @@ describe('New Analysis', () => {
     await waitFor(() => expect(document.getElementById('images-error')?.textContent).toContain('bad.gif: Поддерживаются файлы JPEG'))
   })
 
-  for (const demo of demoCases.cases) {
-    it(`loads ${demo.id} as an editable ordinary series in source order`, async () => {
-      const user = userEvent.setup()
-      vi.stubGlobal('__ANALYSIS_CHOICES__', [{ id: 'excavation', label: 'Земляные работы', rule: {
-        ...configuredChoices.stages[0].rule, revision: demo.ruleRevision,
-      } }])
-      const bytes = demo.frames.map(frame => new Uint8Array([...jpeg, demoCases.cases.flatMap(item => item.frames).findIndex(item => item.path === frame.path)]))
-      const fetchMock = vi.fn(async (url: string, _options?: RequestInit) => url.startsWith('/demo/')
-        ? { ok: true, blob: async () => new Blob([bytes[demo.frames.findIndex(frame => frame.path === url)]]) }
-        : { status: 202, json: async () => ({ run_id: '12345678-1234-1234-1234-123456789abc' }) })
-      vi.stubGlobal('fetch', fetchMock)
-      render(<App />)
-      await user.type(screen.getByLabelText('Сценарий'), 'Исходный черновик')
-      await user.upload(screen.getByLabelText('Выбрать изображение'), image('mine.jpg'))
-      await user.click(screen.getByText('Включённые примеры'))
-      await user.click(screen.getByRole('button', { name: demo.label }))
-      expect(await screen.findByText('Screenshot_' + demo.frames[2].sourceMember.match(/\d+/)![0] + '.jpg')).toBeTruthy()
-      expect(screen.queryByText('mine.jpg')).toBeNull()
-      expect((screen.getByLabelText('Сценарий') as HTMLInputElement).value).toBe(demo.scenario)
-      expect((screen.getByLabelText('Участок наблюдения') as HTMLInputElement).value).toBe(demo.observationArea)
-      expect((screen.getByLabelText('Дата и время наблюдения') as HTMLInputElement).value).toBe(demo.period)
-      expect(screen.queryByRole('radio', { name: 'Проверить правило этапа' })).toBeNull()
-      expect(screen.queryByText(demo.ruleRevision)).toBeNull()
-      expect(screen.getByText(/В исходном примере время 12:00 условное/)).toBeTruthy()
-      expect(screen.getByText(/порядок кадров соответствует архиву/)).toBeTruthy()
-      await user.click(screen.getByRole('button', { name: `Выше: Screenshot_${demo.frames[1].sourceMember.match(/\d+/)![0]}.jpg, кадр 2` }))
-      expect(screen.queryByText(/порядок кадров соответствует архиву/)).toBeNull()
-      await user.click(screen.getByRole('button', { name: `Ниже: Screenshot_${demo.frames[1].sourceMember.match(/\d+/)![0]}.jpg, кадр 1` }))
-      await user.type(screen.getByLabelText('Сценарий'), ' — уточнено')
-      await consentToCloud()
-      await user.click(screen.getByRole('button', { name: 'Запустить анализ' }))
-      await waitFor(() => expect(fetchMock.mock.calls.some(call => call[0] === '/api/runs/series')).toBe(true))
-      const request = JSON.parse(fetchMock.mock.calls.find(call => call[0] === '/api/runs/series')![1]!.body as string)
-      expect(request).toMatchObject({ intent: 'observation_only', stage: 'excavation', scenario: demo.scenario + ' — уточнено', observation_area: demo.observationArea })
-      expect(request.images_base64).toEqual(bytes.map(item => btoa(String.fromCharCode(...item))))
-    })
-  }
-
-  it('preserves an edited form if any demo asset fails', async () => {
-    const user = userEvent.setup()
-    const demo = demoCases.cases[0]
-    vi.stubGlobal('__ANALYSIS_CHOICES__', [{ id: 'excavation', label: 'Земляные работы', rule: {
-      ...configuredChoices.stages[0].rule, revision: demo.ruleRevision,
-    } }])
-    vi.stubGlobal('fetch', vi.fn(async (url: string) => url === demo.frames[1].path ? { ok: false } : {
-      ok: true, blob: async () => new Blob([new Uint8Array([...jpeg, demoCases.cases.flatMap(item => item.frames).findIndex(item => item.path === url)])]),
-    }))
-    render(<App />)
-    await user.type(screen.getByLabelText('Сценарий'), 'Мой сценарий')
-    await user.upload(screen.getByLabelText('Выбрать изображение'), image('mine.jpg'))
-    await user.click(screen.getByText('Включённые примеры'))
-    await user.click(screen.getByRole('button', { name: demo.label }))
-    expect(await screen.findByText(/Текущая форма сохранена/)).toBeTruthy()
-    expect((screen.getByLabelText('Сценарий') as HTMLInputElement).value).toBe('Мой сценарий')
-    expect(screen.getByText('mine.jpg')).toBeTruthy()
-  })
-
-  it('releases a stalled demo load without replacing the draft', async () => {
-    const user = userEvent.setup()
-    const demo = demoCases.cases[0]
-    vi.stubGlobal('__ANALYSIS_CHOICES__', [{ id: 'excavation', label: 'Земляные работы', rule: {
-      ...configuredChoices.stages[0].rule, revision: demo.ruleRevision,
-    } }])
-    const fetchMock = vi.fn((_url: string, _options?: RequestInit) => new Promise<Response>(() => {}))
+  it('keeps upload focused on user images without loading embedded examples', async () => {
+    const fetchMock = vi.fn()
     vi.stubGlobal('fetch', fetchMock)
     render(<App />)
-    await user.type(screen.getByLabelText('Сценарий'), 'Мой сценарий')
-    await user.upload(screen.getByLabelText('Выбрать изображение'), image('mine.jpg'))
-    await user.click(screen.getByText('Включённые примеры'))
-    vi.useFakeTimers()
-    await act(async () => { fireEvent.click(screen.getByRole('button', { name: demo.label })); await Promise.resolve() })
-    expect(screen.getByRole('button', { name: demo.label })).toHaveProperty('disabled', true)
-    await act(async () => { await vi.advanceTimersByTimeAsync(10000) })
-    expect(screen.getByText(/Текущая форма сохранена/)).toBeTruthy()
-    expect(screen.getByRole('button', { name: demo.label })).toHaveProperty('disabled', false)
-    expect((screen.getByLabelText('Сценарий') as HTMLInputElement).value).toBe('Мой сценарий')
-    expect(screen.getByText('mine.jpg')).toBeTruthy()
-    expect(fetchMock.mock.calls.every(call => call[1]?.signal?.aborted)).toBe(true)
-  })
-
-  it('ignores a camera capture callback started before a demo selection', async () => {
-    const user = userEvent.setup()
-    const demo = demoCases.cases[0]
-    vi.stubGlobal('__ANALYSIS_CHOICES__', [{ id: 'excavation', label: 'Земляные работы', rule: {
-      ...configuredChoices.stages[0].rule, revision: demo.ruleRevision,
-    } }])
-    const stop = vi.fn()
-    Object.defineProperty(navigator, 'mediaDevices', { configurable: true,
-      value: { getUserMedia: vi.fn(async () => ({ getTracks: () => [{ stop }] })) } })
-    let finishCapture!: (blob: Blob | null) => void
-    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({ drawImage: vi.fn() } as unknown as CanvasRenderingContext2D)
-    vi.spyOn(HTMLCanvasElement.prototype, 'toBlob').mockImplementation(callback => { finishCapture = callback })
-    const bytes = demo.frames.map(frame => new Uint8Array([...jpeg, demoCases.cases.flatMap(item => item.frames).findIndex(item => item.path === frame.path)]))
-    vi.stubGlobal('fetch', vi.fn(async (url: string) => ({ ok: true,
-      blob: async () => new Blob([bytes[demo.frames.findIndex(frame => frame.path === url)]]),
-    })))
-    render(<App />)
-    await user.click(screen.getByRole('button', { name: 'Снять камерой' }))
-    const video = await screen.findByLabelText('Изображение с камеры')
-    Object.defineProperty(video, 'videoWidth', { configurable: true, value: 2 })
-    Object.defineProperty(video, 'videoHeight', { configurable: true, value: 2 })
-    await user.click(screen.getByRole('button', { name: 'Сделать снимок' }))
-    await user.click(screen.getByText('Включённые примеры'))
-    await user.click(screen.getByRole('button', { name: demo.label }))
-    expect(await screen.findByText('Screenshot_90.jpg')).toBeTruthy()
-    await act(async () => finishCapture(new Blob([jpeg], { type: 'image/jpeg' })))
-    expect(screen.queryByText(/camera-\d+\.jpg/)).toBeNull()
-    expect(screen.getAllByRole('listitem').filter(row => row.classList.contains('frame'))).toHaveLength(3)
-    expect(stop).toHaveBeenCalled()
-  })
-
-  it('preserves an edited draft on unavailable demo and leaves an uncertain pending body untouched', async () => {
-    const user = userEvent.setup()
-    vi.stubGlobal('__ANALYSIS_CHOICES__', configuredChoices.stages)
-    render(<App />)
-    await user.type(screen.getByLabelText('Сценарий'), 'Мой сценарий')
-    await user.click(screen.getByText('Включённые примеры'))
-    await user.click(screen.getByRole('button', { name: demoCases.cases[0].label }))
-    expect(await screen.findByText(/Не удалось загрузить и проверить все кадры примера/)).toBeTruthy()
-    expect((screen.getByLabelText('Сценарий') as HTMLInputElement).value).toBe('Мой сценарий')
-    cleanup()
-    const saved = { endpoint: '/api/runs/series', body: '{"original":true}', key: 'original-key' }
-    sessionStorage.setItem('observation-pending', JSON.stringify(saved))
-    render(<App />)
-    await user.click(screen.getByText('Включённые примеры'))
-    await screen.findByText(/загрузка примера недоступна/)
-    expect(screen.getByRole('button', { name: demoCases.cases[0].label })).toHaveProperty('disabled', true)
-    expect(sessionStorage.getItem('observation-pending')).toBe(JSON.stringify(saved))
+    expect(screen.queryByText('Включённые примеры')).toBeNull()
+    expect(fetchMock.mock.calls.some(([url]) => String(url).startsWith('/demo/'))).toBe(false)
   })
 
   it('loads live choices and defaults to observation-only submission', async () => {
@@ -1654,12 +1516,11 @@ describe('New Analysis', () => {
       { ok: true, json: async () => snapshot('queued') })
     vi.stubGlobal('fetch', fetchMock)
     render(<App />)
-    await screen.findByRole('checkbox', { name: /контекст анализа в DeepSeek/ })
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Запустить анализ' })).toHaveProperty('disabled', false))
     expect(screen.queryByRole('checkbox', { name: /Yandex AI Studio/ })).toBeNull()
     await fillContext(user)
     await user.upload(screen.getByLabelText('Выбрать изображение'), image('first.jpg'))
     await screen.findByText('Кадр 1')
-    await consentToCloud()
     await user.click(screen.getByRole('button', { name: 'Запустить анализ' }))
     await screen.findByRole('heading', { name: 'Анализ поставлен в очередь' })
     const post = fetchMock.mock.calls.find(([, options]) => options?.method === 'POST')!
@@ -1675,12 +1536,10 @@ describe('New Analysis', () => {
     }) }))
     vi.stubGlobal('fetch', fetchMock)
     render(<App />)
-    const consent = await screen.findByRole('checkbox', { name: /Согласие недоступно/ })
-    await screen.findByText('Облачная обработка пока недоступна. Обновите настройки или проверьте конфигурацию сервера.')
+    await screen.findByText('Обратитесь к администратору')
     await fillContext(user)
     await user.upload(screen.getByLabelText('Выбрать изображение'), image('first.jpg'))
     await screen.findByText('Кадр 1')
-    expect(consent).toHaveProperty('disabled', true)
     const submit = screen.getByRole('button', { name: 'Запустить анализ' })
     expect(submit).toHaveProperty('disabled', true)
     await user.click(submit)
@@ -1688,26 +1547,22 @@ describe('New Analysis', () => {
     expect(sessionStorage.getItem('observation-pending')).toBeNull()
   })
 
-  it('requires new consent when refreshed settings change provider or profile and preserves the draft', async () => {
+  it('refreshes provider/profile settings while preserving the draft without consent controls', async () => {
     const user = userEvent.setup()
     vi.stubGlobal('__ANALYSIS_CHOICES__', undefined)
     let liveChoices = configuredChoices
     const fetchMock = vi.fn(async () => ({ ok: true, json: async () => liveChoices }))
     vi.stubGlobal('fetch', fetchMock)
     render(<App />)
-    await screen.findByRole('checkbox', { name: /контекст анализа в Yandex AI Studio/ })
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Запустить анализ' })).toHaveProperty('disabled', false))
     await fillContext(user)
-    await consentToCloud()
-    expect(screen.getByRole('checkbox', { name: /Разрешаю отправить эти фотографии/ })).toHaveProperty('checked', true)
+    expect(screen.queryByRole('checkbox', { name: /Разрешаю/ })).toBeNull()
     liveChoices = { ...configuredChoices, cloud_provider: 'deepseek', cloud_provider_label: 'DeepSeek', cloud_profile_id: '22222222-2222-2222-2222-222222222222' }
     await user.click(screen.getByRole('button', { name: 'Обновить настройки обработки' }))
-    const directConsent = await screen.findByRole('checkbox', { name: /контекст анализа в DeepSeek/ })
-    expect(directConsent).toHaveProperty('checked', false)
-    await consentToCloud()
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2))
     liveChoices = { ...liveChoices, cloud_profile_id: '33333333-3333-3333-3333-333333333333' }
     await user.click(screen.getByRole('button', { name: 'Обновить настройки обработки' }))
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3))
-    expect(directConsent).toHaveProperty('checked', false)
     expect((screen.getByLabelText('Сценарий') as HTMLInputElement).value).toBe('Земляные работы')
     expect((screen.getByLabelText('Участок наблюдения') as HTMLInputElement).value).toBe('Северный участок')
   })
@@ -1719,20 +1574,16 @@ describe('New Analysis', () => {
       .mockResolvedValueOnce({ ok: true, json: async () => ({ code: 'settings_unavailable' }) })
     vi.stubGlobal('fetch', fetchMock)
     render(<App />)
-    await screen.findByRole('checkbox', { name: /контекст анализа в Yandex AI Studio/ })
-    await consentToCloud()
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Запустить анализ' })).toHaveProperty('disabled', false))
     await user.click(screen.getByRole('button', { name: 'Обновить настройки обработки' }))
-    const consent = await screen.findByRole('checkbox', { name: /Согласие недоступно/ })
-    expect(consent).toHaveProperty('checked', false)
-    expect(consent).toHaveProperty('disabled', true)
-    expect(screen.getByRole('button', { name: 'Запустить анализ' })).toHaveProperty('disabled', true)
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Запустить анализ' })).toHaveProperty('disabled', true))
   })
 
   it.each([
     { savedProvider: 'deepseek', currentProvider: 'yandex_ai_studio', savedLabel: 'DeepSeek' },
     { savedProvider: 'yandex_ai_studio', currentProvider: 'deepseek', savedLabel: 'Yandex AI Studio' },
     { savedProvider: undefined, currentProvider: 'deepseek', savedLabel: 'Yandex AI Studio' },
-  ])('keeps the original $savedLabel recipient and exact pending payload/key under $currentProvider', async ({ savedProvider, currentProvider, savedLabel }) => {
+  ])('keeps the original $savedLabel recipient and exact pending payload/key under $currentProvider', async ({ savedProvider, currentProvider }) => {
     const user = userEvent.setup()
     vi.stubGlobal('__ANALYSIS_CHOICES__', undefined)
     const request = { endpoint: '/api/runs/single-image', body: JSON.stringify({
@@ -1748,12 +1599,10 @@ describe('New Analysis', () => {
     vi.stubGlobal('fetch', fetchMock)
     render(<App />)
     await waitFor(() => expect(screen.getByRole('button', { name: 'Повторить отправку' })).toHaveProperty('disabled', false))
-    const consent = screen.getByRole('checkbox', { name: new RegExp(`контекст анализа в ${savedLabel}`) })
-    expect(consent).toHaveProperty('checked', true)
-    expect(consent).toHaveProperty('disabled', true)
+    expect(screen.queryByRole('checkbox', { name: /Разрешаю/ })).toBeNull()
     for (let attempt = 0; attempt < 2; attempt++) {
       await user.click(screen.getByRole('button', { name: 'Повторить отправку' }))
-      await screen.findByText(/Результат отправки пока неизвестен/)
+      await screen.findByText(/Обратитесь к администратору/)
       await waitFor(() => expect(screen.getByRole('button', { name: 'Повторить отправку' })).toHaveProperty('disabled', false))
       expect(sessionStorage.getItem('observation-pending')).toBe(saved)
     }
@@ -1812,7 +1661,6 @@ describe('New Analysis', () => {
     expect(screen.queryByRole('radio', { name: 'Только распознать технику' })).toBeNull()
     expect(screen.queryByRole('radio', { name: 'Проверить правило этапа' })).toBeNull()
     expect(screen.getByText(/Мультимодальная модель распознаёт технику и анализирует контекст/)).toBeTruthy()
-    expect(screen.getByRole('checkbox', { name: 'Разрешаю отправить эти фотографии и контекст анализа в Yandex AI Studio (мультимодальная модель) для облачной обработки.' })).toBeTruthy()
   })
 
   it('uses observation-only for short uploads even when old choices contain a rule', async () => {
@@ -1828,23 +1676,34 @@ describe('New Analysis', () => {
     await screen.findByText('one.jpg')
     expect(screen.queryByRole('radio', { name: 'Проверить правило этапа' })).toBeNull()
     expect(screen.queryByText(/нужны минимум три пригодных кадра/)).toBeNull()
-    await consentToCloud()
     await user.click(screen.getByRole('button', { name: 'Запустить анализ' }))
     await waitFor(() => expect(post).toHaveBeenCalled())
     expect(JSON.parse(post.mock.calls[0][1].body)).toMatchObject({ intent: 'observation_only', stage: 'excavation' })
   })
 
-  it('requires explicit cloud consent before a valid upload can be submitted', async () => {
+  it('offers separate capture date and time with a readable local caption', () => {
+    render(<App />)
+    const date = screen.getByLabelText('Дата и время наблюдения: дата')
+    const time = screen.getByLabelText('Дата и время наблюдения: время')
+    expect(date).toHaveProperty('type', 'date')
+    expect(time).toHaveProperty('type', 'time')
+    fireEvent.change(date, { target: { value: '2026-10-20' } })
+    fireEvent.change(time, { target: { value: '16:14' } })
+    expect(screen.getByText(/20 октября 2026, 16:14/)).toBeTruthy()
+    expect(date.getAttribute('aria-describedby')).toBe(time.getAttribute('aria-describedby'))
+  })
+
+  it('automatically permits cloud processing for a valid upload', async () => {
     const user = userEvent.setup()
-    const post = vi.fn()
+    const post = vi.fn().mockResolvedValue({ status: 202, json: async () => ({ code: 'submission_in_progress' }) })
     vi.stubGlobal('fetch', post)
     render(<App />)
     await fillContext(user)
     await user.upload(screen.getByLabelText('Выбрать изображение'), image('one.jpg'))
-    expect((screen.getByLabelText(/Разрешаю отправить эти фотографии/) as HTMLInputElement).checked).toBe(false)
+    expect(screen.queryByRole('checkbox', { name: /Разрешаю/ })).toBeNull()
     await user.click(screen.getByRole('button', { name: 'Запустить анализ' }))
-    expect(await screen.findByText(/Для анализа требуется согласие/)).toBeTruthy()
-    expect(post.mock.calls.filter(call => call[1]?.method === 'POST')).toHaveLength(0)
+    await waitFor(() => expect(post).toHaveBeenCalledTimes(1))
+    expect(JSON.parse(post.mock.calls[0][1].body)).toMatchObject({ cloud_processing_consent: true })
   })
 
   it('submits reordered distinct bytes and retains duplicate frames', async () => {
@@ -1857,11 +1716,15 @@ describe('New Analysis', () => {
     await fillContext(user)
     await user.upload(screen.getByLabelText('Выбрать изображение'), [image('first.jpg', 1), image('second.jpg', 2), image('duplicate.jpg', 1)])
     await screen.findByText('Кадр 3')
-    await user.click(screen.getByRole('button', { name: /Выше: second.jpg/ }))
+    expect(screen.getByRole('button', { name: /Выше: first.jpg/ })).toHaveProperty('disabled', true)
+    expect(screen.getByRole('button', { name: /Ниже: duplicate.jpg/ })).toHaveProperty('disabled', true)
+    const moveUp = screen.getByRole('button', { name: /Выше: second.jpg/ })
+    expect(moveUp.querySelector('svg')).toBeTruthy()
+    moveUp.focus()
+    await user.keyboard('{Enter}')
     const rows = screen.getAllByRole('listitem').filter(row => row.classList.contains('frame'))
     expect(within(rows[0]).getByText('second.jpg')).toBeTruthy()
     expect(within(rows[1]).getByText('first.jpg')).toBeTruthy()
-    await consentToCloud()
     await user.click(screen.getByRole('button', { name: 'Запустить анализ' }))
     await screen.findByText('Анализ поставлен в очередь')
     expect(document.activeElement).toBe(screen.getByRole('heading', { name: 'Анализ поставлен в очередь' }))
@@ -1905,7 +1768,6 @@ describe('New Analysis', () => {
     await fillContext(user)
     await user.upload(screen.getByLabelText('Выбрать изображение'), new File([png], 'frame.png', { type: 'image/png' }))
     expect(await screen.findByText('frame.png')).toBeTruthy()
-    await consentToCloud()
     await user.click(screen.getByRole('button', { name: 'Запустить анализ' }))
     await waitFor(() => expect(post.mock.calls.some(([url, options]) => url === '/api/runs/single-image' && options?.method === 'POST')).toBe(true))
     const request = post.mock.calls.find(([url, options]) => url === '/api/runs/single-image' && options?.method === 'POST')
@@ -1922,15 +1784,14 @@ describe('New Analysis', () => {
     render(<App />)
     await fillContext(user)
     await user.upload(screen.getByLabelText('Выбрать изображение'), image('one.jpg'))
-    await consentToCloud()
     await user.click(screen.getByRole('button', { name: 'Запустить анализ' }))
-    expect(await screen.findByText(/Ответ сервера не получен/)).toBeTruthy()
+    expect(await screen.findByText(/Обратитесь к администратору/)).toBeTruthy()
     expect(screen.getByLabelText('Сценарий')).toHaveProperty('value', 'Земляные работы')
     cleanup()
     render(<App />)
     await screen.findByRole('button', { name: 'Повторить отправку' })
     await user.click(screen.getByRole('button', { name: 'Повторить отправку' }))
-    expect(await screen.findByText(/Результат отправки пока неизвестен/)).toBeTruthy()
+    expect(await screen.findByText(/Обратитесь к администратору/)).toBeTruthy()
     await user.click(screen.getByRole('button', { name: 'Повторить отправку' }))
     await screen.findByText('Анализ поставлен в очередь')
     const requests = fetchMock.mock.calls.slice(0, 3)
@@ -1958,11 +1819,10 @@ describe('New Analysis', () => {
       const deadlines: Array<() => void> = []
       const realSetTimeout = globalThis.setTimeout
       vi.spyOn(globalThis, 'setTimeout').mockImplementation((callback, delay) => {
-        if (delay === 10000) { deadlines.push(callback as () => void); return 0 as unknown as ReturnType<typeof setTimeout> }
+        if (delay === 180000) { deadlines.push(callback as () => void); return 0 as unknown as ReturnType<typeof setTimeout> }
         return realSetTimeout(callback, delay)
       })
-      await consentToCloud()
-      fireEvent.click(screen.getByRole('button', { name: 'Запустить анализ' }))
+        fireEvent.click(screen.getByRole('button', { name: 'Запустить анализ' }))
       await waitFor(() => expect(post).toHaveBeenCalledTimes(1))
       const saved = sessionStorage.getItem('observation-pending')
       expect(saved).toBeTruthy()
@@ -1970,7 +1830,7 @@ describe('New Analysis', () => {
       await act(async () => { deadlines.shift()?.(); await Promise.resolve() })
       expect(post.mock.calls[0][1].signal.aborted).toBe(true)
       expect(screen.getByRole('button', { name: 'Повторить отправку' })).toHaveProperty('disabled', false)
-      expect(screen.getByText(/Ответ сервера не получен/)).toBeTruthy()
+      expect(screen.getByText(/Обратитесь к администратору/)).toBeTruthy()
       expect(sessionStorage.getItem('observation-pending')).toBe(saved)
 
       fireEvent.click(screen.getByRole('button', { name: 'Повторить отправку' }))
@@ -1996,6 +1856,27 @@ describe('New Analysis', () => {
     })
   }
 
+  it('accepts admission after ten seconds without sending a duplicate request', async () => {
+    const request = { endpoint: '/api/runs/single-image', body: '{"image_base64":"saved"}', key: 'saved-key' }
+    sessionStorage.setItem('observation-pending', JSON.stringify(request))
+    let finish!: (value: unknown) => void
+    const post = vi.fn().mockImplementationOnce(() => new Promise(resolve => { finish = resolve }))
+      .mockResolvedValue({ ok: true, json: async () => snapshot('queued') })
+    vi.stubGlobal('fetch', post)
+    render(<App />)
+    await screen.findByRole('button', { name: 'Повторить отправку' })
+    vi.useFakeTimers()
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Повторить отправку' })); await Promise.resolve() })
+    await act(async () => { await vi.advanceTimersByTimeAsync(15000) })
+    expect(post).toHaveBeenCalledTimes(1)
+    expect(post.mock.calls[0][1].signal.aborted).toBe(false)
+    expect(screen.getByRole('button', { name: 'Создаём анализ…' })).toHaveProperty('disabled', true)
+    await act(async () => { finish({ status: 202, json: async () => ({ run_id: '12345678-1234-1234-1234-123456789abc' }) }); await Promise.resolve() })
+    expect(screen.getByRole('heading', { name: 'Анализ поставлен в очередь' })).toBeTruthy()
+    expect(sessionStorage.getItem('observation-pending')).toBeNull()
+    expect(post.mock.calls.filter(([, options]) => options?.method === 'POST')).toHaveLength(1)
+  })
+
   it('bounds a stalled response body and retries the exact saved request', async () => {
     const request = { endpoint: '/api/runs/single-image', body: '{"image_base64":"saved"}', key: 'saved-key' }
     sessionStorage.setItem('observation-pending', JSON.stringify(request))
@@ -2010,7 +1891,7 @@ describe('New Analysis', () => {
     const deadlines: Array<() => void> = []
     const realSetTimeout = globalThis.setTimeout
     vi.spyOn(globalThis, 'setTimeout').mockImplementation((callback, delay) => {
-      if (delay === 10000) { deadlines.push(callback as () => void); return 0 as unknown as ReturnType<typeof setTimeout> }
+      if (delay === 180000) { deadlines.push(callback as () => void); return 0 as unknown as ReturnType<typeof setTimeout> }
       return realSetTimeout(callback, delay)
     })
     fireEvent.click(screen.getByRole('button', { name: 'Повторить отправку' }))
@@ -2019,7 +1900,7 @@ describe('New Analysis', () => {
     expect(screen.getByRole('button', { name: 'Создаём анализ…' })).toHaveProperty('disabled', true)
     await act(async () => { deadlines.shift()?.(); await Promise.resolve() })
     expect(post.mock.calls[0][1].signal.aborted).toBe(true)
-    expect(screen.getByText(/Ответ сервера не получен/)).toBeTruthy()
+    expect(screen.getByText(/Обратитесь к администратору/)).toBeTruthy()
     expect(screen.getByRole('button', { name: 'Повторить отправку' })).toHaveProperty('disabled', false)
     expect(sessionStorage.getItem('observation-pending')).toBe(JSON.stringify(request))
     await act(async () => { resolveLateBody({ run_id: '12345678-1234-1234-1234-123456789abc' }); await Promise.resolve() })
@@ -2046,14 +1927,12 @@ describe('New Analysis', () => {
     render(<App />)
     await fillContext(user)
     await user.upload(screen.getByLabelText('Выбрать изображение'), image('one.jpg'))
-    await waitFor(() => expect(screen.getByLabelText(/Разрешаю отправить эти фотографии/)).toHaveProperty('disabled', false))
-    await consentToCloud()
     await user.click(screen.getByRole('button', { name: 'Запустить анализ' }))
     await waitFor(() => expect(storage.open).toHaveBeenCalledTimes(1))
     expect(post).not.toHaveBeenCalled()
     expect(sessionStorage.getItem('observation-pending-id')).toBeNull()
     storage.completeWrite()
-    expect(await screen.findByText(/Ответ сервера не получен/)).toBeTruthy()
+    expect(await screen.findByText(/Обратитесь к администратору/)).toBeTruthy()
     const [endpoint, options] = post.mock.calls[0]
     const key = options.headers['Idempotency-Key']
     expect(sessionStorage.getItem('observation-pending')).toBeNull()
@@ -2064,7 +1943,7 @@ describe('New Analysis', () => {
     const retry = await screen.findByRole('button', { name: 'Повторить отправку' })
     expect(screen.getByLabelText('Сценарий').closest('fieldset')).toHaveProperty('disabled', true)
     await user.click(retry)
-    expect(await screen.findByText(/Сервер отклонил запрос/)).toBeTruthy()
+    expect(await screen.findByText(/Обратитесь к администратору/)).toBeTruthy()
     expect(post.mock.calls[1][0]).toBe(endpoint)
     expect(post.mock.calls[1][1].body).toBe(options.body)
     expect(post.mock.calls[1][1].headers['Idempotency-Key']).toBe(key)
@@ -2073,8 +1952,6 @@ describe('New Analysis', () => {
     expect(screen.getByLabelText('Сценарий').closest('fieldset')).toHaveProperty('disabled', false)
     await fillContext(user)
     await user.upload(screen.getByLabelText('Выбрать изображение'), image('two.jpg'))
-    await waitFor(() => expect(screen.getByLabelText(/Разрешаю отправить эти фотографии/)).toHaveProperty('disabled', false))
-    await consentToCloud()
     await user.click(screen.getByRole('button', { name: 'Запустить анализ' }))
     await waitFor(() => expect(storage.open).toHaveBeenCalledTimes(4))
     storage.completeWrite()
@@ -2094,8 +1971,6 @@ describe('New Analysis', () => {
     render(<App />)
     await fillContext(user)
     await user.upload(screen.getByLabelText('Выбрать изображение'), image('one.jpg'))
-    await waitFor(() => expect(screen.getByLabelText(/Разрешаю отправить эти фотографии/)).toHaveProperty('disabled', false))
-    await consentToCloud()
     await user.click(screen.getByRole('button', { name: 'Запустить анализ' }))
     await waitFor(() => expect(storage.open).toHaveBeenCalledTimes(1))
     storage.completeWrite()
@@ -2109,38 +1984,27 @@ describe('New Analysis', () => {
     ['submission_publication_failed', ['one.jpg']],
     ['submission_interrupted', ['one.jpg', 'two.jpg']],
   ] as const) {
-    it(`unlocks ${filenames.length === 1 ? 'single' : 'series'} form after terminal ${code} and sends a fresh key only on user action`, async () => {
+    it(`retains ${filenames.length === 1 ? 'single' : 'series'} body/key across ${code} and reload`, async () => {
       const user = userEvent.setup()
-      let sequence = 0
-      vi.stubGlobal('crypto', { randomUUID: vi.fn(() => `id-${++sequence}`) })
-      const post = vi.fn()
-        .mockResolvedValueOnce({ status: 503, json: async () => ({ code }) })
-        .mockResolvedValueOnce({ status: 202, json: async () => ({ code: 'submission_in_progress' }) })
+      const post = vi.fn().mockResolvedValue({ status: 503, json: async () => ({ code }) })
       vi.stubGlobal('fetch', post)
       render(<App />)
       await fillContext(user)
       await user.upload(screen.getByLabelText('Выбрать изображение'), filenames.map(name => image(name)))
-      await waitFor(() => expect(screen.getByLabelText(/Разрешаю отправить эти фотографии/)).toHaveProperty('disabled', false))
-      await consentToCloud()
       await user.click(screen.getByRole('button', { name: 'Запустить анализ' }))
-      expect(await screen.findByText(/Отправка завершилась ошибкой.*новый ключ отправки/)).toBeTruthy()
+      expect(await screen.findByText(/Обратитесь к администратору/)).toBeTruthy()
+      const saved = sessionStorage.getItem('observation-pending')
+      expect(saved).toBeTruthy()
       expect(post).toHaveBeenCalledTimes(1)
-      expect(sessionStorage.getItem('observation-pending')).toBeNull()
-      expect(screen.queryByRole('button', { name: 'Повторить отправку' })).toBeNull()
-      expect(screen.getByLabelText('Сценарий')).toHaveProperty('disabled', false)
-      for (const filename of filenames) expect(screen.getByText(filename)).toBeTruthy()
-      await user.clear(screen.getByLabelText('Сценарий'))
-      await user.type(screen.getByLabelText('Сценарий'), 'Новый сценарий')
-      await waitFor(() => expect(screen.getByLabelText(/Разрешаю отправить эти фотографии/)).toHaveProperty('disabled', false))
-      await consentToCloud()
-      await user.click(screen.getByRole('button', { name: 'Запустить анализ' }))
-      expect(await screen.findByText(/Результат отправки пока неизвестен/)).toBeTruthy()
+      cleanup()
+      render(<App />)
+      await user.click(await screen.findByRole('button', { name: 'Повторить отправку' }))
+      await screen.findByText(/Обратитесь к администратору/)
       expect(post).toHaveBeenCalledTimes(2)
-      expect(post.mock.calls.map(call => call[0])).toEqual(Array(2).fill(filenames.length === 1 ? '/api/runs/single-image' : '/api/runs/series'))
-      expect(post.mock.calls[1][1].headers['Idempotency-Key']).not.toBe(post.mock.calls[0][1].headers['Idempotency-Key'])
-      expect(JSON.parse(post.mock.calls[1][1].body).scenario).toBe('Новый сценарий')
-      expect(JSON.parse(post.mock.calls[1][1].body)[filenames.length === 1 ? 'image_base64' : 'images_base64'])
-        .toEqual(JSON.parse(post.mock.calls[0][1].body)[filenames.length === 1 ? 'image_base64' : 'images_base64'])
+      expect(sessionStorage.getItem('observation-pending')).toBe(saved)
+      expect(post.mock.calls[1][0]).toBe(post.mock.calls[0][0])
+      expect(post.mock.calls[1][1].body).toBe(post.mock.calls[0][1].body)
+      expect(post.mock.calls[1][1].headers['Idempotency-Key']).toBe(post.mock.calls[0][1].headers['Idempotency-Key'])
     })
   }
 
@@ -2154,17 +2018,16 @@ describe('New Analysis', () => {
     render(<App />)
     await fillContext(user)
     await user.upload(screen.getByLabelText('Выбрать изображение'), image('one.jpg'))
-    await consentToCloud()
     await user.click(screen.getByRole('button', { name: 'Запустить анализ' }))
-    expect(await screen.findByText(/Ответ сервера не получен/)).toBeTruthy()
+    expect(await screen.findByText(/Обратитесь к администратору/)).toBeTruthy()
     const saved = sessionStorage.getItem('observation-pending')
     expect(saved).toBeTruthy()
     cleanup()
     render(<App />)
     await user.click(await screen.findByRole('button', { name: 'Повторить отправку' }))
-    expect(await screen.findByText(/Результат отправки пока неизвестен/)).toBeTruthy()
+    expect(await screen.findByText(/Обратитесь к администратору/)).toBeTruthy()
     await user.click(screen.getByRole('button', { name: 'Повторить отправку' }))
-    expect(await screen.findByText(/Результат отправки пока неизвестен/)).toBeTruthy()
+    expect(await screen.findByText(/Обратитесь к администратору/)).toBeTruthy()
     expect(post).toHaveBeenCalledTimes(3)
     expect(sessionStorage.getItem('observation-pending')).toBe(saved)
     expect(post.mock.calls.slice(1).every(([, options]) => options.body === post.mock.calls[0][1].body
@@ -2224,21 +2087,17 @@ describe('New Analysis', () => {
     await fillContext(user)
     fireEvent.change(screen.getByLabelText('Выбрать изображение'), { target: { files: [image('slow.jpg')] } })
     await waitFor(() => expect(finishDecode).toBeTypeOf('function'))
-    expect(screen.getByLabelText(/Разрешаю отправить эти фотографии/)).toHaveProperty('disabled', true)
     fireEvent.submit(screen.getByRole('button', { name: 'Запустить анализ' }).closest('form')!)
     expect(post).not.toHaveBeenCalled()
     await act(async () => finishDecode({ width: 2, height: 2, close: vi.fn() }))
     await screen.findByText('slow.jpg')
-    await waitFor(() => expect(screen.getByLabelText(/Разрешаю отправить эти фотографии/)).toHaveProperty('disabled', false))
-    expect(screen.getByLabelText(/Разрешаю отправить эти фотографии/)).toHaveProperty('checked', false)
     expect(post).not.toHaveBeenCalled()
-    await user.click(screen.getByLabelText(/Разрешаю отправить эти фотографии/))
     await user.click(screen.getByRole('button', { name: 'Запустить анализ' }))
     await waitFor(() => expect(post).toHaveBeenCalledTimes(1))
     expect(JSON.parse(post.mock.calls[0][1].body).image_base64).toBe(btoa(String.fromCharCode(...jpeg, 0)))
   })
 
-  it('does not let consent for the old batch authorize a frame validated during submit', async () => {
+  it('waits for an added frame to validate before preparing automatic cloud processing', async () => {
     const user = userEvent.setup()
     let finishDecode!: (value: { width: number; height: number; close: () => void }) => void
     vi.stubGlobal('createImageBitmap', vi.fn()
@@ -2250,20 +2109,13 @@ describe('New Analysis', () => {
     await fillContext(user)
     await user.upload(screen.getByLabelText('Выбрать изображение'), image('approved.jpg', 1))
     await screen.findByText('approved.jpg')
-    await waitFor(() => expect(screen.getByLabelText(/Разрешаю отправить эти фотографии/)).toHaveProperty('disabled', false))
-    await user.click(screen.getByLabelText(/Разрешаю отправить эти фотографии/))
-    expect(screen.getByLabelText(/Разрешаю отправить эти фотографии/)).toHaveProperty('checked', true)
     fireEvent.change(screen.getByLabelText('Выбрать изображение'), { target: { files: [image('new.jpg', 2)] } })
     await waitFor(() => expect(finishDecode).toBeTypeOf('function'))
-    expect(screen.getByLabelText(/Разрешаю отправить эти фотографии/)).toHaveProperty('disabled', true)
     fireEvent.submit(screen.getByRole('button', { name: 'Запустить анализ' }).closest('form')!)
     await act(async () => finishDecode({ width: 2, height: 2, close: vi.fn() }))
     await screen.findByText('new.jpg')
-    await waitFor(() => expect(screen.getByLabelText(/Разрешаю отправить эти фотографии/)).toHaveProperty('disabled', false))
     expect(post).not.toHaveBeenCalled()
     expect(sessionStorage.getItem('observation-pending')).toBeNull()
-    expect(screen.getByLabelText(/Разрешаю отправить эти фотографии/)).toHaveProperty('checked', false)
-    await user.click(screen.getByLabelText(/Разрешаю отправить эти фотографии/))
     await user.click(screen.getByRole('button', { name: 'Запустить анализ' }))
     await waitFor(() => expect(post).toHaveBeenCalledTimes(1))
     expect(JSON.parse(post.mock.calls[0][1].body)).toMatchObject({ cloud_processing_consent: true,
@@ -2278,15 +2130,11 @@ describe('New Analysis', () => {
     render(<App />)
     await fillContext(user)
     await user.upload(screen.getByLabelText('Выбрать изображение'), image('one.jpg'))
-    await waitFor(() => expect(screen.getByLabelText(/Разрешаю отправить эти фотографии/)).toHaveProperty('disabled', false))
-    await consentToCloud()
     await user.click(screen.getByRole('button', { name: 'Запустить анализ' }))
-    expect(await screen.findByText(/Сервер отклонил запрос/)).toBeTruthy()
+    expect(await screen.findByText(/Обратитесь к администратору/)).toBeTruthy()
     expect(sessionStorage.getItem('observation-pending')).toBeNull()
-    await waitFor(() => expect(screen.getByLabelText(/Разрешаю отправить эти фотографии/)).toHaveProperty('disabled', false))
-    await consentToCloud()
     await user.click(screen.getByRole('button', { name: 'Запустить анализ' }))
-    expect(await screen.findByText(/Результат отправки пока неизвестен/)).toBeTruthy()
+    expect(await screen.findByText(/Обратитесь к администратору/)).toBeTruthy()
     expect(post).toHaveBeenCalledTimes(2)
   })
 
@@ -2361,7 +2209,7 @@ describe('New Analysis', () => {
     await act(async () => { render(<App />) })
     expect(screen.getByRole('heading', { name: 'Анализ выполняется' })).toBeTruthy()
     await act(async () => { await vi.advanceTimersByTimeAsync(3000) })
-    expect(screen.getByRole('status').textContent).toBe('Связь потеряна. Анализ может продолжаться на сервере.')
+    expect(screen.getByRole('status').textContent).toBe('Обратитесь к администратору')
     expect(screen.getAllByText('Проверка пригодности кадров').length).toBeGreaterThan(0)
     fireEvent.click(screen.getByRole('button', { name: 'Проверить статус' }))
     await act(async () => { await Promise.resolve() })
@@ -2388,14 +2236,12 @@ describe('New Analysis', () => {
     vi.useFakeTimers()
     await act(async () => { render(<App />) })
     await act(async () => { await vi.advanceTimersByTimeAsync(3000) })
-    expect(screen.getByRole('status').textContent).toContain('Связь потеряна')
+    expect(screen.getByRole('status').textContent).toContain('Обратитесь к администратору')
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Проверить статус' })) })
     expect(screen.getByRole('heading', { name: 'Анализ завершён' })).toBeTruthy()
     expect(screen.queryByText('Связь потеряна. Анализ может продолжаться на сервере.')).toBeNull()
     expect(screen.getByRole('heading', { name: 'Анализ завершён' }).closest('.run-workspace')?.getAttribute('aria-busy')).toBe('false')
-    const stages = screen.getAllByRole('listitem')
-    expect(stages[3].textContent).toContain('Не требуется для этого анализа.')
-    expect(stages[4].textContent).toContain('Не требуется для этого анализа.')
+    expect(screen.queryByText('Этапы анализа')).toBeNull()
     expect(screen.getByRole('status').textContent).toContain('Формирование результата: Завершено.')
     await act(async () => { await vi.advanceTimersByTimeAsync(6000) })
     expect(fetchMock).toHaveBeenCalledTimes(3)
@@ -2471,9 +2317,9 @@ describe('New Analysis', () => {
       render(<App />)
       await fillContext(user)
       await user.upload(screen.getByLabelText('Выбрать изображение'), image('one.jpg'))
-      fireEvent.change(screen.getByLabelText('Дата и время наблюдения'), { target: { value: '2026-03-08T02:30' } })
-      await consentToCloud()
-      await user.click(screen.getByRole('button', { name: 'Запустить анализ' }))
+      fireEvent.change(screen.getByLabelText('Дата и время наблюдения: дата'), { target: { value: '2026-03-08' } })
+      fireEvent.change(screen.getByLabelText('Дата и время наблюдения: время'), { target: { value: '02:30' } })
+        await user.click(screen.getByRole('button', { name: 'Запустить анализ' }))
       expect((await screen.findAllByText(/Укажите существующие местные дату и время/)).length).toBeGreaterThan(0)
     } finally { vi.unstubAllEnvs() }
   })

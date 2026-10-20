@@ -44,7 +44,7 @@ export function SourceImage({ runId, artifactId, label, description, objects = [
     const Overlay = onSelectObject ? 'button' : 'div'
     return <Overlay key={`${object.invocation_id}-${index}`} aria-hidden={!onSelectObject} className={`object-box ${selectedObject === index ? 'selected' : ''}`} aria-label={`Объект ${index + 1}: ${equipmentLabel(object.class_name, object.details?.type_ru, object.details?.type_en)}`} aria-pressed={selectedObject === index} onClick={() => onSelectObject?.(index)} style={{ pointerEvents: onSelectObject ? 'auto' : 'none', left: `${100 * x1}%`, top: `${100 * y1}%`, width: `${100 * (x2 - x1)}%`, height: `${100 * (y2 - y1)}%` }}><span>{index + 1}</span></Overlay>
   })}</div> :
-    artifact.error ? <p className="error">{artifact.error === 'integrity' ? 'Целостность артефакта не подтверждена' : artifact.error === 'decode' ? 'Не удалось прочитать изображение' : 'Не удалось открыть исходное изображение'} <button type="button" className="secondary" onClick={artifact.retry}>Повторить</button></p> :
+    artifact.error ? <p className="error">{artifact.error === 'decode' ? 'Не удалось прочитать изображение' : 'Обратитесь к администратору'} <button type="button" className="secondary" onClick={artifact.retry}>Повторить</button></p> :
       <p className="muted">Загружаем изображение…</p>}</div>
 }
 
@@ -78,7 +78,7 @@ export function makeResultFrames(observations: Observation[], inputs: Input[], u
   return [...frames.values()].sort((left, right) => left.ordinal - right.ordinal)
 }
 
-export function EvidenceViewer({ runId, frames, native, objects, showBoxes, profile, context, selected, onClose, onSelect }: {
+export function EvidenceViewer({ runId, frames, objects, showBoxes, context, selected, onClose, onSelect }: {
   runId: string; frames: ResultFrame[]; native: NativeEvidence[]; objects: DetectedObject[]; showBoxes: boolean; profile?: ProfileSnapshot; context?: {period?:string}; selected: number;
   onClose: () => void; onSelect: (index: number) => void
 }) {
@@ -88,11 +88,7 @@ export function EvidenceViewer({ runId, frames, native, objects, showBoxes, prof
   const [boxesVisible,setBoxesVisible] = useState(showBoxes)
   useEffect(()=>setBoxesVisible(showBoxes),[showBoxes])
   const pan = useRef<{x:number;y:number;left:number;top:number}|null>(null)
-  const [nativeResult, setNativeResult] = useState<{ id: string; text: string } | null>(null)
-  const [nativeError, setNativeError] = useState<{ id: string; code: string } | null>(null)
-  const [nativeAttempt, retryNative] = useState(0)
   const frame = frames[selected]
-  const evidence = native.find(item => item.input_id === frame.input_id)
   const handleClose = () => {
     if (handledClose.current) return
     handledClose.current = true
@@ -104,19 +100,6 @@ export function EvidenceViewer({ runId, frames, native, objects, showBoxes, prof
     dialog.current?.showModal()
     return () => { if (dialog.current?.open) dialog.current.close(); opener?.focus() }
   }, [])
-  useEffect(() => {
-    if (!evidence) return
-    const controller = new AbortController()
-    void fetch(artifactUrl(runId, evidence.artifact_id), { signal: controller.signal }).then(async response => {
-      if (!response.ok) {
-        const body = await response.json().catch(() => ({})) as { code?: string }
-        throw new Error(body.code === 'artifact_integrity_failed' ? 'integrity' : 'unavailable')
-      }
-      const text = await response.text()
-      if (!controller.signal.aborted) { setNativeResult({ id: evidence.artifact_id, text }); setNativeError(null) }
-    }).catch(error => { if (!controller.signal.aborted) setNativeError({ id: evidence.artifact_id, code: error.message === 'integrity' ? 'integrity' : 'unavailable' }) })
-    return () => controller.abort()
-  }, [runId, evidence?.artifact_id, nativeAttempt])
   return <dialog ref={dialog} aria-label="Просмотр исходных кадров" onClose={handleClose} onKeyDown={event => {
     if (event.key !== 'Tab' || !dialog.current) return
     const focusable = [...dialog.current.querySelectorAll<HTMLElement>('a[href],button:not(:disabled),input:not(:disabled):not([type="hidden"]),select:not(:disabled),textarea:not(:disabled),summary,[tabindex]:not([tabindex="-1"]),[contenteditable="true"]')]
@@ -132,7 +115,5 @@ export function EvidenceViewer({ runId, frames, native, objects, showBoxes, prof
     <p>Наблюдения: {frameDescription(frame.observations) || 'не указаны'}.</p>
     <p>Период: {context?.period ?? 'не указан'}.</p>
     <div className="viewer-image" tabIndex={0} aria-label="Фотография: прокрутка для перемещения" onPointerDown={event=>{if(event.button!==0 || (event.target as Element).closest('button,a,input,select,textarea,summary'))return;event.preventDefault();event.currentTarget.setPointerCapture(event.pointerId);pan.current={x:event.clientX,y:event.clientY,left:event.currentTarget.scrollLeft,top:event.currentTarget.scrollTop}}} onPointerMove={event=>{if(pan.current){event.currentTarget.scrollLeft=pan.current.left+pan.current.x-event.clientX;event.currentTarget.scrollTop=pan.current.top+pan.current.y-event.clientY}}} onPointerUp={()=>{pan.current=null}} onPointerCancel={()=>{pan.current=null}}><div style={{ width: `${zoom * 100}%` }}><SourceImage key={frame.input_id} runId={runId} artifactId={frame.artifact_id} label={`Кадр ${frame.ordinal + 1}`} description={frameDescription(frame.observations)} objects={objects.filter(item => item.input_id === frame.input_id)} showBoxes={boxesVisible} /></div></div>
-    <details><summary>Подробности кадра</summary><p>Входной ID: <code>{frame.input_id}</code>.</p><p>Исходный артефакт ID: <code>{frame.artifact_id ?? 'не указан'}</code>. SHA-256 исходного кадра: <code>{frame.sha256 ?? 'не указан'}</code>.</p></details>
-    {evidence && <details><summary>Технические данные наблюдателя</summary><p>Данные конкретного наблюдателя. Не используются правилом этапа.</p><p>Адаптер: <code>{profile?.adapter?.code ?? 'не указан'}</code>. Профиль <code>{evidence.profile_id}</code>, ревизия допуска: {evidence.profile_revision}. Вызов <code>{evidence.invocation_id}</code>. Входной ID <code>{evidence.input_id}</code>. Предобработка: {evidence.preprocessing_revision ? <code>{evidence.preprocessing_revision}</code> : 'не указана'}. Артефакт <code>{evidence.artifact_id}</code>, SHA-256 <code>{evidence.sha256}</code>.</p>{nativeError?.id === evidence.artifact_id ? <p className="error">{nativeError.code === 'integrity' ? 'Целостность артефакта не подтверждена' : 'Не удалось открыть технические данные'} <button type="button" className="secondary" onClick={() => { setNativeResult(null); setNativeError(null); retryNative(value => value + 1) }}>Повторить</button></p> : nativeResult?.id === evidence.artifact_id ? <pre>{nativeResult.text}</pre> : <p>Загружаем технические данные…</p>}</details>}
   </dialog>
 }

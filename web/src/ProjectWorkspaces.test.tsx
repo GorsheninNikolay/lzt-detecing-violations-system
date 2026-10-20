@@ -5,7 +5,6 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testi
 import userEvent from '@testing-library/user-event'
 import App from './App'
 import { AccountIdentity } from './AccountIdentity'
-import demoCases from './demoCases.json'
 
 const a = 'aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa'
 const b = 'bbbbbbbb-bbbb-4bbb-bbbb-bbbbbbbbbbbb'
@@ -53,11 +52,11 @@ it('submits photos without a plan with immutable workspace and frame times', asy
   const fetcher = vi.fn(async (url: string, options?: RequestInit) => options?.method === 'POST' ? json({ run_id: run }, 202) : reads(url))
   vi.stubGlobal('fetch', fetcher)
   render(<App />)
-  await screen.findByText('Плана пока нет. Можно анализировать фотографии и добавить план позже.')
+  await screen.findByLabelText('Участок')
   await waitFor(() => expect(screen.getByLabelText('Участок')).toHaveProperty('value', zone))
   await user.upload(screen.getByLabelText('Выбрать изображение'), file())
-  fireEvent.change(await screen.findByLabelText('Время съёмки'), { target: { value: '2026-09-26T12:30' } })
-  if (!(screen.getByLabelText(/Разрешаю отправить эти фотографии/) as HTMLInputElement).checked) fireEvent.click(screen.getByLabelText(/Разрешаю отправить эти фотографии/))
+  fireEvent.change(await screen.findByLabelText('Время съёмки: дата'), { target: { value: '2026-09-26' } })
+  fireEvent.change(screen.getByLabelText('Время съёмки: время'), { target: { value: '12:30' } })
   await user.click(screen.getByRole('button', { name: 'Запустить анализ' }))
   await waitFor(() => expect(location.pathname).toBe(`/projects/${a}/runs/${run}`))
   const request = fetcher.mock.calls.find(([, options]) => options?.method === 'POST')!
@@ -222,11 +221,10 @@ it('resets optional comparison when switching to an area without a plan', async 
   await user.click(comparison)
   expect(comparison).toHaveProperty('checked', false)
   await user.selectOptions(screen.getByLabelText('Участок'), secondZone)
-  expect(await screen.findByText('Плана пока нет. Можно анализировать фотографии и добавить план позже.')).toBeTruthy()
+  expect(await screen.findByLabelText('Участок')).toBeTruthy()
   expect(screen.queryByLabelText('Сопоставить с сохранённым планом')).toBeNull()
   await user.upload(screen.getByLabelText('Выбрать изображение'), file())
   await screen.findByText('photo.jpg')
-  if (!(screen.getByLabelText(/Разрешаю отправить эти фотографии/) as HTMLInputElement).checked) fireEvent.click(screen.getByLabelText(/Разрешаю отправить эти фотографии/))
   await user.click(screen.getByRole('button', { name: 'Запустить анализ' }))
   await waitFor(() => expect(vi.mocked(fetch).mock.calls.some(([, options]) => options?.method === 'POST')).toBe(true))
   const post = vi.mocked(fetch).mock.calls.find(([, options]) => options?.method === 'POST')!
@@ -282,20 +280,11 @@ it('locks plan editing while loading and confirms before creating another area',
   expect(fetcher.mock.calls.filter(([url]) => url.endsWith('/zones'))).toHaveLength(1)
 })
 
-it('resets canceled demo loading before opening another project upload', async () => {
-  const demo = demoCases.cases[0]
-  vi.stubGlobal('__ANALYSIS_CHOICES__', [{ id: 'excavation', label: 'Земляные работы', rule: { revision: demo.ruleRevision } }])
-  vi.stubGlobal('fetch', vi.fn((url: string) => url.startsWith('/demo/') ? new Promise(() => {}) : Promise.resolve(reads(url))))
-  vi.spyOn(window, 'confirm').mockReturnValue(true)
+it('keeps the photo form available without the included example loader', async () => {
   const user = userEvent.setup()
   render(<App />)
-  await user.click(screen.getByText('Включённые примеры'))
-  await user.click(screen.getByRole('button', { name: demo.label }))
-  expect(await screen.findByText('Загружаем и проверяем кадры примера…')).toBeTruthy()
-  await user.selectOptions(screen.getByLabelText('Выбрать проект'), b)
-  await user.click(screen.getByRole('link', { name: 'Загрузить фотографии' }))
-  expect(screen.queryByText('Загружаем и проверяем кадры примера…')).toBeNull()
-  expect(screen.getByLabelText('Выбрать изображение')).toHaveProperty('disabled', false)
+  await screen.findByLabelText('Участок')
+  expect(screen.queryByText('Включённые примеры')).toBeNull()
   await user.upload(screen.getByLabelText('Выбрать изображение'), file())
   expect(await screen.findByText('photo.jpg')).toBeTruthy()
 })
@@ -415,36 +404,20 @@ it('opens and focuses project creation from the header when the form is hidden',
  await waitFor(()=>expect(document.activeElement).toBe(field))
 })
 
-it('requires new consent after each upload, photo replacement and context change', async () => {
+it('automatically consents after upload and replacement while preserving project binding', async () => {
   const user = userEvent.setup()
   const fetcher = vi.fn(async (url: string, options?: RequestInit) => options?.method === 'POST' ? json({ run_id: run },202) : reads(url))
   vi.stubGlobal('fetch',fetcher)
   render(<App />)
-  await screen.findByText('Плана пока нет. Можно анализировать фотографии и добавить план позже.')
-  const consent = () => screen.getByLabelText(/Разрешаю отправить эти фотографии/) as HTMLInputElement
-  await user.upload(screen.getByLabelText('Выбрать изображение'),file())
-  await user.click(consent())
-  fireEvent.change(screen.getByLabelText('Дата и время наблюдения'),{target:{value:'2026-09-26T12:30'}})
-  expect(consent().checked).toBe(false)
-  await user.click(consent())
-  await user.click(screen.getByRole('button',{name:'Запустить анализ'}))
-  await waitFor(() => expect(location.pathname).toBe(`/projects/${a}/runs/${run}`))
-  await user.click(screen.getByRole('link',{name:'Загрузить фото'}))
-  await screen.findByRole('button',{name:'Запустить анализ'})
-  expect(consent().checked).toBe(false)
-  await user.upload(screen.getByLabelText('Выбрать изображение'),file())
-  await user.click(consent())
+  await screen.findByLabelText('Участок')
+  await user.upload(screen.getByLabelText('Выбрать изображение'), file())
+  expect(screen.queryByLabelText(/Разрешаю отправить эти фотографии/)).toBeNull()
   await user.click(screen.getByRole('button',{name:/Удалить: photo.jpg/}))
   await user.upload(screen.getByLabelText('Выбрать изображение'),new File([new Uint8Array([255,216,255,217,1])],'replacement.jpg',{type:'image/jpeg'}))
-  expect(consent().checked).toBe(false)
   await user.click(screen.getByRole('button',{name:'Запустить анализ'}))
-  expect(fetcher.mock.calls.filter(([,options])=>options?.method==='POST')).toHaveLength(1)
-  await user.click(consent())
-  await user.click(screen.getByRole('button',{name:'Запустить анализ'}))
-  await waitFor(()=>expect(fetcher.mock.calls.filter(([,options])=>options?.method==='POST')).toHaveLength(2))
-  for (const [,options] of fetcher.mock.calls.filter(([,options])=>options?.method==='POST')) {
-    expect(JSON.parse(String(options?.body))).toMatchObject({intent:'observation_only',cloud_processing_consent:true})
-  }
+  await waitFor(()=>expect(fetcher.mock.calls.filter(([,options])=>options?.method==='POST')).toHaveLength(1))
+  const [,options] = fetcher.mock.calls.find(([,options])=>options?.method==='POST')!
+  expect(JSON.parse(String(options?.body))).toMatchObject({project_id:a,intent:'observation_only',cloud_processing_consent:true})
 })
 
 it('does not recover another account pending upload in the same browser tab', async () => {
