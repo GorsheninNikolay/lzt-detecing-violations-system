@@ -148,7 +148,7 @@ export default function AssistantChat({ projectId, request, accountId = "anonymo
         <button type="button" aria-label="Скрыть чат" title="Скрыть чат без паузы в обучении" onClick={hide}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true"><path d="M5 18h14" /></svg></button>
         <button type="button" aria-label="Закрыть чат" onClick={close}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" /></svg></button>
       </div></header>
-      <div className="chat-transcript" ref={transcript}><TutorialGuide /><div className="chat-messages" role="log" aria-label="Переписка с помощником" aria-live="polite" aria-relevant="additions text">
+      <div className="chat-transcript" ref={transcript}>{guide?.state.started && <TutorialGuide />}<div className="chat-messages" role="log" aria-label="Переписка с помощником" aria-live="polite" aria-relevant="additions text">
         {!guide?.state.started && !messages.length && !loadingHistory && <div className="chat-welcome"><h3>Чем помочь?</h3><p>Подскажу, как начать анализ, разобраться в сигналах или пригласить участников.</p></div>}
         {loadingHistory && <p className="chat-history-status" role="status">Загружаем переписку…</p>}
         {messages.map(item => <motion.article key={item.id} className={`chat-message chat-message--${item.role}`} aria-label={item.role === 'user' ? 'Ваше сообщение' : 'Ответ помощника'} initial={enabled && item.fresh ? { opacity: 0, y: 6 } : false} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.18, ease: 'easeOut' }}>

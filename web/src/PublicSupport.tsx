@@ -1,3 +1,4 @@
+import { useTutorial } from './Tutorial'
 import { AccountIdentity } from './AccountIdentity'
 import { randomUUID } from './randomUUID'
 import { useEffect, useRef, useState, useContext, type ReactNode } from 'react'
@@ -147,9 +148,10 @@ function Feedback({ projectId, analysisId, close }: { projectId?: string; analys
 }
 
 export default function PublicSupport({ projectId, analysisId }: { safe: boolean; projectId?: string; analysisId?: string; start: () => void; training?: Training }) {
+  const guide = useTutorial()
   const [feedback, setFeedback] = useState(false)
   useEffect(startActivity, [])
-  return <><div className="public-support"><button type="button" onClick={() => dispatchEvent(new Event('open-assistant'))}>Как пользоваться</button><button type="button" onClick={() => setFeedback(true)}>Обратная связь</button></div>
+  return <><div className="public-support"><button type="button" onClick={() => guide ? guide.start() : dispatchEvent(new Event('open-assistant'))}>Как пользоваться</button><button type="button" onClick={() => setFeedback(true)}>Обратная связь</button></div>
     {feedback && <Feedback projectId={projectId} analysisId={analysisId} close={() => setFeedback(false)} />}
   </>
 }

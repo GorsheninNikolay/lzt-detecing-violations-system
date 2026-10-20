@@ -1,3 +1,4 @@
+import PublicSupport from './PublicSupport'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import AssistantChat, { ChatText } from './AssistantChat'
@@ -156,4 +157,18 @@ it('keeps the current lesson active while answering a question and after its ans
  expect(screen.queryByRole('button',{name:'Вернуться к обучению'})).toBeNull()
  fireEvent.click(screen.getByRole('button',{name:'К текущему шагу'}))
  expect(JSON.parse(localStorage.getItem('tutorial:1:a')!).paused).toBe(false)
+})
+
+it('starts interactive training directly from public help instead of opening an empty chat', async () => {
+ const navigate = vi.fn(() => true)
+ const request = vi.fn(async () => ({messages: []}))
+ render(<TutorialProvider account="a" navigate={navigate}><PublicSupport safe start={() => {}} /><AssistantChat accountId="a" request={request} /></TutorialProvider>)
+ expect(screen.queryByRole('dialog')).toBeNull()
+ fireEvent.click(screen.getByRole('button', {name: 'Как пользоваться'}))
+ expect(navigate).toHaveBeenCalledWith('/')
+ expect(screen.getByRole('dialog').classList.contains('has-tutorial')).toBe(true)
+ expect(screen.queryByText('Чем помочь?')).toBeNull()
+ expect(screen.queryByRole('button', {name: 'Как пользоваться приложением?'})).toBeNull()
+ expect(JSON.parse(localStorage.getItem('tutorial:1:a')!)).toMatchObject({started:true,paused:false,step:'create_project'})
+ expect(request).not.toHaveBeenCalled()
 })
