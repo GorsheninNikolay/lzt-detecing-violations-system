@@ -236,3 +236,12 @@ __marimo__/
 /training/windows/datasets/
 
 /web/node_modules
+/tools/pagecast/node_modules/
+/tools/pagecast/.browsers/
+
+# Local agent configuration and utilities
+.mcp.json
+mcp.json
+/tools/
+/scripts/
+/web/scripts/
