@@ -274,7 +274,8 @@ def test_direct_durable_run_and_idempotent_recovery(direct_service, monkeypatch,
 
 
 @pytest.mark.parametrize('source_provider', ['deepseek', 'yandex_ai_studio'])
-def test_provider_switch_blocks_retry_before_artifacts(direct_service, source_provider):
+@pytest.mark.parametrize('repeat_processing', [False, True])
+def test_provider_switch_blocks_retry_before_artifacts(direct_service, source_provider, repeat_processing):
     from types import SimpleNamespace
     from fastapi.testclient import TestClient
     from app.adapters.postgres import AdmissionStoreError
@@ -291,14 +292,14 @@ def test_provider_switch_blocks_retry_before_artifacts(direct_service, source_pr
     work = store.claim_ordinary(source[0], source[2], 30)
     store.fail_ordinary(run_id, work['owner'], 'executor_interrupted')
     with pytest.raises(AdmissionStoreError, match='^cloud_provider_mismatch$'):
-        store.retry_ordinary(run_id, target[0], target[2], target[1], NoMutation())
+        store.retry_ordinary(run_id, target[0], target[2], target[1], NoMutation(), repeat_processing=repeat_processing)
     app = create_app()
     app.state.readiness.ready.set()
     app.state.store, app.state.artifacts = store, NoMutation()
     app.state.claim_loop = SimpleNamespace(runtime_binding=(target[0], target[2]))
     client = TestClient(app)
     assert client.get('/runs/' + str(run_id)).json()['retry_eligible'] is False
-    rejected = client.post('/runs/' + str(run_id) + '/retry')
+    rejected = client.post('/runs/' + str(run_id) + '/retry', json={'repeat_processing': repeat_processing})
     assert rejected.status_code == 409
     assert rejected.json() == {'code': 'cloud_provider_mismatch'}
     assert store.read_ordinary(run_id)['retry_successor_id'] is None
@@ -573,3 +574,69 @@ def test_startup_rejects_incompatible_ledger_without_paid_probe(direct_service, 
             assert app.state.readiness.code == 'observer_snapshot_invalid'
 
     asyncio.run(check())
+
+
+@pytest.mark.parametrize('provider', ['deepseek', 'yandex_ai_studio'])
+def test_explicit_reanalysis_succeeds_with_fresh_receipts_and_audit(direct_service, monkeypatch, provider):
+    from sqlalchemy import text
+    from app.application.executor import ClaimLoop
+    from app.application import deepseek_runtime
+    from test_deepseek import assessment
+    store, artifacts, profile_id, profile, revision = direct_service
+    if provider == 'yandex_ai_studio':
+        profile_id = deepseek_runtime.provision(store, 'mock-folder')
+        profile, revision = store.require_authorized(profile_id)
+    from fastapi.testclient import TestClient
+    from app.main import create_app
+    monkeypatch.setenv('AUTH_REQUIRED', 'true')
+    app = create_app()
+    app.state.store, app.state.artifacts = store, artifacts
+    runner = ClaimLoop()
+    runner.store, runner.artifacts = store, artifacts
+    runner.runtime_binding = profile_id, revision
+    app.state.claim_loop = runner
+    app.state.readiness.ready.set()
+    client = TestClient(app, headers={'Origin': 'http://testserver'})
+    credentials = {'email': f'{uuid.uuid4()}@example.test', 'password': 'safe password 123'}
+    assert client.post('/account/register', json={**credentials, 'name': 'Editor'}).status_code == 200
+    requester = client.post('/account/login', json=credentials).json()['user']['id']
+    project = client.post('/projects', json={'name': 'Reanalysis', 'timezone': 'UTC'}).json()
+    request = body() | {'cloud_provider': provider, 'project_id': project['id'],
+        'zone_id': project['default_zone_id'], 'capture_times': ['2026-09-26T12:00:00Z']}
+    _, source = submit(store, artifacts, str(uuid.uuid4()), request, profile_id, revision, profile)
+    monkeypatch.setattr(deepseek, '_read_json', lambda *_: (_ for _ in ()).throw(TimeoutError()))
+    asyncio.run(runner._execute(store.claim_ordinary(profile_id, revision, 30), revision))
+    original = store.read_ordinary(source)
+    assert original['state'] == 'failed' and original['ai_evidence'][0]['state'] == 'uncertain'
+    with store.engine.connect() as db:
+        original_policy = db.execute(text('SELECT policy_snapshot FROM analysis_runs WHERE id=:id'), {'id': source}).scalar_one()
+    acceptance = client.post(f'/runs/{source}/retry', json={'repeat_processing': True})
+    assert acceptance.status_code == 202, acceptance.text
+    successor = uuid.UUID(acceptance.json()['run_id'])
+    with store.engine.connect() as db:
+        policy = db.execute(text('SELECT policy_snapshot FROM analysis_runs WHERE id=:id'), {'id': successor}).scalar_one()
+    assert policy == {**original_policy, 'manual_reanalysis': {
+        'repeat_processing': True, 'requester_id': requester, 'predecessor_id': str(source)}}
+    calls = []
+    def successful(request, _):
+        kind = strict_json(request.data)['text']['format']['name']
+        calls.append(kind)
+        raw = response(annotation() if kind == 'frame' else assessment())
+        if provider == 'deepseek':
+            raw['model'] = 'deepseek-flash'
+        return raw
+    monkeypatch.setattr(deepseek, '_read_json', successful)
+    work = store.claim_ordinary(profile_id, revision, 30)
+    assert work['id'] == successor
+    asyncio.run(runner._execute(work, revision))
+    result = store.read_ordinary(successor)
+    assert result['state'] == 'succeeded', result['error_code']
+    assert result['ai_assessment'] and result['result_projection']
+    assert len(calls) == len(result['ai_evidence']) == 2
+    assert all(item['state'] == 'completed' and item['result'] for item in result['ai_evidence'])
+    assert not ({item['id'] for item in original['ai_evidence']} & {item['id'] for item in result['ai_evidence']})
+    after = store.read_ordinary(source)
+    for key in original.keys() - {'retry_successor_id', 'successor_run_id'}:
+        assert after[key] == original[key]
+    with store.engine.connect() as db:
+        assert db.execute(text('SELECT policy_snapshot FROM analysis_runs WHERE id=:id'), {'id': source}).scalar_one() == original_policy

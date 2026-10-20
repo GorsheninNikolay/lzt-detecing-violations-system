@@ -256,3 +256,23 @@ def test_demo_password_boundary():
         password('12345678')
     assert error.value.status_code == 400
     assert verify_password('demo-pass', password('demo-pass'))
+
+
+def test_explicit_photo_retry_rejects_viewer_and_other_project(accounts):
+    import json
+    make, store = accounts
+    owner, _ = make()
+    viewer, user = make()
+    outsider, _ = make()
+    own = project(owner)
+    invitation = owner.post(f'/projects/{own["id"]}/invitations', json={'email': user['email'], 'role': 'viewer'}).json()
+    assert viewer.post('/invitations/accept', json={'token': invitation['token']}).status_code == 200
+    source = uuid4()
+    with store.engine.begin() as db:
+        db.execute(text("""INSERT INTO analysis_runs(id,state,purpose,analysis_intent,request_context)
+            VALUES (:id,'failed','ordinary','observation_only',CAST(:context AS jsonb))"""),
+            {'id': source, 'context': json.dumps({'project_id': own['id']})})
+    original = store.read_ordinary(source)
+    assert viewer.post(f'/runs/{source}/retry', json={'repeat_processing': True}).status_code == 403
+    assert outsider.post(f'/runs/{source}/retry', json={'repeat_processing': True}).status_code == 404
+    assert store.read_ordinary(source) == original

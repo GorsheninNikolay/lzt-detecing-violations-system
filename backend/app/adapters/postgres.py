@@ -1731,7 +1731,8 @@ class PostgresStore:
         ]}
 
     def retry_ordinary(self, source_id: uuid.UUID, profile_id: uuid.UUID, revision: int,
-                       snapshot: dict, artifacts: ArtifactStore, browser_id: str | None = None) -> uuid.UUID:
+                       snapshot: dict, artifacts: ArtifactStore, browser_id: str | None = None,
+                       *, repeat_processing: bool = False, requester_id: str | None = None) -> uuid.UUID:
         source_query = text("""SELECT * FROM analysis_runs WHERE id = :id AND purpose = 'ordinary'""")
         inputs_query = text("""SELECT i.ordinal, i.input_id, i.sha256, i.size, i.context,
             a.id AS artifact_id, a.key, a.media_type, a.sha256 AS artifact_sha256,
@@ -1753,7 +1754,7 @@ class PostgresStore:
                 raise AdmissionStoreError(str(exc)) from None
             if preliminary["request_context"].get("cloud_processing_consent") is not True:
                 raise AdmissionStoreError("cloud_consent_required")
-            if connection.execute(text("SELECT 1 FROM deepseek_calls WHERE run_id=:id LIMIT 1"), {"id": source_id}).first():
+            if repeat_processing is not True and connection.execute(text("SELECT 1 FROM deepseek_calls WHERE run_id=:id LIMIT 1"), {"id": source_id}).first():
                 raise AdmissionStoreError("provider_call_not_replayable")
             if preliminary["state"] != "failed":
                 raise AdmissionStoreError("retry_ineligible")
@@ -1802,6 +1803,10 @@ class PostgresStore:
                     or authorization.revision != revision or authorization.snapshot != snapshot
                     or authorization.audit_hash != authorization.authorization_audit):
                 raise AdmissionStoreError("profile_unauthorized")
+            policy = dict(source["policy_snapshot"])
+            if repeat_processing is True:
+                policy["manual_reanalysis"] = {"repeat_processing": True, "requester_id": requester_id,
+                                               "predecessor_id": str(source_id)}
             run_id = uuid.uuid4()
             connection.execute(text("""INSERT INTO analysis_runs
                 (id, state, purpose, profile_id, authorization_revision, binding_kind, profile_snapshot,
@@ -1811,7 +1816,7 @@ class PostgresStore:
                     CAST(:snapshot AS jsonb), CAST(:context AS jsonb), CAST(:policy AS jsonb),
                     CAST(:rule AS jsonb), :intent, :stage, CAST(:taxonomy AS jsonb), CAST(:classes AS jsonb), :source)"""),
                 {"id": run_id, "profile": profile_id, "revision": revision, "snapshot": json.dumps(snapshot),
-                 "context": json.dumps(source["request_context"]), "policy": json.dumps(source["policy_snapshot"]),
+                 "context": json.dumps(source["request_context"]), "policy": json.dumps(policy),
                  "rule": json.dumps(source["rule_snapshot"]) if source["rule_snapshot"] is not None else None,
                  "intent": source["analysis_intent"] or "observation_only", "stage": source["stage_key"],
                  "taxonomy": json.dumps(source["taxonomy_snapshot"]), "classes": json.dumps(source["requested_classes"]),

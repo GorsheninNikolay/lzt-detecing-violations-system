@@ -320,7 +320,7 @@ def create_app() -> FastAPI:
                 try:
                     snapshot, _ = await asyncio.to_thread(app.state.store.require_authorized, binding[0], binding[1])
                     DeepSeek(snapshot, Config.from_env().api_key_for(snapshot))
-                    if run.get("ai_evidence") or run.get("profile_snapshot", {}).get("kind") != "deepseek":
+                    if run.get("profile_snapshot", {}).get("kind") != "deepseek":
                         raise ValueError("provider_call_not_replayable")
                     from app.profiles.deepseek import validate_consent, provider_for
                     if provider_for(run['profile_snapshot']) != provider_for(snapshot):
@@ -375,6 +375,18 @@ def create_app() -> FastAPI:
             return JSONResponse({"code": "retry_ineligible"}, status_code=409)
         if source["retry_successor_id"]:
             return JSONResponse({"run_id": source["retry_successor_id"]}, status_code=202)
+        try:
+            payload = bytearray()
+            async for chunk in request.stream():
+                if len(payload) + len(chunk) > 1024:
+                    return JSONResponse({"code": "invalid_request"}, status_code=400)
+                payload.extend(chunk)
+            body = json.loads(payload) if payload else {}
+            if (not isinstance(body, dict) or set(body) - {"repeat_processing"}
+                    or ("repeat_processing" in body and type(body["repeat_processing"]) is not bool)):
+                raise ValueError()
+        except ValueError:
+            return JSONResponse({"code": "invalid_request"}, status_code=400)
         if not app.state.readiness.ready.is_set():
             return JSONResponse({"code": "service_not_ready"}, status_code=503)
         binding = app.state.claim_loop.runtime_binding
@@ -392,7 +404,9 @@ def create_app() -> FastAPI:
             DeepSeek(snapshot, Config.from_env().api_key_for(snapshot))
             successor = await asyncio.to_thread(app.state.store.retry_ordinary, identifier, binding[0], revision,
                                                 snapshot, app.state.artifacts,
-                                                browser_id=request.headers.get("x-browser-id"))
+                                                browser_id=request.headers.get("x-browser-id"),
+                                                repeat_processing=body.get("repeat_processing", False),
+                                                requester_id=str(current_user(request)["id"]) if auth_required() else None)
             return JSONResponse({"run_id": str(successor)}, status_code=202)
         except AdmissionStoreError as exc:
             code = str(exc)

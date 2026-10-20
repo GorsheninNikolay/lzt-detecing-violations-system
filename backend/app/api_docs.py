@@ -40,6 +40,7 @@ ENTRY = obj({'catalog_work_id': UUID, 'start_at': TIME, 'end_at': TIME,
              **{name: field('array', desc, items={'type':'string'}) for name,desc in (
                  ('expected_equipment','Ожидаемая техника.'),('allowed_equipment','Допустимая техника.'),('excluded_equipment','Явно исключённая техника.'))}}, ('catalog_work_id','start_at','end_at'))
 BODIES = {
+    'retry_run': obj({'repeat_processing':field('boolean','Явное намерение заново обработать сохранённые фото после облачных вызовов; возможен повторный расход средств. По умолчанию false.',default=False)}) | {'additionalProperties': False},
     'create_project': obj({'name': field('string','Непустое название проекта.',minLength=1,maxLength=200),'timezone':field('string','Часовой пояс IANA.',example='Europe/Moscow')}, ('name','timezone')),
     'replace_project_cover': obj({'data':field('string','JPEG, PNG или WEBP в base64; до 5 МБ после декодирования и до 25 Мп.',contentEncoding='base64')},('data',)),
     'create_zone': obj({'name':field('string','Непустое имя, уникальное в проекте.',minLength=1,maxLength=200)},('name',)),
@@ -61,7 +62,7 @@ SUMMARIES = {
     'read_hybrid_readiness':'Качество текущего гибридного профиля: несовпавший или отсутствующий отчёт блокирует готовность',
     'read_provider_comparison':'Историческое сравнение выведенных из исполнения моделей',
     'read_run':'Прочитать анализ, исходные данные и неизменяемую аналитику', 'list_runs':'История анализов',
-    'retry_run':'Явный повтор допустимого сбоя до первого облачного вызова', 'read_run_artifact':'Прочитать проверенный по SHA-256 артефакт',
+    'retry_run':'Явный повтор анализа сохранённых фотографий после сбоя', 'read_run_artifact':'Прочитать проверенный по SHA-256 артефакт',
     'list_catalog':'Каталог строительных работ', 'create_project':'Создать проект', 'list_projects':'Список проектов',
     'replace_project_cover':'Добавить или заменить обложку проекта', 'read_project_cover':'Получить обложку проекта',
     'create_zone':'Создать участок проекта', 'list_zones':'Участки проекта', 'replace_zone_plan':'Сохранить новую ревизию плана',
@@ -122,7 +123,7 @@ RUN = obj({'run_id':UUID,'state':field('string','Состояние запуск
            'ai_evidence':array(EVIDENCE,'Неизменяемые ответы и резервации.'), 'inputs':array(INPUT,'Исходные кадры.'),
            'objects':array(DETECTION,'Свободные и каталогизированные объекты.'),'observations':array(OBSERVATION,'Состояния запрошенных классов.'),
            'result_projection':field(['object','null'],'Успешная проекция. hybrid_frames сохраняет manifest, обе модели YOLO с raw_class, catalog_class (nullable), score, box, SHA-256 весов и кадра; created_signals содержит идентификаторы сохранённых сигналов; rule_results содержит сравнение каждого кадра с точной ревизией.'),
-           'stage_confirmation':field(['object','null'],'Отдельное подтверждение человеком.'),'retry_eligible':field('boolean','Допустим ли явный повтор до первого вызова.')}, ('run_id','state'))
+           'stage_confirmation':field(['object','null'],'Отдельное подтверждение человеком.'),'retry_eligible':field('boolean','Допустима ли явная новая обработка сохранённых фотографий.')}, ('run_id','state'))
 ANNOTATION = obj({'id':UUID,'run_id':UUID,'input_id':UUID,'input_sha256':TEXT,'artifact_id':UUID,'version_id':UUID,
                   'revision':COUNT,'status':TEXT,'objects':OBJECTS,'original_objects':array(DETECTION,'Неизменяемая исходная гипотеза, включая unknown/null box.'),'whole_frame_verified':field('boolean','Проверен весь кадр.'),'reason':TEXT})
 FEEDBACK = obj({'id':UUID,'category':TEXT,'message':TEXT,'context':field('object','Связанный экран/проект/анализ.'),'created_at':TIME,'read_at':{**TIME,'type':['string','null']},'attachments':array(obj({'id':UUID,'media_type':TEXT,'size':COUNT}),'Вложения обращения.')})
@@ -250,7 +251,7 @@ def install(app):
                     body['required'].append(key)
                     operation['description'] += ' Требуется cloud_processing_consent=true. Лимит HTTP: 25 100 000 байт для одного кадра, 200 000 000 для серии. Выведенные из исполнения профили и зарезервированные контрольные примеры запрещены.'
                 if body:
-                    operation['requestBody'] = {'required':True,'content':{'application/json':{'schema':body,'example':example(body)}}}
+                    operation['requestBody'] = {'required':name != 'retry_run','content':{'application/json':{'schema':body,'example':example(body)}}}
                 errors = {'400':('Некорректные данные.','invalid_request'),'401':('Требуется сессия.','authentication_required'),
                           '403':('Неверный Origin/CSRF или транспорт.','invalid_csrf'),'404':('Ресурс не найден.','run_not_found'),
                           '409':('Конфликт неизменяемого состояния.','idempotency_key_conflict'),'413':('Слишком большое тело.','request_too_large'),

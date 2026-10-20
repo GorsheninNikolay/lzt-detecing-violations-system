@@ -383,7 +383,7 @@ describe('Prototype readiness', () => {
     fireEvent.click(screen.getAllByRole('link', { name: `Открыть запуск ${runId}` })[0])
     expect(await screen.findByRole('heading', { name: 'Исходные кадры: анализ не завершён' })).toBeTruthy()
     expect(await screen.findByRole('img', { name: /Исходное изображение: Кадр 1/ })).toBeTruthy()
-    expect(screen.queryByRole('button', { name: 'Повторить анализ' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Отправить фото ещё раз' })).toBeNull()
     expect(fetchMock.mock.calls.some(call => call[0] === `/api/runs/${runId}/artifacts/${artifactId}`)).toBe(true)
   })
 })
@@ -601,19 +601,91 @@ describe('Observation result', () => {
         profile_id: 'old-profile', retry_profile_id: 'current-profile', retry_authorization_revision: 2 }) }
     }))
     render(<App />)
-    expect(await screen.findByRole('button', { name: 'Повторить анализ' })).toBeTruthy()
+    expect(await screen.findByRole('button', { name: 'Отправить фото ещё раз' })).toBeTruthy()
     expect(screen.getByText('Для повтора будет использована другая модель распознавания.')).toBeTruthy()
+    expect(screen.getByText('Фотографии будут обработаны заново. Это может повторно расходовать средства.')).toBeTruthy()
+    expect(vi.mocked(fetch).mock.calls.filter(([, options]) => options?.method === 'POST')).toHaveLength(0)
     expect(document.body.textContent).not.toContain('old-profile')
     expect(document.body.textContent).not.toContain('current-profile')
-    await user.click(await screen.findByRole('button', { name: 'Повторить анализ' }))
+    await user.click(await screen.findByRole('button', { name: 'Отправить фото ещё раз' }))
     expect(await screen.findByText('Повтор анализа', { exact: false })).toBeTruthy()
     expect(location.pathname).toBe(`/runs/${nextId}`)
+    expect(vi.mocked(fetch).mock.calls.find(([url]) => String(url).endsWith('/retry'))?.[1]?.body).toBe(JSON.stringify({ repeat_processing: true }))
     expect(screen.getByRole('link', { name: 'Открыть исходный анализ' }).getAttribute('href')).toBe(`/runs/${runId}`)
     expect(document.body.textContent).not.toContain(runId)
-    expect(screen.queryByRole('button', { name: 'Повторить анализ' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Отправить фото ещё раз' })).toBeNull()
     await user.click(screen.getByRole('link', { name: 'Анализы' }))
     expect(await screen.findByRole('heading', { name: 'Архив без проекта' })).toBeTruthy()
     expect(runLink(runId)).toBeTruthy()
+  })
+
+  it('sends one manual request while busy and recovers a lost retry response explicitly', async () => {
+    const nextId = '22345678-1234-1234-1234-123456789abc'
+    let reject: (reason: unknown) => void = () => {}
+    let posts = 0
+    vi.stubGlobal('fetch', vi.fn((url: string, options?: RequestInit) => {
+      if (options?.method === 'POST' && url.endsWith('/retry')) {
+        posts++
+        if (posts === 1) return new Promise((_, failure) => { reject = failure })
+        return Promise.resolve({ ok: true, json: async () => ({ run_id: nextId }) })
+      }
+      return Promise.resolve({ ok: true, json: async () => ({ ...snapshot(url.endsWith(nextId) ? 'queued' : 'failed'), retry_eligible: !url.endsWith(nextId) }) })
+    }))
+    render(<App />)
+    const button = await screen.findByRole('button', { name: 'Отправить фото ещё раз' })
+    expect(posts).toBe(0)
+    fireEvent.click(button)
+    fireEvent.click(button)
+    expect(posts).toBe(1)
+    expect(button).toHaveProperty('disabled', true)
+    await act(async () => reject(new TypeError('lost response')))
+    expect(posts).toBe(1)
+    await userEvent.setup().click(await screen.findByRole('button', { name: 'Отправить фото ещё раз' }))
+    await waitFor(() => expect(location.pathname).toBe(`/runs/${nextId}`))
+    expect(posts).toBe(2)
+  })
+
+  it('bounds a stalled retry response body and ignores its late acceptance', async () => {
+    const nextId = '22345678-1234-1234-1234-123456789abc'
+    let release: (value: unknown) => void = () => {}
+    let posts = 0
+    let signal: AbortSignal | null | undefined
+    vi.stubGlobal('fetch', vi.fn(async (url: string, options?: RequestInit) => {
+      if (url.endsWith('/retry')) {
+        posts++
+        signal = options?.signal
+        return { ok: true, json: () => posts === 1 ? new Promise(resolve => { release = resolve }) : Promise.resolve({ run_id: nextId }) }
+      }
+      return { ok: true, json: async () => ({ ...snapshot('failed'), retry_eligible: true }) }
+    }))
+    render(<App />)
+    const button = await screen.findByRole('button', { name: 'Отправить фото ещё раз' })
+    vi.useFakeTimers()
+    fireEvent.click(button)
+    await act(async () => { await vi.advanceTimersByTimeAsync(180000) })
+    expect(signal?.aborted).toBe(true)
+    expect(screen.getByRole('alert').textContent).toBe('Обратитесь к администратору')
+    expect(button).toHaveProperty('disabled', false)
+    await act(async () => release({ run_id: nextId }))
+    expect(location.pathname).toBe(`/runs/${runId}`)
+    expect(posts).toBe(1)
+    await act(async () => fireEvent.click(button))
+    expect(location.pathname).toBe(`/runs/${nextId}`)
+    expect(posts).toBe(2)
+    vi.useRealTimers()
+  })
+
+  it('disables photo reanalysis for a viewer', async () => {
+    const projectId = '33333333-3333-3333-3333-333333333333'
+    history.replaceState({}, '', `/projects/${projectId}/runs/${runId}`)
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => ({ ok: true, json: async () => url === '/api/projects'
+      ? { projects: [{ id: projectId, name: 'Viewer project', role: 'viewer' }] }
+      : { ...snapshot('failed'), project_id: projectId, retry_eligible: true } })))
+    render(<App />)
+    const button = await screen.findByRole('button', { name: 'Отправить фото ещё раз' })
+    await waitFor(() => expect(button).toHaveProperty('disabled', true))
+    fireEvent.click(button)
+    expect(vi.mocked(fetch).mock.calls.filter(([, options]) => options?.method === 'POST')).toHaveLength(0)
   })
 
   it.each(['network', 'server'])('shows only the administrator message after a retry %s failure', async failure => {
@@ -625,7 +697,7 @@ describe('Observation result', () => {
       return { ok: true, json: async () => ({ ...snapshot('failed'), retry_eligible: true }) }
     }))
     render(<App />)
-    await userEvent.setup().click(await screen.findByRole('button', { name: 'Повторить анализ' }))
+    await userEvent.setup().click(await screen.findByRole('button', { name: 'Отправить фото ещё раз' }))
     expect((await screen.findByRole('alert')).textContent).toBe('Обратитесь к администратору')
   })
 
@@ -646,7 +718,7 @@ describe('Observation result', () => {
     vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => ({ ...snapshot(state), retry_eligible: false }) })))
     render(<App />)
     expect(await screen.findByRole('heading', { name: state === 'queued' ? 'Анализ поставлен в очередь' : state === 'running' ? 'Анализ выполняется' : 'Анализ завершён' })).toBeTruthy()
-    expect(screen.queryByRole('button', { name: 'Повторить анализ' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Отправить фото ещё раз' })).toBeNull()
   })
 
   it('shows history loading, recovers a failed fetch, and pages into unknown legacy dates', async () => {
@@ -685,7 +757,7 @@ describe('Observation result', () => {
       return Promise.resolve({ ok: true, json: async () => ({ ...snapshot('failed'), retry_eligible: true }) })
     }))
     render(<App />)
-    await user.click(await screen.findByRole('button', { name: 'Повторить анализ' }))
+    await user.click(await screen.findByRole('button', { name: 'Отправить фото ещё раз' }))
     await user.click(screen.getByRole('link', { name: 'Анализы' }))
     await act(async () => { release({ ok: true, json: async () => ({ run_id: '22345678-1234-1234-1234-123456789abc' }) }) })
     expect(location.pathname).toBe('/archive')
@@ -729,20 +801,20 @@ describe('Observation result', () => {
     const zoom = within(dialog).getByRole('button', { name: 'Увеличить' })
     zoom.focus()
     await user.keyboard('{Enter}')
-    expect(within(dialog).getByRole('status').textContent).toContain('150%')
+    expect(within(dialog).getByRole('status', { name: '' }).textContent).toContain('150%')
     const reset = within(dialog).getByRole('button', { name: 'Сбросить масштаб' })
     reset.focus()
     await user.keyboard('{Enter}')
-    expect(within(dialog).getByRole('status').textContent).toContain('100%')
+    expect(within(dialog).getByRole('status', { name: '' }).textContent).toContain('100%')
     expect(screen.queryByText('Технические данные наблюдателя')).toBeNull()
     const next = within(dialog).getByRole('button', { name: 'Следующий кадр' })
     next.focus()
     await user.keyboard('{Enter}')
-    expect(within(screen.getByRole('dialog')).getByRole('status').textContent).toContain('Кадр 2 из 2')
+    expect(within(screen.getByRole('dialog')).getByRole('status', { name: '' }).textContent).toContain('Кадр 2 из 2')
     const previous = within(dialog).getByRole('button', { name: 'Предыдущий кадр' })
     previous.focus()
     await user.keyboard('{Enter}')
-    expect(within(dialog).getByRole('status').textContent).toContain('Кадр 1 из 2')
+    expect(within(dialog).getByRole('status', { name: '' }).textContent).toContain('Кадр 1 из 2')
     const close = within(dialog).getByRole('button', { name: 'Закрыть' })
     close.focus()
     await user.keyboard('{Enter}')
@@ -761,12 +833,14 @@ describe('Observation result', () => {
       : { ok: true, blob: async () => new Blob(['image']) }))
     const view = render(<App />)
     await screen.findByRole('heading', { name: 'Только наблюдения' })
+    fireEvent.load(await within(view.container.querySelector<HTMLElement>('.result-feature-image')!).findByRole('img'))
     await waitFor(() => expect(view.container.querySelectorAll('.result-feature-image .object-box')).toHaveLength(2))
     expect((view.container.querySelector('.object-box') as HTMLElement).style.left).toBe('10%')
     expect(parseFloat((view.container.querySelector('.object-box') as HTMLElement).style.width)).toBeCloseTo(30)
     expect(screen.getByText(/91%: оценка модели/)).toBeTruthy()
     expect(screen.getByText(/83%: оценка модели/)).toBeTruthy()
     await user.click(screen.getByRole('button', { name: 'Открыть кадр 1' }))
+    fireEvent.load(await within(screen.getByRole('dialog')).findByRole('img'))
     expect(screen.getByRole('dialog').querySelectorAll('.object-box')).toHaveLength(2)
     expect(within(screen.getByRole('dialog')).queryAllByRole('button', { name: /Объект [12]: Экскаватор/ })).toHaveLength(0)
     await user.click(screen.getByLabelText('Показывать рамки объектов'))
@@ -822,6 +896,7 @@ describe('Observation result', () => {
       ? {ok:true,json:async()=>({...completed,objects,result_projection:{...completed.result_projection,hybrid_frames:[{input_id:'input-0',detectors:{models:[{model_id:'apoce',image_size:[1000,500],detections:[{id:'detector-only',input_id:'input-0',catalog_class:'truck',raw_class:'truck',score:.9,box:[.8,.2,.9,.6]}]}]}}]}})} : {ok:true,blob:async()=>new Blob(['image'])}))
     const view = render(<App />)
     await screen.findByRole('heading', { name: 'Только наблюдения' })
+    fireEvent.load(await within(view.container.querySelector<HTMLElement>('.result-feature-image')!).findByRole('img'))
     await waitFor(() => expect((view.container.querySelector('.result-feature-image .object-box') as HTMLElement)?.style.left).toBe('10%'))
     expect(screen.queryByLabelText('Источник рамок')).toBeNull()
     expect(screen.getByRole('button',{name:'1. Экскаватор'})).toBeTruthy()
@@ -1185,7 +1260,7 @@ describe('Observation result', () => {
     expect(await within(thumbnails[1]).findByRole('img', { name: /Кадр 2/ })).toBeTruthy()
     const feature = view.container.querySelector<HTMLElement>('.result-feature-image')!
     await user.click(await within(feature).findByRole('button', { name: 'Повторить' }))
-    expect(within(feature).getByText('Загружаем изображение…')).toBeTruthy()
+    expect(within(feature).getByRole('status', { name: 'Загрузка изображения' })).toBeTruthy()
     expect(within(thumbnails[1]).getByRole('img', { name: /Кадр 2/ })).toBeTruthy()
     await act(async () => { resolveRetry({ ok: true, blob: async () => new Blob(['recovered']) }) })
     expect(await within(feature).findByRole('img', { name: /Кадр 1/ })).toBeTruthy()

@@ -212,3 +212,56 @@ html[data-analysis-motion="off"] .result{animation:none}
 @media (max-width: 600px) { .frame { display: grid; grid-template-columns: 72px minmax(0, 1fr); } .frame-actions { grid-column: 1 / -1; display: flex; justify-content: flex-end; gap: .5rem; } }
 .capture-date-time-fields { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); gap: .75rem; }
 .capture-date-time-fields label { display: grid; gap: .35rem; }
+
+.source-image.is-loading { position: relative; aspect-ratio: 16 / 9; }
+.source-image.is-loading .annotated-image { visibility: hidden; }
+.image-skeleton {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--text) 12%, var(--surface));
+  animation: image-skeleton-pulse 2s ease-in-out infinite;
+}
+.image-skeleton::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(100deg, transparent 20%, color-mix(in srgb, var(--text) 12%, transparent) 50%, transparent 80%);
+  transform: translateX(-100%);
+  animation: image-skeleton-shimmer 2.4s ease-in-out infinite;
+}
+@keyframes image-skeleton-pulse { 50% { opacity: .6; } }
+@keyframes image-skeleton-shimmer { to { transform: translateX(100%); } }
+.analysis-thumbnail {
+  display: grid;
+  grid-template-rows: 72px minmax(44px, auto);
+  gap: 8px;
+  align-content: start;
+  scroll-snap-align: start;
+}
+.analysis-thumbnails { align-items: start; padding-bottom: 4px; scroll-snap-type: x proximity; }
+.analysis-thumbnail > .source-image { height: 72px; overflow: auto; border-radius: 6px; }
+.analysis-thumbnail .source-image .annotated-image,
+.result-visual .source-thumbnail .source-image .annotated-image { width: 100%; height: 100%; display: block; }
+.analysis-thumbnail .source-image .annotated-image img,
+.result-visual .source-thumbnail .source-image .annotated-image img {
+  width: 100%;
+  height: 100%;
+  max-height: none;
+  object-fit: contain;
+}
+.analysis-thumbnail > button { align-self: start; margin: 0; }
+.analysis-thumbnail .source-image .error { margin: 0; font-size: .75rem; }
+.analysis-thumbnail .source-image .error button { font-size: .75rem; min-height: 32px; padding: 4px; }
+.source-image-thumbnail { position: relative; }
+html[data-motion=off] .image-skeleton,
+html[data-analysis-motion=off] .image-skeleton,
+html[data-motion=off] .image-skeleton::after,
+html[data-analysis-motion=off] .image-skeleton::after { animation: none; }
+html[data-motion=off] .image-skeleton::after,
+html[data-analysis-motion=off] .image-skeleton::after { display: none; }
+@media (prefers-reduced-motion: reduce) {
+  .image-skeleton, .image-skeleton::after { animation: none; }
+  .image-skeleton::after { display: none; }
+}

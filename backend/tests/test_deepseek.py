@@ -370,6 +370,9 @@ def test_documentation_direct_and_proxy_schema(monkeypatch):
         assert 'DeepSeek' not in json.dumps(schema, ensure_ascii=False)
         request = schema['paths']['/runs/single-image']['post']['requestBody']['content']['application/json']['schema']
         assert 'cloud_processing_consent' in request['required']
+        retry = schema['paths']['/runs/{run_id}/retry']['post']['requestBody']
+        assert retry['required'] is False
+        assert retry['content']['application/json']['schema']['additionalProperties'] is False
         assert schema['paths']['/admin/session']['get']['responses']['200']['content']['application/json']['schema']['required'] == ['csrf']
         assert schema['paths']['/runs/{run_id}']['get']['responses']['200']['content']['application/json']['schema']['properties']['ai_assessment']['anyOf'][0]['properties']['risks']
 
@@ -583,3 +586,94 @@ def test_actual_shared_transport_does_not_follow_redirects():
         assert paths==['/start']
     finally:
         server.shutdown();server.server_close();thread.join()
+
+
+@pytest.mark.parametrize('failure', ['uncertain', 'invalid_frame', 'invalid_assessment'])
+def test_explicit_photo_reanalysis_preserves_calls_and_has_one_successor(deepseek_service, monkeypatch, failure):
+    from concurrent.futures import ThreadPoolExecutor
+    from fastapi.testclient import TestClient
+    from app.main import create_app
+
+    store, artifacts, profile_id, profile, revision, runner = deepseek_service
+    from fastapi import FastAPI
+    from app.application.site import router
+    plan_app = FastAPI()
+    plan_app.state.store = store
+    plan_app.state.readiness = type('Ready', (), {'ready': type('Event', (), {'is_set': lambda _: True})()})()
+    plan_app.include_router(router)
+    planner = TestClient(plan_app)
+    project = planner.post('/projects', json={'name': 'Retry saved plan', 'timezone': 'UTC'}).json()
+    zone = project['default_zone_id']
+    plan = planner.put(f'/zones/{zone}/plan', json={'expected_revision': 0, 'entries': []}).json()
+    work = queue_work(deepseek_service, {'project_id': project['id'], 'zone_id': zone,
+        'plan_revision_id': plan['revision_id'], 'capture_times': ['2026-09-26T12:00:00Z']})
+    planner.put(f'/zones/{zone}/plan', json={'expected_revision': 1, 'entries': []})
+
+    def provider(request, _):
+        kind = strict_json(request.data)['text']['format']['name']
+        if failure == 'uncertain':
+            raise TimeoutError()
+        if failure == 'invalid_' + kind:
+            return {'status': 'incomplete'}
+        return response(annotation() if kind == 'frame' else assessment())
+
+    monkeypatch.setattr(deepseek, '_read_json', provider)
+    asyncio.run(runner._execute(work, revision))
+    source = work['id']
+    original = store.read_ordinary(source)
+    assert original['state'] == 'failed' and original['ai_evidence']
+    app = create_app()
+    app.state.store, app.state.artifacts = store, artifacts
+    runner.runtime_binding = profile_id, revision
+    app.state.claim_loop = runner
+    app.state.readiness.ready.set()
+    client = TestClient(app)
+    monkeypatch.setattr(deepseek, '_read_json', lambda *args: pytest.fail('Read or retry POST called provider'))
+    assert client.get(f'/runs/{source}').json()['retry_eligible'] is True
+    assert client.post(f'/runs/{source}/retry').json()['code'] == 'provider_call_not_replayable'
+    for flag in (False, 1, 'true'):
+        with pytest.raises(AdmissionStoreError, match='provider_call_not_replayable'):
+            store.retry_ordinary(source, profile_id, revision, profile, artifacts, repeat_processing=flag)
+    for body in ({'repeat_processing': 'true'}, {'repeat_processing': 1}, [], {'unknown': True}):
+        assert client.post(f'/runs/{source}/retry', json=body).status_code == 400
+    assert client.post(f'/runs/{source}/retry', content=b'x' * 1025).status_code == 400
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        results = list(pool.map(lambda _: client.post(f'/runs/{source}/retry', json={'repeat_processing': True}), range(2)))
+    assert [item.status_code for item in results] == [202, 202]
+    successor = results[0].json()['run_id']
+    assert results[1].json()['run_id'] == successor
+    app.state.readiness.ready.clear()
+    assert client.post(f'/runs/{source}/retry', json={'repeat_processing': True}).json()['run_id'] == successor
+    after = store.read_ordinary(source)
+    for field in ('ai_evidence', 'inputs', 'context', 'stages', 'error_code', 'profile_snapshot', 'plan_binding'):
+        assert after[field] == original[field]
+    fresh = store.read_ordinary(uuid.UUID(successor))
+    assert fresh['state'] == 'queued' and not fresh['ai_evidence']
+    assert fresh['context'] == original['context']
+    assert fresh['plan_binding'] == original['plan_binding']
+    assert fresh['plan_binding']['revision_id'] == plan['revision_id']
+    assert fresh['retry_predecessor_id'] == str(source)
+    next_work = store.claim_ordinary(profile_id, revision, 30)
+    assert str(next_work['id']) == successor
+    monkeypatch.setattr(deepseek, '_read_json', provider)
+    asyncio.run(runner._execute(next_work, revision))
+    assert store.read_ordinary(uuid.UUID(successor))['state'] == 'failed'
+    third = store.retry_ordinary(uuid.UUID(successor), profile_id, revision, profile, artifacts, repeat_processing=True)
+    assert store.read_ordinary(third)['retry_predecessor_id'] == successor
+    with store.engine.connect() as db:
+        manifests = [db.execute(text("""SELECT i.ordinal, i.sha256, i.size, i.context,
+            a.key, a.media_type FROM run_inputs i JOIN artifact_metadata a ON a.id=i.artifact_id
+            WHERE i.run_id=:run ORDER BY i.ordinal"""), {'run': run}).all() for run in (source, successor)]
+    assert manifests[0] == manifests[1]
+    with pytest.raises(AdmissionStoreError, match='retry_ineligible'):
+        store.retry_ordinary(third, profile_id, revision, profile, artifacts, repeat_processing=True)
+    third_work = store.claim_ordinary(profile_id, revision, 30)
+    assert third_work['id'] == third
+    asyncio.run(runner._execute(third_work, revision))
+    from app.adapters.artifacts import ArtifactGateError
+    def unavailable(*args):
+        raise ArtifactGateError('source_corrupt')
+    monkeypatch.setattr(artifacts, 'read_verified', unavailable)
+    with pytest.raises(AdmissionStoreError, match='retry_source_unavailable'):
+        store.retry_ordinary(third, profile_id, revision, profile, artifacts, repeat_processing=True)
+    assert store.read_ordinary(third)['retry_successor_id'] is None

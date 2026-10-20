@@ -51,3 +51,51 @@ it.each(['network', 'server'])('shows only the administrator message for image %
  expect(await screen.findByText('Обратитесь к администратору')).toBeTruthy()
  expect(document.body.textContent).not.toContain('private_')
 })
+
+it('keeps the skeleton through fetching and decoding, then reveals the image', async () => {
+ let respond!: (response: {ok: boolean; blob: () => Promise<Blob>}) => void
+ vi.stubGlobal('fetch', vi.fn(() => new Promise(resolve => { respond = resolve })))
+ const view = render(<SourceImage runId="run" artifactId="photo" label="Кадр 1" description="" thumbnail />)
+ expect(screen.getByRole('status', {name:'Загрузка изображения'})).toBeTruthy()
+ expect(view.container.firstElementChild?.getAttribute('aria-busy')).toBe('true')
+ expect(screen.queryByText('Загружаем изображение…')).toBeNull()
+ respond({ok:true,blob:async()=>new Blob(['image'])})
+ const image = await screen.findByRole('img')
+ expect(screen.getByRole('status', {name:'Загрузка изображения'})).toBeTruthy()
+ fireEvent.load(image)
+ expect(screen.queryByRole('status', {name:'Загрузка изображения'})).toBeNull()
+ expect(view.container.firstElementChild?.getAttribute('aria-busy')).toBe('false')
+})
+
+it('loads a new run independently even with the same artifact identifier', async () => {
+ vi.stubGlobal('fetch', vi.fn(async()=>({ok:true,blob:async()=>new Blob(['image'])})))
+ vi.mocked(URL.createObjectURL).mockReturnValueOnce('blob:first').mockReturnValueOnce('blob:second')
+ const view = render(<SourceImage runId="first" artifactId="photo" label="Кадр 1" description="" />)
+ const firstImage = await screen.findByRole('img')
+ fireEvent.load(firstImage)
+ view.rerender(<SourceImage runId="second" artifactId="photo" label="Кадр 2" description="" />)
+ expect(screen.getByRole('status', {name:'Загрузка изображения'})).toBeTruthy()
+ const nextImage = await screen.findByRole('img')
+ expect(nextImage.getAttribute('src')).toBe('blob:second')
+ fireEvent.load(firstImage)
+ expect(screen.getByRole('status', {name:'Загрузка изображения'})).toBeTruthy()
+ fireEvent.load(nextImage)
+ expect(screen.queryByRole('status', {name:'Загрузка изображения'})).toBeNull()
+})
+
+it('replaces a failed skeleton with recovery and starts a new skeleton on retry', async () => {
+ vi.stubGlobal('fetch',vi.fn(async()=>({ok:true,blob:async()=>new Blob(['image'])})))
+ render(<SourceImage runId="run" artifactId="photo" label="Кадр 1" description="" />)
+ fireEvent.error(await screen.findByRole('img'))
+ expect(screen.queryByRole('status', {name:'Загрузка изображения'})).toBeNull()
+ await userEvent.setup().click(screen.getByRole('button',{name:'Повторить'}))
+ expect(screen.getByRole('status', {name:'Загрузка изображения'})).toBeTruthy()
+ fireEvent.load(await screen.findByRole('img'))
+ expect(screen.queryByRole('status', {name:'Загрузка изображения'})).toBeNull()
+})
+
+it('does not leave a skeleton when the source is absent', () => {
+ render(<SourceImage runId="run" artifactId={null} label="Кадр 1" description="" />)
+ expect(screen.queryByRole('status', {name:'Загрузка изображения'})).toBeNull()
+ expect(screen.getByText('Исходное изображение недоступно для этого кадра.')).toBeTruthy()
+})

@@ -189,6 +189,8 @@ it('opens shared photo viewer, switches frames, toggles boxes and restores comme
  await user.type(screen.getByLabelText('Комментарий'),'Проверю назначение')
  await user.click(open)
  await user.click(within(screen.getByRole('dialog')).getByRole('button',{name:'Следующий кадр'}))
+ fireEvent.load(await within(screen.getByRole('dialog')).findByRole('img'))
+ expect(screen.getByRole('dialog').querySelector('.object-box')).toBeTruthy()
  expect(within(screen.getByRole('dialog')).getByRole('status').textContent).toContain('Кадр 2 из 2')
  await user.click(within(screen.getByRole('dialog')).getByLabelText('Рамки объектов'))
  expect(screen.getByRole('dialog').querySelector('.object-box')).toBeNull()
