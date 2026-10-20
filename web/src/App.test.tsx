@@ -581,7 +581,7 @@ describe('Observation result', () => {
       ? { ok:true,json:async () => historical }
       : { ok:true,blob:async () => new Blob(['jpeg']) }))
     render(<App />)
-    expect(await screen.findByRole('heading', { name:'Аналитика мультимодальной модели' })).toBeTruthy()
+    expect(await screen.findByRole('heading', { name:'Выводы по фотографиям' })).toBeTruthy()
     expect(screen.getByText('Историческая аналитика')).toBeTruthy()
     expect(screen.queryByText('Yandex AI Studio DeepSeek')).toBeNull()
     expect(JSON.stringify(historical)).toBe(saved)
@@ -1870,6 +1870,7 @@ describe('New Analysis', () => {
     await act(async () => { await vi.advanceTimersByTimeAsync(15000) })
     expect(post).toHaveBeenCalledTimes(1)
     expect(post.mock.calls[0][1].signal.aborted).toBe(false)
+    expect(screen.queryByText(/Результат предыдущей отправки неизвестен|те же данные и ключ/)).toBeNull()
     expect(screen.getByRole('button', { name: 'Создаём анализ…' })).toHaveProperty('disabled', true)
     await act(async () => { finish({ status: 202, json: async () => ({ run_id: '12345678-1234-1234-1234-123456789abc' }) }); await Promise.resolve() })
     expect(screen.getByRole('heading', { name: 'Анализ поставлен в очередь' })).toBeTruthy()
@@ -1995,6 +1996,7 @@ describe('New Analysis', () => {
       expect(await screen.findByText(/Обратитесь к администратору/)).toBeTruthy()
       const saved = sessionStorage.getItem('observation-pending')
       expect(saved).toBeTruthy()
+      expect(screen.queryByText(/Результат предыдущей отправки неизвестен|те же данные и ключ/)).toBeNull()
       expect(post).toHaveBeenCalledTimes(1)
       cleanup()
       render(<App />)
@@ -2002,6 +2004,7 @@ describe('New Analysis', () => {
       await screen.findByText(/Обратитесь к администратору/)
       expect(post).toHaveBeenCalledTimes(2)
       expect(sessionStorage.getItem('observation-pending')).toBe(saved)
+      expect(screen.queryByText(/Результат предыдущей отправки неизвестен|те же данные и ключ/)).toBeNull()
       expect(post.mock.calls[1][0]).toBe(post.mock.calls[0][0])
       expect(post.mock.calls[1][1].body).toBe(post.mock.calls[0][1].body)
       expect(post.mock.calls[1][1].headers['Idempotency-Key']).toBe(post.mock.calls[0][1].headers['Idempotency-Key'])
@@ -2138,21 +2141,26 @@ describe('New Analysis', () => {
     expect(post).toHaveBeenCalledTimes(2)
   })
 
-  it('shows a missing run accurately and retries a failed run read', async () => {
-    const user = userEvent.setup()
+  it('shows a missing run accurately and automatically retries a transient initial read after reload', async () => {
     history.replaceState({}, '', '/runs/12345678-1234-1234-1234-123456789abc')
     const fetchMock = vi.fn().mockResolvedValueOnce({ status: 404, ok: false })
       .mockRejectedValueOnce(new Error('offline'))
       .mockResolvedValueOnce({ status: 200, ok: true, json: async () => snapshot('queued') })
     vi.stubGlobal('fetch', fetchMock)
-    render(<App />)
-    await screen.findByRole('heading', { name: 'Анализ не найден' })
+    vi.useFakeTimers()
+    await act(async () => { render(<App />) })
+    expect(screen.getByRole('heading', { name: 'Анализ не найден' })).toBeTruthy()
     expect(screen.queryByRole('heading', { name: 'Этапы анализа' })).toBeNull()
+    await act(async () => { await vi.advanceTimersByTimeAsync(3000) })
+    expect(fetchMock).toHaveBeenCalledTimes(1)
     cleanup()
-    render(<App />)
-    await screen.findByRole('heading', { name: 'Статус анализа неизвестен' })
-    await user.click(screen.getByRole('button', { name: 'Проверить статус' }))
-    await screen.findByRole('heading', { name: 'Анализ поставлен в очередь' })
+    await act(async () => { render(<App />) })
+    expect(screen.getByRole('heading', { name: 'Проверяем анализ…' })).toBeTruthy()
+    expect(screen.queryByText('Обратитесь к администратору')).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Проверить статус' })).toBeNull()
+    await act(async () => { await vi.advanceTimersByTimeAsync(3000) })
+    expect(screen.getByRole('heading', { name: 'Анализ поставлен в очередь' })).toBeTruthy()
+    expect(fetchMock).toHaveBeenCalledTimes(3)
   })
 
   it('shows committed transitions in order, announces them once, and preserves completed stages after failure', async () => {
@@ -2209,13 +2217,12 @@ describe('New Analysis', () => {
     await act(async () => { render(<App />) })
     expect(screen.getByRole('heading', { name: 'Анализ выполняется' })).toBeTruthy()
     await act(async () => { await vi.advanceTimersByTimeAsync(3000) })
-    expect(screen.getByRole('status').textContent).toBe('Обратитесь к администратору')
+    expect(screen.queryByText('Обратитесь к администратору')).toBeNull()
+    expect(screen.getByRole('heading', { name: 'Обновляем состояние анализа' })).toBeTruthy()
     expect(screen.getAllByText('Проверка пригодности кадров').length).toBeGreaterThan(0)
-    fireEvent.click(screen.getByRole('button', { name: 'Проверить статус' }))
-    await act(async () => { await Promise.resolve() })
-    expect(screen.getByRole('button', { name: 'Проверяем статус…' })).toHaveProperty('disabled', true)
+    expect(screen.queryByRole('button', { name: 'Проверить статус' })).toBeNull()
+    await act(async () => { await vi.advanceTimersByTimeAsync(3000) })
     expect(screen.getByRole('heading', { name: 'Анализ выполняется' }).closest('.run-workspace')?.getAttribute('aria-busy')).toBe('true')
-    fireEvent.click(screen.getByRole('button', { name: 'Проверяем статус…' }))
     expect(fetchMock).toHaveBeenCalledTimes(3)
     expect(fetchMock.mock.calls[2][0]).toBe(`/api/runs/${runId}`)
     fireEvent.click(screen.getByRole('link', { name: 'Создать проект' }))
@@ -2226,7 +2233,7 @@ describe('New Analysis', () => {
     vi.useRealTimers()
   })
 
-  it('clears a disconnect warning after a successful terminal read and explains skipped stages', async () => {
+  it('silently resumes polling after a transient failure and reaches the terminal state', async () => {
     history.replaceState({}, '', '/runs/12345678-1234-1234-1234-123456789abc')
     const fetchMock = vi.fn()
       .mockResolvedValueOnce({ ok: true, json: async () => snapshot('running', ['succeeded', 'running', 'pending', 'pending', 'pending', 'pending']) })
@@ -2236,8 +2243,9 @@ describe('New Analysis', () => {
     vi.useFakeTimers()
     await act(async () => { render(<App />) })
     await act(async () => { await vi.advanceTimersByTimeAsync(3000) })
-    expect(screen.getByRole('status').textContent).toContain('Обратитесь к администратору')
-    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Проверить статус' })) })
+    expect(screen.queryByText('Обратитесь к администратору')).toBeNull()
+    expect(screen.getByRole('heading', { name: 'Обновляем состояние анализа' })).toBeTruthy()
+    await act(async () => { await vi.advanceTimersByTimeAsync(3000) })
     expect(screen.getByRole('heading', { name: 'Анализ завершён' })).toBeTruthy()
     expect(screen.queryByText('Связь потеряна. Анализ может продолжаться на сервере.')).toBeNull()
     expect(screen.getByRole('heading', { name: 'Анализ завершён' }).closest('.run-workspace')?.getAttribute('aria-busy')).toBe('false')
@@ -2245,6 +2253,133 @@ describe('New Analysis', () => {
     expect(screen.getByRole('status').textContent).toContain('Формирование результата: Завершено.')
     await act(async () => { await vi.advanceTimersByTimeAsync(6000) })
     expect(fetchMock).toHaveBeenCalledTimes(3)
+  })
+
+  it.each([
+    ['running', 'network', 'succeeded'], ['running', '503', 'succeeded'],
+    ['running', 'fetch-timeout', 'succeeded'], ['running', 'json-timeout', 'succeeded'],
+    ['queued', '503', 'succeeded'], ['running', 'network', 'failed'],
+  ])('automatically recovers %s -> %s -> %s without another POST', async (initialState, failure, finalState) => {
+    const runId = '12345678-1234-1234-1234-123456789abc'
+    history.replaceState({}, '', `/runs/${runId}`)
+    localStorage.setItem('analysis-motion', 'on')
+    const running = snapshot(initialState, ['succeeded', 'succeeded', 'running', 'pending', 'pending', 'pending'])
+    const terminal = finalState === 'failed'
+      ? snapshot('failed', ['succeeded', 'succeeded', 'failed', 'skipped', 'skipped', 'skipped'])
+      : snapshot('succeeded', ['succeeded', 'succeeded', 'succeeded', 'skipped', 'skipped', 'succeeded'])
+    const fetchMock = vi.fn().mockResolvedValueOnce({ ok: true, json: async () => running })
+      .mockImplementationOnce(async () => {
+        if (failure === 'network') throw new TypeError('private network error')
+        if (failure === '503') return { ok: false, status: 503 }
+        if (failure === 'json-timeout') return { ok: true, json: () => new Promise(() => {}) }
+        return new Promise(() => {})
+      }).mockResolvedValueOnce({ ok: true, json: async () => terminal })
+    vi.stubGlobal('fetch', fetchMock)
+    vi.useFakeTimers()
+    await act(async () => { render(<App />) })
+    await act(async () => { await vi.advanceTimersByTimeAsync(3000) })
+    if (failure.endsWith('timeout')) {
+      await act(async () => { await vi.advanceTimersByTimeAsync(10000) })
+      expect(fetchMock.mock.calls[1][1].signal.aborted).toBe(true)
+    }
+    expect(screen.queryByText('Обратитесь к администратору')).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Проверить статус' })).toBeNull()
+    expect(screen.getByRole('heading', { name: 'Обновляем состояние анализа' })).toBeTruthy()
+    expect(document.querySelector('.analysis-scene.is-running')).toBeNull()
+    await act(async () => { await vi.advanceTimersByTimeAsync(3000) })
+    expect(screen.getByRole('heading', { name: finalState === 'failed' ? 'Анализ завершился ошибкой' : 'Анализ завершён' })).toBeTruthy()
+    expect(screen.queryByText('Обратитесь к администратору')).toBeNull()
+    expect(screen.queryByText('Обновляем состояние анализа')).toBeNull()
+    await act(async () => { await vi.advanceTimersByTimeAsync(15000) })
+    expect(fetchMock).toHaveBeenCalledTimes(3)
+    expect(fetchMock.mock.calls.every(([url, init]) => url === `/api/runs/${runId}` && !init?.method)).toBe(true)
+    for (const [, init] of fetchMock.mock.calls) expect(init.headers).toEqual({ 'X-Response-Detail': 'summary' })
+  })
+
+  it('ignores late JSON after leaving a run during an automatic retry', async () => {
+    const runId = '12345678-1234-1234-1234-123456789abc'
+    history.replaceState({}, '', `/runs/${runId}`)
+    let resolveJson!: (value: unknown) => void
+    const fetchMock = vi.fn().mockResolvedValueOnce({ ok: true, json: async () => snapshot('running') })
+      .mockRejectedValueOnce(new TypeError('offline'))
+      .mockResolvedValueOnce({ ok: true, json: () => new Promise(resolve => { resolveJson = resolve }) })
+    vi.stubGlobal('fetch', fetchMock)
+    vi.useFakeTimers()
+    await act(async () => { render(<App />) })
+    await act(async () => { await vi.advanceTimersByTimeAsync(6000) })
+    fireEvent.click(screen.getByRole('link', { name: 'Создать проект' }))
+    await act(async () => { resolveJson(snapshot('failed')); await Promise.resolve() })
+    expect(fetchMock.mock.calls[2][1].signal.aborted).toBe(true)
+    expect(screen.getByRole('heading', { name: 'Проекты' })).toBeTruthy()
+    expect(screen.queryByText('Анализ завершился ошибкой')).toBeNull()
+    await act(async () => { await vi.advanceTimersByTimeAsync(15000) })
+    expect(fetchMock.mock.calls.filter(([url]) => url === `/api/runs/${runId}`)).toHaveLength(3)
+    expect(fetchMock.mock.calls.every(([, init]) => !init?.method || init.method === 'GET')).toBe(true)
+  })
+
+  it.each(['network', '503', 'json-timeout'])('bounds initial persistent %s failures before showing the administrator error', async failure => {
+    history.replaceState({}, '', '/runs/12345678-1234-1234-1234-123456789abc')
+    const fetchMock = vi.fn(async () => {
+      if (failure === 'network') throw new TypeError('network')
+      if (failure === '503') return { ok: false, status: 503 }
+      return { ok: true, json: () => new Promise(() => {}) }
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    vi.useFakeTimers()
+    await act(async () => { render(<App />) })
+    if (failure === 'json-timeout') await act(async () => { await vi.advanceTimersByTimeAsync(10000) })
+    expect(screen.getByRole('heading', { name: 'Проверяем анализ…' })).toBeTruthy()
+    expect(screen.queryByText('Обратитесь к администратору')).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Проверить статус' })).toBeNull()
+    for (let retry = 0; retry < 2; retry++) {
+      await act(async () => { await vi.advanceTimersByTimeAsync(3000) })
+      if (failure === 'json-timeout') await act(async () => { await vi.advanceTimersByTimeAsync(10000) })
+    }
+    expect(screen.getAllByText('Обратитесь к администратору').length).toBeGreaterThan(0)
+    expect(screen.getByRole('button', { name: 'Проверить статус' })).toBeTruthy()
+    expect(screen.queryByRole('heading', { name: 'Анализ выполняется' })).toBeNull()
+    expect(screen.queryByText('Обновляем состояние анализа')).toBeNull()
+    await act(async () => { await vi.advanceTimersByTimeAsync(30000) })
+    expect(fetchMock).toHaveBeenCalledTimes(3)
+  })
+
+  it.each(['503', 'fetch-timeout', 'json-timeout'])('automatically recovers the initial %s failure after reload', async failure => {
+    const runId = '12345678-1234-1234-1234-123456789abc'
+    history.replaceState({}, '', `/runs/${runId}`)
+    const fetchMock = vi.fn().mockImplementationOnce(async () => {
+      if (failure === '503') return { ok: false, status: 503 }
+      if (failure === 'json-timeout') return { ok: true, json: () => new Promise(() => {}) }
+      return new Promise(() => {})
+    }).mockResolvedValueOnce({ ok: true, json: async () => snapshot('succeeded') })
+    vi.stubGlobal('fetch', fetchMock)
+    vi.useFakeTimers()
+    await act(async () => { render(<App />) })
+    if (failure.endsWith('timeout')) await act(async () => { await vi.advanceTimersByTimeAsync(10000) })
+    expect(screen.getByRole('heading', { name: 'Проверяем анализ…' })).toBeTruthy()
+    expect(screen.queryByText('Обратитесь к администратору')).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Проверить статус' })).toBeNull()
+    await act(async () => { await vi.advanceTimersByTimeAsync(3000) })
+    expect(screen.getByRole('heading', { name: 'Анализ завершён' })).toBeTruthy()
+    await act(async () => { await vi.advanceTimersByTimeAsync(30000) })
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    for (const [url, init] of fetchMock.mock.calls) {
+      expect(url).toBe(`/api/runs/${runId}`)
+      expect(init.headers).toEqual({ 'X-Response-Detail': 'summary' })
+      expect(init.method).toBeUndefined()
+    }
+  })
+
+  it.each(['404', 'mismatch'])('does not automatically retry an initial definitive %s response', async failure => {
+    history.replaceState({}, '', '/runs/12345678-1234-1234-1234-123456789abc')
+    const fetchMock = vi.fn(async () => failure === '404' ? { ok: false, status: 404 }
+      : { ok: true, json: async () => ({ ...snapshot('running'), run_id: 'another-run' }) })
+    vi.stubGlobal('fetch', fetchMock)
+    vi.useFakeTimers()
+    await act(async () => { render(<App />) })
+    if (failure === '404') expect(screen.getByRole('heading', { name: 'Анализ не найден' })).toBeTruthy()
+    else expect(screen.getByText('Получены данные другого анализа. Повторите проверку.', { selector: '.attention p' })).toBeTruthy()
+    await act(async () => { await vi.advanceTimersByTimeAsync(30000) })
+    expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 
   it('keeps a known run when a later read returns 404 and does not label an unknown state as running', async () => {
@@ -2265,7 +2400,7 @@ describe('New Analysis', () => {
     expect(fetchMock).toHaveBeenCalledTimes(3)
   })
 
-  it('times out a stalled status request, retains the snapshot, and offers retry', async () => {
+  it('times out a stalled status request, retains the snapshot, and schedules silent retry', async () => {
     history.replaceState({}, '', '/runs/12345678-1234-1234-1234-123456789abc')
     const fetchMock = vi.fn()
       .mockResolvedValueOnce({ ok: true, json: async () => snapshot('running') })
@@ -2277,7 +2412,9 @@ describe('New Analysis', () => {
     expect(screen.getByRole('heading', { name: 'Анализ выполняется' }).closest('.run-workspace')?.getAttribute('aria-busy')).toBe('true')
     await act(async () => { await vi.advanceTimersByTimeAsync(10000) })
     expect(fetchMock.mock.calls[1][1].signal.aborted).toBe(true)
-    expect(screen.getByRole('button', { name: 'Проверить статус' })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Проверить статус' })).toBeNull()
+    expect(screen.queryByText('Обратитесь к администратору')).toBeNull()
+    expect(screen.getByRole('heading', { name: 'Обновляем состояние анализа' })).toBeTruthy()
     expect(screen.getAllByText('Проверка пригодности кадров').length).toBeGreaterThan(0)
   })
 
@@ -2335,6 +2472,7 @@ it('jumps straight to received pipeline stages and removes processing immediatel
  try{
   await act(async()=>{render(<App/>)})
   expect(document.querySelector('.analysis-scene.is-recognizing')).toBeTruthy()
+  expect(screen.queryByRole('checkbox', { name: 'Движение во время анализа' })).toBeNull()
   expect(within(screen.getByRole('list',{name:'Краткие этапы'})).getAllByRole('listitem')).toHaveLength(6)
   await act(async()=>{await vi.advanceTimersByTimeAsync(3000)})
   expect(within(screen.getByRole('region',{name:'Ход анализа'})).getByRole('heading').textContent).toBe('Формирование результата')

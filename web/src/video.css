@@ -5,3 +5,5 @@
 .video-result ol { display: grid; gap: 1rem; }
 .media-selector { display: flex; gap: .75rem; flex-wrap: wrap; margin-bottom: 1.5rem; }
 .media-selector button[aria-pressed="true"] { outline: 2px solid currentColor; outline-offset: 2px; }
+
+.video-upload .upload-actions:focus-within .file-button { outline: 3px solid var(--focus); outline-offset: 2px; }

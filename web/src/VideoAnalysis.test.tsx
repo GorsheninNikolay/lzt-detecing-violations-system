@@ -82,6 +82,7 @@ describe('video analysis', () => {
     expect(await restorePendingVideo(videoScope('alice', 'other-project'))).toBe(null)
     render(<VideoAnalysisForm accountId="alice" projectId="project" provider="changed" onOpen={open} onDirty={() => {}} />)
     const restore = await screen.findByRole('button', { name: 'Восстановить отправку' })
+    expect(screen.queryByText(/Исход отправки неизвестен|прежним ключом/)).toBeNull()
     fireEvent.click(restore)
     await waitFor(() => expect(open).toHaveBeenCalledWith('/runs/restored'))
     expect(writes[1].url).toBe(writes[0].url)
@@ -162,4 +163,79 @@ describe('video analysis', () => {
     expect(pending.get(videoScope('alice', 'project'))).toBe(original)
   })
 
+})
+
+it('shows no submission checkboxes or removed explanations and keeps one accessible styled picker', async () => {
+  vi.stubGlobal('fetch', vi.fn(async (url: string) => json(url.includes('/plan') ? { revision_number: 0 } : { zones: [{ id: 'zone', name: 'Участок' }] })))
+  const view = render(<VideoAnalysisForm projectId="project" onOpen={() => {}} onDirty={() => {}} />)
+  const input = screen.getByLabelText('Выбрать видео') as HTMLInputElement
+  await waitFor(() => expect(input.disabled).toBe(false))
+  expect(screen.queryByRole('checkbox')).toBeNull()
+  expect(screen.queryByText(/Подтверждаю время начала|Если время неизвестно|Выбранные кадры передаются/)).toBeNull()
+  expect(view.container.querySelectorAll('input[type="file"]')).toHaveLength(1)
+  expect(view.container.querySelectorAll('label.file-button')).toHaveLength(1)
+  expect(input.classList.contains('sr-only')).toBe(true)
+  expect(input.hidden).toBe(false)
+  expect(input.closest('.upload-actions')).toBeTruthy()
+  input.focus()
+  expect(document.activeElement).toBe(input)
+})
+
+it.each([false, true])('automatically uses entered local time and optional existing plan=%s', async hasPlan => {
+  const writes: string[] = []
+  vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+    if (init?.method === 'POST') { writes.push(url); return json({ run_id: 'video-run' }) }
+    return json(url.includes('/plan') ? { revision_number: hasPlan ? 2 : 0, ...(hasPlan ? { revision_id: 'saved-plan' } : {}) } : { zones: [{ id: 'zone', name: 'Участок' }] })
+  }))
+  render(<VideoAnalysisForm projectId="project" onOpen={() => {}} onDirty={() => {}} />)
+  await waitFor(() => expect((screen.getByLabelText('Выбрать видео') as HTMLInputElement).disabled).toBe(false))
+  fireEvent.change(screen.getByLabelText('Выбрать видео'), { target: { files: [new File(['video'], 'site.mp4')] } })
+  fireEvent.change(screen.getByLabelText('Начало съёмки: дата'), { target: { value: '2026-10-20' } })
+  fireEvent.change(screen.getByLabelText('Начало съёмки: время'), { target: { value: '16:14' } })
+  await waitFor(() => expect((screen.getByRole('button', { name: 'Запустить анализ видео' }) as HTMLButtonElement).disabled).toBe(false))
+  fireEvent.click(screen.getByRole('button', { name: 'Запустить анализ видео' }))
+  await waitFor(() => expect(writes).toHaveLength(1))
+  const params = new URL(writes[0], 'https://local.test').searchParams
+  expect(params.get('capture_started_at')).toBe(new Date('2026-10-20T16:14').toISOString())
+  expect(params.get('plan_revision_id')).toBe(hasPlan ? 'saved-plan' : null)
+  expect(params.get('cloud_processing_consent')).toBe('true')
+})
+
+it('leaves blank time relative even with an existing plan and rejects a partial date', async () => {
+  const writes: string[] = []
+  vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+    if (init?.method === 'POST') { writes.push(url); return json({ run_id: 'video-run' }) }
+    return json(url.includes('/plan') ? { revision_number: 2, revision_id: 'saved-plan' } : { zones: [{ id: 'zone', name: 'Участок' }] })
+  }))
+  render(<VideoAnalysisForm projectId="project" onOpen={() => {}} onDirty={() => {}} />)
+  await waitFor(() => expect((screen.getByLabelText('Выбрать видео') as HTMLInputElement).disabled).toBe(false))
+  fireEvent.change(screen.getByLabelText('Выбрать видео'), { target: { files: [new File(['video'], 'site.mp4')] } })
+  const submit = screen.getByRole('button', { name: 'Запустить анализ видео' })
+  await waitFor(() => expect((submit as HTMLButtonElement).disabled).toBe(false))
+  fireEvent.change(screen.getByLabelText('Начало съёмки: дата'), { target: { value: '2026-10-20' } })
+  fireEvent.click(submit)
+  expect((await screen.findByRole('alert')).textContent).toBe('Укажите существующие местные дату и время начала съёмки.')
+  expect(writes).toHaveLength(0)
+  fireEvent.change(screen.getByLabelText('Начало съёмки: дата'), { target: { value: '' } })
+  fireEvent.click(submit)
+  await waitFor(() => expect(writes).toHaveLength(1))
+  const params = new URL(writes[0], 'https://local.test').searchParams
+  expect(params.has('capture_started_at')).toBe(false)
+  expect(params.has('plan_revision_id')).toBe(false)
+})
+
+it('restores an existing timed request without changing its query, key or file', async () => {
+  const original = { key: 'saved-key', query: 'zone_id=zone&capture_started_at=2026-10-20T13%3A14%3A00.000Z&plan_revision_id=old-plan&cloud_processing_consent=false&cloud_provider=old-provider', file: new File(['original'], 'original.mov') }
+  pending.set(videoScope('alice', 'project'), original)
+  const writes: { url: string; init: RequestInit }[] = []
+  vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+    if (init?.method === 'POST') { writes.push({ url, init }); return json({ run_id: 'restored' }) }
+    return json(url.includes('/plan') ? { revision_number: 5, revision_id: 'new-plan' } : { zones: [{ id: 'zone', name: 'Участок' }] })
+  }))
+  render(<VideoAnalysisForm accountId="alice" projectId="project" provider="new-provider" onOpen={() => {}} onDirty={() => {}} />)
+  fireEvent.click(await screen.findByRole('button', { name: 'Восстановить отправку' }))
+  await waitFor(() => expect(writes).toHaveLength(1))
+  expect(writes[0].url).toBe(`/api/runs/video?${original.query}`)
+  expect(writes[0].init.body).toBe(original.file)
+  expect((writes[0].init.headers as Record<string, string>)['Idempotency-Key']).toBe(original.key)
 })

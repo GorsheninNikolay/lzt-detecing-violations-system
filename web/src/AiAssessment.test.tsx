@@ -8,7 +8,7 @@ it('renders source-bound risks and limits without inventing confidence', () => {
   expect(screen.getByText('Кадры: 1')).toBeTruthy()
   expect(screen.getByText('Наблюдение недоступно')).toBeTruthy()
   expect(screen.getByText('Плана нет')).toBeTruthy()
-  expect(screen.getByRole('heading', { name: 'Аналитика мультимодальной модели' })).toBeTruthy()
+  expect(screen.getByRole('heading', { name: 'Выводы по фотографиям' })).toBeTruthy()
   expect(screen.queryByText(/\d+%/)).toBeNull()
 })
 it('preserves unknown unlocalized objects without trying to draw a box', async () => {
@@ -39,23 +39,24 @@ it('does not expose invalid or uncertain raw calls without an assessment', () =>
   ]} />)
   expect(screen.queryByText('Наблюдение кадра · Ответ отклонён')).toBeNull()
   expect(screen.queryByText('Итоговая аналитика · Результат неизвестен')).toBeNull()
-  expect(screen.getByText(/Выводы по фотографиям недоступны/)).toBeTruthy()
+  expect(screen.getByText(/Общий вывод по фотографиям не сохранён/)).toBeTruthy()
   expect(screen.getByRole('heading', { name: 'Выводы по фотографиям' })).toBeTruthy()
   expect(screen.queryByText(/"incomplete"/)).toBeNull()
 })
 
-it('labels historical evidence without rewriting the saved provider response', () => {
+it.each(['yandex_deepseek', 'deepseek_direct'])('hides provider labels for %s without rewriting saved evidence', adapterCode => {
   const evidence = [{id:'old-call',kind:'assessment',state:'completed',context:{},result:{
     model:'gpt://folder/deepseek-v4.1-flash/latest',usage:null,instruction_version:'deepseek-service-v1',
     schema_version:'deepseek-service-v1',raw:{provider:'DeepSeek'},
   }}]
   const saved = JSON.stringify(evidence)
-  render(<AiAssessmentPanel inputs={[]} evidence={evidence} adapterCode="yandex_deepseek" assessment={{
+  render(<AiAssessmentPanel inputs={[]} evidence={evidence} adapterCode={adapterCode} assessment={{
     summary:'Сохранённая аналитика',stage_hypothesis:{stage:'unknown',reason:'Мало данных'},
     risks:[],recommendations:[],limitations:[],
   }} />)
-  expect(screen.getByRole('heading', { name: 'Аналитика мультимодальной модели' })).toBeTruthy()
-  expect(screen.getByText(/Источник: Yandex AI Studio/)).toBeTruthy()
+  expect(screen.getByRole('heading', { name: 'Выводы по фотографиям' })).toBeTruthy()
+  expect(screen.queryByText(/Источник:|DeepSeek|Yandex AI Studio/)).toBeNull()
+  expect(screen.getByText('Сохранённая аналитика')).toBeTruthy()
   expect(screen.queryByText(/"provider": "DeepSeek"/)).toBeNull()
   expect(JSON.stringify(evidence)).toBe(saved)
 })
@@ -76,12 +77,20 @@ it('shows hybrid activity, frame stage hypotheses and applicable plan links', ()
 })
 
 
-it('labels direct DeepSeek from the saved adapter and leaves unknown sources unspecified', () => {
-  const { rerender } = render(<AiAssessmentPanel inputs={[]} evidence={[]} adapterCode="deepseek_direct" />)
-  expect(screen.getByText(/Источник: DeepSeek\./)).toBeTruthy()
-  expect(screen.queryByText(/Yandex AI Studio/)).toBeNull()
-  rerender(<AiAssessmentPanel inputs={[]} evidence={[]} adapterCode="future_adapter" />)
-  expect(screen.getByText(/Источник облачной обработки не указан/)).toBeTruthy()
-  expect(screen.queryByText(/Источник: DeepSeek/)).toBeNull()
-  expect(screen.queryByText(/Yandex AI Studio/)).toBeNull()
+it.each(['queued', 'running'])('explains that %s analysis is still processing', runState => {
+  render(<AiAssessmentPanel inputs={[]} evidence={[]} assessment={null} runState={runState} />)
+  expect(screen.getByText('Фотографии ещё обрабатываются. Выводы появятся после завершения анализа.')).toBeTruthy()
+  expect(screen.queryByText(/не сохранён|не получен|Необнаружение|Источник/)).toBeNull()
+})
+
+it('explains failed analysis without inventing conclusions', () => {
+  render(<AiAssessmentPanel inputs={[]} evidence={[]} assessment={null} runState="failed" />)
+  expect(screen.getByText('Анализ завершился с ошибкой. Общий вывод по фотографиям не получен. Проверьте доступные наблюдения по кадрам.')).toBeTruthy()
+  expect(screen.queryByText(/Риски не выделены|Необнаружение|Источник|DeepSeek/)).toBeNull()
+})
+
+it('distinguishes a missing saved conclusion from ongoing processing', () => {
+  render(<AiAssessmentPanel inputs={[]} evidence={[]} assessment={null} runState="succeeded" />)
+  expect(screen.getByText('Общий вывод по фотографиям не сохранён. Проверьте доступные наблюдения по кадрам.')).toBeTruthy()
+  expect(screen.queryByText(/ещё обрабатываются|Необнаружение|Источник|DeepSeek/)).toBeNull()
 })

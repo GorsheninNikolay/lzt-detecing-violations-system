@@ -88,3 +88,18 @@ only a complete negated list of specific plan subjects; mixed affirmative
 statements remain rejected. Twenty-four focused delay/safety cases passed.
 The stored provider response passed full hybrid validation in memory without
 another provider call. The original failed run and paid receipts remain intact.
+
+## Compact status and assistant context — 2026-10-20
+
+The UI now requests `GET /runs/{id}` with `X-Response-Detail: summary`.
+This keeps state, saved conclusions, source references and observation grounds,
+but omits repeated raw provider request/response bodies from `ai_evidence.result`.
+The default API response and immutable stored evidence remain unchanged.
+A three-photo failed run measured 15,222,566 bytes in full and 67,119 bytes in
+summary mode. Status reads include a bounded JSON read and automatically recover
+from transient failures without labelling a running analysis failed.
+
+The project assistant reads photo and video lifecycle state, prioritizes active
+jobs in its bounded slice, and distinguishes missing timestamps from zero time.
+Its context and fallback include known error descriptions; old assistant replies
+are rendered with generic model wording without rewriting stored conversations.

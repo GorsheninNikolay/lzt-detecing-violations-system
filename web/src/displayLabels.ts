@@ -22,9 +22,9 @@ export const signalKindLabel = (name: string) => lookup(signalKindLabels, name) 
 export const signalStateLabel = (name: string) => lookup(signalStateLabels, name) ?? 'Состояние не определено'
 
 export type CloudProvider = 'deepseek' | 'yandex_ai_studio'
-export const cloudProviderLabel = (provider: CloudProvider) => provider === 'deepseek' ? 'DeepSeek' : 'Yandex AI Studio'
+export const cloudProviderLabel = (_provider: CloudProvider) => 'Мультимодальная модель'
 export function savedCloudProviderLabel(adapterCode?: string): string | null {
-  return adapterCode === 'deepseek_direct' ? 'DeepSeek' : adapterCode === 'yandex_deepseek' ? 'Yandex AI Studio' : null
+  return adapterCode === 'deepseek_direct' || adapterCode === 'yandex_deepseek' ? 'Мультимодальная модель' : null
 }
 export const cloudErrorLabels: Record<string, string> = {
   observer_balance_failed: 'На аккаунте облачной модели недостаточно средств. Пополните баланс перед новым анализом.',
@@ -43,7 +43,7 @@ export const sceneLabel = (name: string) => lookup(sceneLabels, name) ?? 'При
 export const callStateLabel = (name: string) => lookup(callStateLabels, name) ?? 'Состояние не определено'
 
 export function explanationLabel(text: string, workTitles: Record<string, string> = {}): string {
-  let result = text.replace(/\b(excavation|concreting|roadwork)\b/g, name => `«${stageLabel(name)}»`)
+  let result = text.replace(/\bDeepSeek\b/gi, 'мультимодальная модель').replace(/\b(excavation|concreting|roadwork)\b/g, name => `«${stageLabel(name)}»`)
   for (const [id, title] of Object.entries(workTitles)) result = result.replaceAll(id, `«${title}»`)
   return result
 }

@@ -13,6 +13,7 @@ from fastapi.responses import JSONResponse, Response
 from app.adapters.artifacts import ArtifactGateError, ArtifactStore
 from app.adapters.postgres import AdmissionStoreError, DatabaseGateError, PostgresStore, ReconciliationGateError, RecoveryGateError
 from app.application.executor import ClaimLoop
+from app.application.run_presentation import summary_snapshot
 from app.application.submission import SubmissionError, submit, submit_series, log_submission_failure
 from app.domain.rule import ANALYSIS_CHOICES
 from app.domain.comparison_campaign import CampaignGateError
@@ -293,7 +294,7 @@ def create_app() -> FastAPI:
 
     @app.get("/runs/{run_id}")
     async def read_run(run_id: str, request: Request) -> JSONResponse:
-        headers = {"Cache-Control": "no-store"}
+        headers = {"Cache-Control": "no-store", "Vary": "X-Response-Detail"}
         try:
             identifier = uuid.UUID(run_id)
         except ValueError:
@@ -330,6 +331,8 @@ def create_app() -> FastAPI:
                     run["retry_authorization_revision"] = binding[1]
                 except Exception:
                     pass
+        if run and request.headers.get("X-Response-Detail") == "summary":
+            run = summary_snapshot(run)
         return JSONResponse(run if run else {"code": "run_not_found"}, status_code=200 if run else 404,
                             headers=headers)
 

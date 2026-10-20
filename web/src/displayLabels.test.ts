@@ -1,7 +1,7 @@
 import { expect, it } from 'vitest'
 import cases from '../../shared/display-label-cases.ru.json'
 import manifest from '../../backend/app/data/yolo-manifest.json'
-import { equipmentLabel, equipmentLabels, stageLabel, signalKindLabel, signalStateLabel, explanationLabel } from './displayLabels'
+import { equipmentLabel, equipmentLabels, stageLabel, signalKindLabel, signalStateLabel, explanationLabel, cloudProviderLabel, savedCloudProviderLabel } from './displayLabels'
 
 it('translates every pinned detector class without changing its catalog membership', () => {
   for (const model of manifest.models) for (const name of model.classes) {
@@ -48,4 +48,11 @@ it('formats known stage/work references without changing stored model text', () 
  const raw='Этап excavation; проверить запись work-uuid.';
  expect(explanationLabel(raw,{'work-uuid':'Планировка грунта'})).toBe('Этап «Земляные работы»; проверить запись «Планировка грунта».')
  expect(raw).toBe('Этап excavation; проверить запись work-uuid.')
+})
+
+it('labels supported providers generically while preserving unknown saved sources', () => {
+  for (const provider of ['deepseek', 'yandex_ai_studio'] as const) expect(cloudProviderLabel(provider)).toBe('Мультимодальная модель')
+  for (const adapter of ['deepseek_direct', 'yandex_deepseek']) expect(savedCloudProviderLabel(adapter)).toBe('Мультимодальная модель')
+  expect(savedCloudProviderLabel('future_adapter')).toBeNull()
+  expect(savedCloudProviderLabel()).toBeNull()
 })

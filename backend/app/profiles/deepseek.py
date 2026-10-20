@@ -250,8 +250,11 @@ def unsupported_claim(text, pattern):
     subjects = r'(?:рисках\s+плана|задержках|графике|сроках|отставании|отставаниях)'
     disclaimer = (rf'\s*(?:план\s+не\s+привязан\s*:\s*)?выводы\s+(?:о|об)\s+{subjects}'
                   rf'(?:\s*(?:,|и)\s*{subjects})*\s+не\s+(?:делаются|формируются)\s*')
+    nominal_subject = rf'(?:плановые\s+риски|задержки|выводы\s+(?:о|об)\s+{subjects})'
+    absent_plan_disclaimer = (rf'\s*отсутствует\s+привязанный\s+план,\s*поэтому\s+{nominal_subject}'
+                              rf'(?:\s*(?:,|и)\s*{nominal_subject})*\s+не\s+(?:делаются|формируются)\s*')
     for clause in re.split(r'[.!?;\n]|\b(?:но|однако|but|however)\b', text, flags=re.I):
-        if re.fullmatch(disclaimer, clause, re.I):
+        if re.fullmatch(disclaimer, clause, re.I) or re.fullmatch(absent_plan_disclaimer, clause, re.I):
             continue
         if re.search(pattern, clause, re.I) and not re.search(
                 r'невозможн(?:о|а|ы)\b|нельзя|недостаточно|нет данных|данных.*нет|не подтвержд|не установл|'

@@ -1,6 +1,6 @@
 import { useContext, useEffect, useRef, useState, type DragEvent } from 'react'
 import { AiAssessmentPanel, type AiAssessment } from './AiAssessment'
-import { equipmentLabel, stageLabel } from './displayLabels'
+import { equipmentLabel, stageLabel, explanationLabel } from './displayLabels'
 import { AccountIdentity } from './AccountIdentity'
 import CaptureDateTime from './CaptureDateTime'
 import { validLocalPeriod } from './localPeriod'
@@ -45,14 +45,13 @@ async function responseData(response: Response) {
   return data
 }
 
-export function VideoAnalysisForm({ projectId, accountId = '', onOpen, onDirty, onLockChange, provider = 'deepseek', providerLabel = 'DeepSeek' }: { projectId: string; accountId?: string; onLockChange?: (locked: boolean) => void; provider?: string; providerLabel?: string; onOpen: (path: string) => void; onDirty: () => void }) {
+export function VideoAnalysisForm({ projectId, accountId = '', onOpen, onDirty, onLockChange, provider = 'deepseek' }: { projectId: string; accountId?: string; onLockChange?: (locked: boolean) => void; provider?: string; providerLabel?: string; onOpen: (path: string) => void; onDirty: () => void }) {
   const [file, setFile] = useState<File | null>(null)
   const [zones, setZones] = useState<Zone[]>([])
   const [zone, setZone] = useState('')
   const [plan, setPlan] = useState<{ revision_id?: string; revision_number: number } | null>(null)
   const [planLoading, setPlanLoading] = useState(false)
   const [started, setStarted] = useState('')
-  const [confirmed, setConfirmed] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [unknown, setUnknown] = useState(false)
@@ -108,7 +107,7 @@ export function VideoAnalysisForm({ projectId, accountId = '', onOpen, onDirty, 
   function drop(event: DragEvent<HTMLDivElement>) { event.preventDefault(); setDragging(false); select(Array.from(event.dataTransfer.files)) }
   async function submit() {
     if (submitting.current || recovering || !storageReady || !file) return
-    if (!request.current && confirmed && !validLocalPeriod(started)) {
+    if (!request.current && started && !validLocalPeriod(started)) {
       setError('Укажите существующие местные дату и время начала съёмки.'); return
     }
     const generation = lifetime.current
@@ -121,8 +120,8 @@ export function VideoAnalysisForm({ projectId, accountId = '', onOpen, onDirty, 
         const params = new URLSearchParams({ cloud_processing_consent: 'true', cloud_provider: provider })
         if (projectId) params.set('project_id', projectId)
         if (zone) params.set('zone_id', zone)
-        if (confirmed && plan?.revision_id) params.set('plan_revision_id', plan.revision_id)
-        if (confirmed && started) params.set('capture_started_at', new Date(started).toISOString())
+        if (started && plan?.revision_id) params.set('plan_revision_id', plan.revision_id)
+        if (started) params.set('capture_started_at', new Date(started).toISOString())
         const pending = { key: randomUUID(), query: params.toString(), file }
         const saved = await savePendingVideo(scope, pending)
         if (!active()) return
@@ -146,7 +145,7 @@ export function VideoAnalysisForm({ projectId, accountId = '', onOpen, onDirty, 
       }
       const data = await responseData(response)
       if (!active()) return
-      if (typeof data.run_id !== 'string') throw new Error('Сервер не вернул номер анализа. Восстановите отправку с прежним ключом.')
+      if (typeof data.run_id !== 'string') throw new Error('service_unavailable')
       await clearPendingVideo(scope, pending.key)
       if (!active()) return
       setUnknown(false)
@@ -161,17 +160,13 @@ export function VideoAnalysisForm({ projectId, accountId = '', onOpen, onDirty, 
     {!projectId && <p className="attention">Для видео откройте проект и выберите «Новый анализ». Так ролик и результаты сохранятся в нужном участке.</p>}
     <fieldset disabled={busy || unknown || recovering || !storageReady}>
       <div className="upload-zone" data-dragging={dragging} onDragOver={event => { event.preventDefault(); setDragging(true) }} onDragLeave={() => setDragging(false)} onDrop={drop}>
-        <p className="upload-zone-title">Перетащите ролик сюда</p><label className="file-button secondary" htmlFor="video-file">Выбрать видео</label><input id="video-file" type="file" accept="video/mp4,video/quicktime,.mp4,.mov" onChange={event => { select(Array.from(event.target.files ?? [])); event.target.value = '' }} />
+        <p className="upload-zone-title">Перетащите ролик сюда</p><div className="upload-actions"><label className="file-button secondary" htmlFor="video-file">Выбрать видео</label><input className="sr-only" id="video-file" type="file" accept="video/mp4,video/quicktime,.mp4,.mov" onChange={event => { select(Array.from(event.target.files ?? [])); event.target.value = '' }} /></div>
       </div>
       {file && <p role="status">{file.name} · {(file.size / 1_000_000).toFixed(1)} МБ</p>}
       {projectId && <label className="field" htmlFor="video-zone">Участок<select id="video-zone" value={zone} onChange={event => { setZone(event.target.value); onDirty() }}>{zones.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>}
-      <CaptureDateTime id="video-start" label="Начало съёмки" value={started} onChange={value => { setStarted(value); setConfirmed(false); onDirty() }} />
-      <label><input type="checkbox" checked={confirmed} disabled={!started} onChange={event => { setConfirmed(event.target.checked); onDirty() }} /> Подтверждаю время начала съёмки для сопоставления с планом</label>
-      <p>Если время неизвестно, оставьте поле пустым. Покажем относительное время ролика без выводов о соблюдении сроков.</p>
-      <p>Выбранные кадры передаются в {providerLabel} после запуска анализа.</p>
+      <CaptureDateTime id="video-start" label="Начало съёмки" value={started} onChange={value => { setStarted(value); onDirty() }} />
     </fieldset>
     {error && <p className="error" role="alert">{error}</p>}
-    {unknown && <p className="attention">Исход отправки неизвестен. Файл и исходные параметры сохранены в браузере для этого аккаунта и проекта. Восстановите отправку с прежним ключом.</p>}
     <button type="button" className="primary" disabled={busy || recovering || !storageReady || !file || !projectId || !zone || (!unknown && (planLoading || !plan))} onClick={() => void submit()}>{recovering ? 'Проверяем сохранённую отправку…' : busy ? 'Загружаем видео…' : unknown ? 'Восстановить отправку' : 'Запустить анализ видео'}</button>
   </section>
 }
@@ -228,12 +223,12 @@ export function VideoResult({ runId, initial, readOnly, onOpen }: { runId: strin
     {error && <p className="error" role="alert">{error}</p>}
     {readError && <p className="error" role="alert">{readError}</p>}
     {!!snapshot.error && <p className="error" role="alert">{errorMessage(snapshot.error)}</p>}
-    {snapshot.state === 'failed' && <p>Обработка остановлена. Сохранённая разметка доступна ниже, если сборка видео завершилась. Объяснение DeepSeek может отсутствовать.</p>}
+    {snapshot.state === 'failed' && <p>Обработка остановлена. Сохранённая разметка доступна ниже, если сборка видео завершилась. Общий вывод может отсутствовать.</p>}
     {result?.video_url && <><video ref={video} controls playsInline preload="metadata" src={result.video_url} aria-label="Видео с рамками двух YOLO" /><p><a className="secondary" href={result.video_url} download={`analysis-${runId}.mp4`}>Скачать MP4 с рамками</a></p></>}
-    {!!result?.assessment && <AiAssessmentPanel assessment={result.assessment} evidence={[]} inputs={(result.selected_frames ?? []).map((frame, index) => ({ input_id: frame.input_id ?? String(index), ordinal: index, sha256: '', artifact_id: null }))} onOpenFrame={id => { const frame = result.selected_frames?.find(item => item.input_id === id); if (video.current && frame) { video.current.currentTime = frame.timestamp_seconds; video.current.focus() } }} />}
-    {!!result?.selected_frames?.length && <section><h2>Моменты, переданные DeepSeek</h2><ol>{result.selected_frames.map((frame, index) => <li key={index}><button type="button" className="secondary" disabled={!result.video_url} onClick={() => { if (video.current) { video.current.currentTime = frame.timestamp_seconds; video.current.focus() } }}>{frame.timestamp_seconds.toFixed(2)} с</button>{!!frame.assessment && <><p>{stageLabel(frame.assessment.stage ?? 'unknown')}: {frame.assessment.stage_reason}</p>{!!frame.assessment.objects?.length && <ul>{frame.assessment.objects.map((object, index) => <li key={index}>{equipmentLabel(object.catalog_class ?? '', object.type_ru)}{object.status === 'uncertain' ? ' (тип не определён уверенно)' : ''}: {object.evidence}</li>)}</ul>}</>}</li>)}</ol></section>}
+    {!!result?.assessment && <AiAssessmentPanel runState={snapshot.state} assessment={result.assessment} evidence={[]} inputs={(result.selected_frames ?? []).map((frame, index) => ({ input_id: frame.input_id ?? String(index), ordinal: index, sha256: '', artifact_id: null }))} onOpenFrame={id => { const frame = result.selected_frames?.find(item => item.input_id === id); if (video.current && frame) { video.current.currentTime = frame.timestamp_seconds; video.current.focus() } }} />}
+    {!!result?.selected_frames?.length && <section><h2>Выбранные моменты видео</h2><ol>{result.selected_frames.map((frame, index) => <li key={index}><button type="button" className="secondary" disabled={!result.video_url} onClick={() => { if (video.current) { video.current.currentTime = frame.timestamp_seconds; video.current.focus() } }}>{frame.timestamp_seconds.toFixed(2)} с</button>{!!frame.assessment && <><p>{stageLabel(frame.assessment.stage ?? 'unknown')}: {explanationLabel(frame.assessment.stage_reason ?? '')}</p>{!!frame.assessment.objects?.length && <ul>{frame.assessment.objects.map((object, index) => <li key={index}>{equipmentLabel(object.catalog_class ?? '', object.type_ru)}{object.status === 'uncertain' ? ' (тип не определён уверенно)' : ''}: {explanationLabel(object.evidence ?? '')}</li>)}</ul>}</>}</li>)}</ol></section>}
     <p>Объяснение относится только к выбранным моментам. Отсутствие событий между ними не подтверждено.</p>
-    {result?.limitations?.map((limitation, index) => <p key={index}>{limitation}</p>)}
+    {result?.limitations?.map((limitation, index) => <p key={index}>{explanationLabel(limitation)}</p>)}
     {snapshot.retry_cpu_eligible && !readOnly && <button type="button" className="secondary" disabled={retrying} onClick={() => void retry()}>{retrying ? 'Создаём повтор…' : 'Повторить обработку'}</button>}
   </section>
 }

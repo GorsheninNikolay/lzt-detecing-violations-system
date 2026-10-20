@@ -178,7 +178,7 @@ def test_provider_credentials_endpoint_and_context_are_scoped(monkeypatch,direct
     assert assistant.provider_answer('Что происходит?',{'project':'only-this-project'})=='Ответ по проекту'
 
 
-@pytest.mark.parametrize(('question','expected'), [('Как создать проект?','Создать проект'),('Как пригласить участника?','приглашение'),('Как загрузить фото?','согласие'),('Как проверить сигнал?','статус'),('Как сменить пароль?','текущего пароля'),('Как выбрать тему аккаунта?','Системная тема')])
+@pytest.mark.parametrize(('question','expected'), [('Как создать проект?','Создать проект'),('Как пригласить участника?','приглашение'),('Как загрузить фото?','автоматически'),('Как проверить сигнал?','статус'),('Как сменить пароль?','текущего пароля'),('Как выбрать тему аккаунта?','Системная тема')])
 def test_intent_specific_help(monkeypatch,question,expected):
     monkeypatch.setattr(assistant,'provider_answer',lambda *_:None)
     assert expected in assistant.answer(question,None)
@@ -258,3 +258,149 @@ def test_assistant_context_distinguishes_empty_zones_and_saved_plan_fields(isola
     assert {'stage_key', 'expected_equipment', 'allowed_equipment', 'excluded_equipment'} <= row.keys()
     assert row['expected_equipment']
     assert captured[-1]['zones'][0]['revision_number'] == 1
+
+
+def test_current_analysis_status_is_separate_from_old_results_and_has_no_consent_step(monkeypatch):
+    monkeypatch.setattr(assistant, 'provider_answer', lambda *_: None)
+    job = assistant.analysis_status({'media_kind': 'video', 'state': 'running', 'stage': 'deepseek',
+        'progress': 1.0, 'created_at': '2026-10-20T12:00:00Z', 'updated_at': '2026-10-20T12:01:00Z',
+        'error': None})
+    context = {'recent_analyses': [job], 'analysis_context_truncated': True,
+               'results': [{'kind': 'assessment', 'value': {'summary': 'Старый результат.'}}]}
+    response = assistant.answer('Почему анализ видео долго выполняется?', context)
+    assert 'Видеоанализ: Выполняется' in response
+    assert 'Разбор выбранных моментов' in response
+    assert '100% (не готовность всего анализа)' in response
+    assert '2026-10-20T12:01:00Z' in response
+    assert 'только часть' in response and 'не доказывает зависание' in response
+    assert 'Старый результат.' not in response
+    assert job['started_at'] is None
+    for text_copy in (assistant.HELP, assistant.SYSTEM, *assistant.TUTORIAL_STEPS.values(), assistant.answer('Как загрузить фото?', None)):
+        assert 'подтвердите согласие' not in text_copy
+        assert 'дать согласие' not in text_copy
+    assert 'отдельного флажка согласия нет' in assistant.SYSTEM
+
+
+def test_analysis_context_redacts_unknown_errors_and_raw_result_fields():
+    job = assistant.analysis_status({'media_kind': 'photo', 'state': 'failed', 'stage': 'equipment_observation',
+        'created_at': None, 'updated_at': None, 'error': 'private_exception_or_credential',
+        'completed_stages': 1, 'total_stages': 6})
+    assert job['error'] == 'Причина ошибки недоступна.'
+    assert job['stage'] == 'Распознавание техники'
+    assert job['started_at'] is None and job['updated_at'] is None
+    assert 'private_exception' not in json.dumps(job)
+    saved = assistant.saved_result({'kind': 'assessment', 'value': {'summary': 'Требуется проверка.',
+        'raw_response': 'private-provider-data', 'profile_id': 'hidden-profile',
+        'objects': [{'type_ru': 'Экскаватор', 'input_id': 'hidden-frame'}],
+        'risks': [{'text': 'Уточните состояние.', 'invocation_id': 'hidden-call'}]}})
+    assert saved['value']['summary'] == 'Требуется проверка.'
+    assert 'hidden-' not in json.dumps(saved) and 'private-provider-data' not in json.dumps(saved)
+
+
+def test_assistant_context_includes_active_video_and_photo_only_from_current_project(isolated_tools, monkeypatch):
+    client, engine, users = isolated_tools
+    headers = {'origin': 'http://testserver', 'x-test-user': str(users[0]), 'idempotency-key': str(uuid4())}
+    project = client.post('/trial/import', headers=headers).json()['project_id']
+    other = client.post('/trial/import', headers={**headers, 'idempotency-key': str(uuid4())}).json()['project_id']
+    with engine.begin() as db:
+        for scope, state in ((project, 'running'), (other, 'failed')):
+            zone = db.execute(text('SELECT id FROM site_zones WHERE project_id=:project LIMIT 1'), {'project': scope}).scalar_one()
+            db.execute(text('''INSERT INTO video_jobs(id,project_id,zone_id,request_key,request_hash,source_key,
+                source_sha256,source_size,context,profile_snapshot,state,stage,progress,metadata,error)
+                VALUES (:id,:project,:zone,:key,'hash','private-source','hash',1,'{}','{}',:state,'deepseek',1,'{}',:error)'''),
+                {'id': uuid4(), 'project': scope, 'zone': zone, 'key': str(uuid4()), 'state': state,
+                 'error': 'other-project-secret' if scope == other else None})
+        run = uuid4()
+        db.execute(text('''INSERT INTO analysis_runs(id,state,purpose,analysis_intent,request_context)
+            VALUES (:id,'running','ordinary','observation_only',jsonb_build_object('project_id',CAST(:project AS text)))'''),
+            {'id': run, 'project': project})
+        db.execute(text("INSERT INTO analysis_stages(run_id,ordinal,name,state) VALUES (:id,0,'equipment_observation','running')"), {'id': run})
+    captured = []
+    monkeypatch.setattr(assistant, 'provider_answer', lambda _, context: captured.append(context) or 'Состояние проверено.')
+    result = client.post('/assistant/messages', json={'project_id': project, 'message': 'Что сейчас выполняется?'}, headers=headers)
+    assert result.status_code == 200, result.text
+    context = captured[-1]
+    assert {(row['media_kind'], row['state']) for row in context['recent_analyses']} == {('photo', 'running'), ('video', 'running')}
+    assert {(row['media_kind'], row['state'], row['count']) for row in context['analyses']} == {('photo', 'running', 1), ('video', 'running', 1)}
+    assert context['context_as_of'] and not context['analysis_context_truncated']
+    serialized = json.dumps(context, default=str)
+    assert 'other-project-secret' not in serialized and 'private-source' not in serialized
+    forbidden = {**headers, 'x-test-user': str(users[2])}
+    assert client.post('/assistant/messages', json={'project_id': project, 'message': 'Статус?'}, headers=forbidden).status_code == 404
+    assert len(captured) == 1
+
+
+def test_assistant_uses_generic_model_name_even_in_vendor_response(monkeypatch):
+    monkeypatch.setattr(assistant, 'provider_answer', lambda *_: 'DeepSeek обрабатывает видео. DEEPSEEK ещё не вернул результат.')
+    reply = assistant.answer('Что делает DeepSeek?', None)
+    assert 'deepseek' not in reply.lower()
+    assert 'мультимодальная модель' in reply
+    assert 'не называй поставщика' in assistant.SYSTEM
+
+
+def test_assistant_history_hides_old_vendor_name_without_changing_user_or_saved_messages(isolated_tools):
+    client, engine, users = isolated_tools
+    headers = {'origin': 'http://testserver', 'x-test-user': str(users[0]), 'idempotency-key': str(uuid4())}
+    project = client.post('/trial/import', headers=headers).json()['project_id']
+    with engine.begin() as db:
+        for role in ('assistant', 'user'):
+            db.execute(text("INSERT INTO assistant_messages(id,user_id,project_id,role,content) VALUES (:id,:user,:project,:role,'DeepSeek history')"),
+                       {'id': uuid4(), 'user': users[0], 'project': project, 'role': role})
+    response = client.get('/assistant/messages', params={'project_id': project}, headers=headers)
+    assert response.status_code == 200
+    messages = response.json()['messages']
+    assert next(row['content'] for row in messages if row['role'] == 'assistant') == 'мультимодальная модель history'
+    assert next(row['content'] for row in messages if row['role'] == 'user') == 'DeepSeek history'
+    with engine.connect() as db:
+        assert db.execute(text("SELECT count(*) FROM assistant_messages WHERE project_id=:project AND content='DeepSeek history'"), {'project': project}).scalar_one() == 2
+
+
+def test_photo_stage_names_and_invalid_model_answer_are_explained_without_technical_codes():
+    for stage in ('yolo_detection', 'hybrid_reconciliation'):
+        job = assistant.analysis_status({'media_kind': 'photo', 'state': 'failed', 'stage': stage,
+            'created_at': None, 'updated_at': None, 'error': 'deepseek_response_invalid',
+            'completed_stages': 3, 'total_stages': 6})
+        assert job['stage'] and job['stage'] != stage
+        assert 'не прошёл проверку' in job['error']
+        assert 'deepseek' not in json.dumps(job).lower()
+
+
+@pytest.mark.parametrize('state', ['running', 'failed'])
+def test_status_question_takes_precedence_over_upload_help(monkeypatch, state):
+    monkeypatch.setattr(assistant, 'provider_answer', lambda *_: None)
+    job = assistant.analysis_status({'media_kind': 'photo', 'state': state, 'stage': 'hybrid_reconciliation',
+        'created_at': None, 'updated_at': None, 'error': 'deepseek_response_invalid' if state == 'failed' else None,
+        'completed_stages': 3, 'total_stages': 6})
+    context = {'recent_analyses': [job]}
+    reply = assistant.answer('Какой статус анализа сейчас?', context)
+    assert job['state_label'] in reply
+    assert 'Сопоставление обнаруженной техники' in reply
+    assert 'выберите фотографии' not in reply
+    help_reply = assistant.answer('Как загрузить фотографии для анализа?', context)
+    assert 'выберите фотографии' in help_reply
+    assert 'Последний доступный срез' not in help_reply
+
+
+def test_older_active_analysis_survives_recent_terminal_limit(isolated_tools, monkeypatch):
+    client, engine, users = isolated_tools
+    headers = {'origin': 'http://testserver', 'x-test-user': str(users[0]), 'idempotency-key': str(uuid4())}
+    project = client.post('/trial/import', headers=headers).json()['project_id']
+    with engine.begin() as db:
+        db.execute(text("""INSERT INTO analysis_runs(id,state,purpose,analysis_intent,request_context,created_at)
+            VALUES (:id,'running','ordinary','observation_only',jsonb_build_object('project_id',CAST(:project AS text)),
+                clock_timestamp()-interval '2 days')"""), {'id': uuid4(), 'project': project})
+        for ordinal in range(32):
+            db.execute(text("""INSERT INTO analysis_runs(id,state,purpose,analysis_intent,request_context,created_at)
+                VALUES (:id,:state,'ordinary','observation_only',jsonb_build_object('project_id',CAST(:project AS text)),
+                    clock_timestamp()-interval '1 day')"""),
+                {'id': uuid4(), 'project': project, 'state': 'succeeded' if ordinal % 2 else 'failed'})
+    captured = []
+    monkeypatch.setattr(assistant, 'provider_answer', lambda _, context: captured.append(context) or 'Состояние проверено.')
+    reply = client.post('/assistant/messages', json={'project_id': project, 'message': 'Какой статус анализа сейчас?'}, headers=headers)
+    assert reply.status_code == 200, reply.text
+    context = captured[-1]
+    assert len(context['recent_analyses']) == context['analysis_context_limit'] == 30
+    assert context['recent_analyses'][0]['state'] == 'running'
+    assert all(row['state'] != 'running' for row in context['recent_analyses'][1:])
+    assert context['analysis_context_truncated'] is True
+    assert {row['state']: row['count'] for row in context['analyses']} == {'running': 1, 'succeeded': 16, 'failed': 16}
