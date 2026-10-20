@@ -99,6 +99,8 @@ async def lifespan(app: FastAPI):
         state.code = "ready"
         state.ready.set()
         claim_loop.start(state.ready, artifacts)
+        from app.application.video import video_worker
+        app.state.video_task = asyncio.create_task(video_worker(app))
         app.state.cover_cleanup_task = asyncio.create_task(cover_cleanup_loop())
         def loop_finished(task: asyncio.Task) -> None:
             if state.ready.is_set():
@@ -124,6 +126,9 @@ async def lifespan(app: FastAPI):
                 await cover_cleanup_task
             except asyncio.CancelledError:
                 pass
+        video_task = getattr(app.state, "video_task", None)
+        if video_task is not None:
+            await video_task
         await claim_loop.stop()
         store.close()
 
@@ -131,10 +136,14 @@ async def lifespan(app: FastAPI):
 def create_app() -> FastAPI:
     app = FastAPI(dependencies=[Depends(authorize_request)], lifespan=lifespan, root_path=os.getenv("API_ROOT_PATH", ""), docs_url=None, redoc_url=None)
     app.state.readiness = Readiness()
+    from app.application.video import router as video_router
+    app.include_router(video_router)
     app.include_router(accounts_router)
     app.include_router(assistant_router)
     app.include_router(trial_router)
     app.include_router(site_router)
+    from app.application.plan_excel import router as plan_excel_router
+    app.include_router(plan_excel_router)
     app.include_router(signals_router)
     from app.application.annotations import router as annotations_router
     app.include_router(annotations_router)
@@ -279,7 +288,7 @@ def create_app() -> FastAPI:
             return JSONResponse({"code": "provider_comparison_unavailable"}, status_code=503, headers=headers)
 
     @app.get("/runs/{run_id}")
-    async def read_run(run_id: str) -> JSONResponse:
+    async def read_run(run_id: str, request: Request) -> JSONResponse:
         headers = {"Cache-Control": "no-store"}
         try:
             identifier = uuid.UUID(run_id)
@@ -289,6 +298,14 @@ def create_app() -> FastAPI:
             run = await asyncio.to_thread(app.state.store.read_ordinary, identifier)
             if run is None:
                 run = await asyncio.to_thread(app.state.store.read_run, identifier, "comparison_campaign")
+            if run is None:
+                from app.application.video import load_job, public_job
+                from fastapi import HTTPException
+                try:
+                    return JSONResponse(public_job(load_job(request, identifier)))
+                except HTTPException as exc:
+                    if exc.status_code != 404:
+                        raise
         except Exception:
             return JSONResponse({"code": "run_unavailable"}, status_code=503, headers=headers)
         if run and run.get("purpose", "ordinary") == "ordinary":

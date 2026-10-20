@@ -1159,13 +1159,14 @@ def historical_campaign_setup(database, monkeypatch, tmp_path):
 def test_empty_database_downgrade_requires_forward_migration(isolated_campaign_database):
     from alembic import command
     from alembic.config import Config as AlembicConfig
+    from alembic.script import ScriptDirectory
 
     database = isolated_campaign_database
     migrations = AlembicConfig(str(ROOT / "backend/alembic.ini"))
     with pytest.raises(RuntimeError, match="account_data_must_be_preserved"):
         command.downgrade(migrations, "0010_comparison_campaign")
     with database.engine.connect() as connection:
-        assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == "0026_feedback_tools"
+        assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == ScriptDirectory.from_config(migrations).get_current_head()
 
 
 @pytest.mark.parametrize("recover", [False, True])

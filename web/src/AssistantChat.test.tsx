@@ -117,7 +117,7 @@ it('restores unsent drafts only for the matching account and project after remou
 it('hides without pausing learning, retains its draft and stays hidden across project transitions', async () => {
  localStorage.setItem('tutorial:1:a',JSON.stringify({version:1,step:'plan',projectId:'p',key:'hide-guide',started:true,paused:false,selected:[],signal:false,questionSubmitted:true}))
  const request=vi.fn().mockResolvedValue({messages:[]})
- const content=(key:string)=><TutorialProvider account="a" navigate={()=>true}><button data-tutorial="plan-next">Действие плана</button><button data-tutorial="select-photos">Действие фотографий</button><ChangeTutorialStep/><AssistantChat key={key} accountId="a" projectId="p" request={request}/></TutorialProvider>
+ const content=(key:string)=><TutorialProvider account="a" navigate={()=>true}><button data-tutorial="plan-import">Действие плана</button><button data-tutorial="select-photos">Действие фотографий</button><ChangeTutorialStep/><AssistantChat key={key} accountId="a" projectId="p" request={request}/></TutorialProvider>
  const view=render(content('first'))
  await act(async()=>{})
  fireEvent.change(screen.getByLabelText('Сообщение помощнику'),{target:{value:'Черновик вопроса'}})
@@ -143,7 +143,7 @@ it('keeps the current lesson active while answering a question and after its ans
  localStorage.setItem('tutorial:1:a',JSON.stringify({version:1,step:'plan',projectId:'p',key:'question-live',started:true,paused:false,selected:[],signal:false,questionSubmitted:true}))
  let finish!: (reply:{messages:{id:string;role:string;content:string}[]})=>void
  const request=vi.fn((_:string,method?:string)=>method==='POST'?new Promise<any>(resolve=>{finish=resolve}):Promise.resolve({messages:[]}))
- render(<TutorialProvider account="a" navigate={()=>true}><button data-tutorial="plan-next">Продолжить шаг на странице</button><AssistantChat projectId="p" accountId="a" request={request}/></TutorialProvider>)
+ render(<TutorialProvider account="a" navigate={()=>true}><button data-tutorial="plan-import">Продолжить шаг на странице</button><AssistantChat projectId="p" accountId="a" request={request}/></TutorialProvider>)
  await act(async()=>{})
  send('Что добавить в план?')
  expect(JSON.parse(localStorage.getItem('tutorial:1:a')!)).toMatchObject({step:'plan',started:true,paused:false})

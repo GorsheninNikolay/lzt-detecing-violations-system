@@ -220,6 +220,7 @@ http {
             proxy_set_header X-Forwarded-Proto $app_scheme;
             proxy_set_header X-Forwarded-For $remote_addr;
             proxy_read_timeout 300s;
+            proxy_request_buffering off;
         }
         location / {
             root /opt/lzt/current/web/dist;

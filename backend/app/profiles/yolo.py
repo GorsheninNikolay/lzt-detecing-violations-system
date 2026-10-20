@@ -22,7 +22,8 @@ def manifest():
 
 
 class Detectors:
-    def __init__(self):
+    def __init__(self, device="cpu"):
+        self.device = device
         self.manifest = manifest()
         for package, required in self.manifest['dependencies'].items():
             if version(package).split('+')[0] != required:
@@ -38,7 +39,7 @@ class Detectors:
             detector = YOLO(str(root / model['filename']), task='detect')
             if [detector.names[i] for i in range(len(detector.names))] != model['classes']:
                 raise ValueError('detector_classes_mismatch')
-            detector.to('cpu')
+            detector.to(device)
             self.models.append((model, detector))
 
     def detect(self, payload, input_id):
@@ -47,7 +48,7 @@ class Detectors:
         with _LOCK, Image.open(io.BytesIO(oriented)) as image:
             for model, detector in self.models:
                 started = monotonic()
-                prediction = detector.predict(image, **self.manifest['settings'])[0]
+                prediction = detector.predict(image, **{**self.manifest['settings'], 'device': self.device})[0]
                 detections = []
                 for i, box in enumerate(prediction.boxes):
                     class_id = int(box.cls.item())

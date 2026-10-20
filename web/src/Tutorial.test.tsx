@@ -93,20 +93,20 @@ it('completes the guide using an explicit creation success, attached materials, 
   fireEvent.click(
     screen.getByRole('button', { name: 'Добавить учебный набор' }),
   )
-  await screen.findByRole('button', { name: 'План посмотрел, к фотографиям' })
+  await screen.findByRole('button', { name: 'План импортирован, к фотографиям' })
   expect(
     screen
-      .getByRole('button', { name: 'План посмотрел, к фотографиям' })
+      .getByRole('button', { name: 'План импортирован, к фотографиям' })
       .hasAttribute('disabled'),
   ).toBe(true)
   expect(location.pathname).toBe('/projects/p/plan')
   act(() => {
     dispatchEvent(
-      new CustomEvent('tutorial-plan-loaded', { detail: { id: 'p' } }),
+      new CustomEvent('tutorial-plan-imported', { detail: { id: 'p' } }),
     )
   })
   fireEvent.click(
-    screen.getByRole('button', { name: 'План посмотрел, к фотографиям' }),
+    screen.getByRole('button', { name: 'План импортирован, к фотографиям' }),
   )
   await screen.findByRole('button', { name: 'Выбрать учебные фотографии' })
   fireEvent.click(
@@ -171,7 +171,7 @@ it('preserves step and retry key, rejects unrelated creation while paused and fe
   fireEvent.click(
     screen.getByRole('button', { name: 'Добавить учебный набор' }),
   )
-  await screen.findByRole('button', { name: 'План посмотрел, к фотографиям' })
+  await screen.findByRole('button', { name: 'План импортирован, к фотографиям' })
   expect(fetcher.mock.calls[1][1].headers['Idempotency-Key']).toBe(key)
   cleanup()
   render(<Harness account="b" />)
@@ -240,7 +240,7 @@ it('leaves the step and creation intent unchanged when guarded navigation is can
   history.replaceState(null, '', '/projects/p/plan')
   const view = render(<Harness allowNavigate={false} />)
   fireEvent.click(
-    screen.getByRole('button', { name: 'План посмотрел, к фотографиям' }),
+    screen.getByRole('button', { name: 'План импортирован, к фотографиям' }),
   )
   expect(JSON.parse(localStorage.getItem('tutorial:1:a')!).step).toBe('plan')
   view.unmount()

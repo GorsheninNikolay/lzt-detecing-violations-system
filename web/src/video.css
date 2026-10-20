@@ -1,0 +1,7 @@
+.video-upload fieldset { border: 0; padding: 0; margin: 0; min-width: 0; display: grid; gap: 1rem; }
+.video-upload .upload-zone { margin-bottom: .5rem; }
+.video-result video { display: block; width: 100%; max-height: 70vh; background: #111; border-radius: var(--radius, 8px); }
+.video-explanation { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; max-width: 75ch; }
+.video-result ol { display: grid; gap: 1rem; }
+.media-selector { display: flex; gap: .75rem; flex-wrap: wrap; margin-bottom: 1.5rem; }
+.media-selector button[aria-pressed="true"] { outline: 2px solid currentColor; outline-offset: 2px; }

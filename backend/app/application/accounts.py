@@ -67,6 +67,11 @@ def require_entity(request, kind, identifier, write=False):
         with engine(request).connect() as conn:
             row = conn.execute(text("SELECT purpose,request_context->>'project_id' AS project_id FROM analysis_runs WHERE id=:id"),
                                {'id': identifier}).mappings().first()
+        if row is None:
+            with engine(request).connect() as conn:
+                video_project = conn.execute(text('SELECT project_id FROM video_jobs WHERE id=:id'), {'id':identifier}).scalar()
+            if video_project:
+                return require_project(request, video_project, write=write)
         if row and row['purpose'] == 'comparison_campaign' and not write:
             from app.application.engagement import admin_session
             admin_session(request)
@@ -336,7 +341,7 @@ async def authorize_request(request: Request):
         return
     parts = path.strip('/').split('/')
     write = unsafe
-    if len(parts) > 1 and parts[0] == 'runs' and parts[1] not in ('single-image', 'series'):
+    if len(parts) > 1 and parts[0] == 'runs' and parts[1] not in ('single-image', 'series', 'video'):
         try:
             identifier = uuid.UUID(parts[1])
         except ValueError:
@@ -345,7 +350,7 @@ async def authorize_request(request: Request):
         return
     current_user(request)
     try:
-        if len(parts) > 1 and parts[0] in ('projects', 'zones', 'runs', 'signals') and parts[1] not in ('single-image', 'series'):
+        if len(parts) > 1 and parts[0] in ('projects', 'zones', 'runs', 'signals') and parts[1] not in ('single-image', 'series', 'video'):
             identifier = uuid.UUID(parts[1])
             if parts[0] == 'projects':
                 require_project(request, identifier, write=write)

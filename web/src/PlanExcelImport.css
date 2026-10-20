@@ -1,0 +1,6 @@
+.plan-excel-import { margin: 1.5rem 0; padding: 1.25rem; border: 1px solid var(--border, #d8dce0); border-radius: 12px; }
+.plan-excel-drop { margin: 1rem 0; padding: 1rem; border: 1px dashed var(--border, #a6adb5); border-radius: 8px; }
+.plan-excel-drop p { margin-top: 0; }
+.plan-excel-import table { display: block; width: 100%; overflow-x: auto; margin: 1rem 0; border-collapse: collapse; }
+.plan-excel-import th, .plan-excel-import td { padding: .6rem; text-align: left; border-bottom: 1px solid var(--border, #d8dce0); }
+.plan-excel-import button { margin-right: .75rem; }

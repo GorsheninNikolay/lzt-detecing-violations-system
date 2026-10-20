@@ -1,5 +1,6 @@
 import { randomUUID, createHash } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
+import { readFileSync, existsSync } from 'node:fs'
 import { resolve } from 'node:path'
 import type { Plugin } from 'vite'
 import sharp from 'sharp'
@@ -80,7 +81,7 @@ export function createDemoStore(now = Date.now) {
     return { ...run, result_projection: null, outcome: null, observations: step > 2 ? run.observations : [], objects: step > 2 ? run.objects : [], stages: stageNames.map((name, index) => ({ name, state: index < step ? 'succeeded' : index === step ? 'running' : 'pending', timestamp: index <= step ? FIXED_DATE : null })) }
   }
   reset()
-  async function request(method: string, rawUrl: string, body: Data = {}, key = ''): Promise<{ status: number; data: any; artifact?: string | Uint8Array }> {
+  async function request(method: string, rawUrl: string, body: Data = {}, key = ''): Promise<{ status: number; data: any; artifact?: string | Uint8Array; contentType?: string }> {
     const url = new URL(rawUrl, 'http://demo.local'); const path = url.pathname.replace(/^\/api/, '')
     const ok = (data: any, status = 200) => ({ status, data: structuredClone(data) })
     const error = (code: string, status = 400) => ok({ code }, status)
@@ -139,6 +140,17 @@ export function createDemoStore(now = Date.now) {
     }
     const zoneMatch = path.match(/^\/projects\/([^/]+)\/zones$/)
     if (zoneMatch) { if (!zones[zoneMatch[1]]) return error('project_not_found', 404); if (method === 'GET') return ok({ zones: zones[zoneMatch[1]] }); if (method === 'POST') { const zone = { id: randomUUID(), name: body.name }; zones[zoneMatch[1]].push(zone); plans[zone.id] = { revision_number: 0, entries: [] }; return ok(zone, 201) } }
+    const excelMatch = path.match(/^\/zones\/([^/]+)\/plan\/(template\.xlsx|import-preview)$/)
+    if (excelMatch && plans[excelMatch[1]]) {
+      const directory = resolve(process.cwd(), existsSync(resolve(process.cwd(), 'web/demo')) ? 'web/demo' : 'demo')
+      const tutorialBytes = readFileSync(resolve(directory, 'tutorial-plan.xlsx'))
+      if (excelMatch[2] === 'template.xlsx' && method === 'GET') return { status: 200, data: null, artifact: url.searchParams.get('tutorial') === 'true' ? tutorialBytes : readFileSync(resolve(directory, 'plan-template.xlsx')), contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }
+      if (excelMatch[2] === 'import-preview' && method === 'POST') {
+        const bytes = body.xlsx instanceof Uint8Array ? Buffer.from(body.xlsx) : Buffer.alloc(0)
+        if (!bytes.equals(tutorialBytes)) return ok({ entries: [], errors: [{ row: null, message: 'В демонстрации загрузите неизменённый учебный Excel. Полный импорт доступен на сервере.' }], timezone: 'Europe/Moscow', expected_revision: plans[excelMatch[1]].revision_number })
+        return ok({ entries: [{ catalog_work_id: 'earthworks', title: works[0].title, start_at: '2026-10-19T00:00:00+03:00', end_at: '2026-10-20T23:59:59.999999+03:00', state: 'planned', stage_key: 'excavation', expected_equipment: ['excavator'], allowed_equipment: [], excluded_equipment: [] }], errors: [], timezone: 'Europe/Moscow', date_note: 'Дата без времени означает начало и конец дня по часовому поясу проекта.', expected_revision: plans[excelMatch[1]].revision_number })
+      }
+    }
     const planMatch = path.match(/^\/zones\/([^/]+)\/plan$/)
     if (planMatch && plans[planMatch[1]]) { const plan = plans[planMatch[1]]; if (method === 'GET') { const revision = url.searchParams.get('revision'); if (revision && Number(revision) !== plan.revision_number) { const saved = planVersions.get(`${planMatch[1]}:${revision}`); return saved ? ok(saved) : error('plan_revision_not_found', 404) } return ok(plan) } if (method === 'PUT') { if (body.expected_revision !== plan.revision_number) return error('plan_revision_conflict', 409); planVersions.set(`${planMatch[1]}:${plan.revision_number}`, structuredClone(plan)); plans[planMatch[1]] = { revision_id: randomUUID(), revision_number: plan.revision_number + 1, entries: body.entries.map((entry: Data) => ({ ...entry, id: randomUUID(), starts_at: entry.start_at, ends_at: entry.end_at })) }; return ok(plans[planMatch[1]]) } }
     if (path === '/runs' && method === 'GET') { const projectId = url.searchParams.get('project_id'); const rows = Object.values(runs).reverse().filter(run => projectId ? run.project_id === projectId : !run.project_id).map(run => snapshot(run)); const offset = Number(url.searchParams.get('offset') || 0); return ok({ runs: rows.slice(offset, offset + 20), total: rows.length, next_offset: offset + 20 < rows.length ? offset + 20 : null }) }
@@ -200,7 +212,7 @@ export function demoPlugin(): Plugin {
           if(headerEnd<0||end<0)throw new Error('invalid_archive')
           validateTrialZip(buffer.subarray(headerEnd+4,end-2))
         }
-        const result = await store.request(req.method || 'GET', req.url, raw && String(req.headers['content-type']).includes('application/json') ? JSON.parse(raw) : {}, String(req.headers['idempotency-key'] || ''), /(?:^|; )demo_session=([^;]*)/.exec(req.headers.cookie || '')?.[1] || '')
+        const result = await store.request(req.method || 'GET', req.url, raw && String(req.headers['content-type']).includes('application/json') ? JSON.parse(raw) : req.url.includes('/plan/import-preview') ? { xlsx: buffer } : {}, String(req.headers['idempotency-key'] || ''), /(?:^|; )demo_session=([^;]*)/.exec(req.headers.cookie || '')?.[1] || '')
         if (result.session !== undefined) res.setHeader('Set-Cookie', `demo_session=${result.session}; HttpOnly; SameSite=Strict; Path=/`)
         if (result.artifact) { const bytes = typeof result.artifact === 'string' ? await readFile(resolve(server.config.root, 'public', result.artifact.slice(1))) : result.artifact; const type = result.contentType || (bytes[0] === 0x89 ? 'image/png' : bytes[0] === 0x52 ? 'image/webp' : 'image/jpeg'); res.writeHead(200, { 'Content-Type': type, 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' }); res.end(bytes); return }
         res.writeHead(result.status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }); res.end(JSON.stringify(result.data))

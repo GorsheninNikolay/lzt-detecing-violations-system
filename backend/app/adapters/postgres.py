@@ -1664,15 +1664,23 @@ class PostgresStore:
             if project_id and not connection.execute(text("SELECT 1 FROM site_projects WHERE id=:id"),
                                                      {"id": uuid.UUID(project_id)}).first():
                 raise AdmissionStoreError("project_not_found")
-            total = connection.execute(text(f"SELECT count(*) FROM analysis_runs r WHERE {where}"), parameters).scalar_one()
-            rows = connection.execute(text(f"""SELECT r.id, r.state, r.created_at,
+            history_source = """WITH history_runs AS (
+                SELECT id,state,created_at,request_context,stage_key,analysis_intent,
+                    retry_predecessor_id,purpose,'photo'::text AS media_kind FROM analysis_runs
+                UNION ALL
+                SELECT id,state,created_at,context,NULL::text,
+                    'observation_only'::text,retry_of,'ordinary'::text,'video'::text
+                FROM video_jobs
+            ) """
+            total = connection.execute(text(history_source + f"SELECT count(*) FROM history_runs r WHERE {where}"), parameters).scalar_one()
+            rows = connection.execute(text(history_source + f"""SELECT r.id, r.state, r.created_at,r.media_kind,
                 r.request_context->>'project_id' AS project_id,
                 r.request_context->>'zone_id' AS zone_id,
                 COALESCE(r.stage_key, r.request_context->>'stage_id') AS stage,
                 r.analysis_intent, r.retry_predecessor_id, s.id AS retry_successor_id,
                 CASE WHEN r.state = 'succeeded' THEN p.outcome END AS outcome
-                FROM analysis_runs r
-                LEFT JOIN analysis_runs s ON s.retry_predecessor_id = r.id
+                FROM history_runs r
+                LEFT JOIN history_runs s ON s.retry_predecessor_id = r.id
                 LEFT JOIN result_projections p ON p.run_id = r.id
                 WHERE {where} ORDER BY r.created_at DESC NULLS LAST, r.id DESC
                 LIMIT 51 OFFSET :offset"""), parameters).mappings().all()
@@ -1684,7 +1692,8 @@ class PostgresStore:
                  "retry_predecessor_id": str(row.retry_predecessor_id) if row.retry_predecessor_id else None,
                  "retry_successor_id": str(row.retry_successor_id) if row.retry_successor_id else None,
                  "retry_of_run_id": str(row.retry_predecessor_id) if row.retry_predecessor_id else None,
-                 "successor_run_id": str(row.retry_successor_id) if row.retry_successor_id else None}
+                 "successor_run_id": str(row.retry_successor_id) if row.retry_successor_id else None,
+                 **({"media_kind": "video"} if row.media_kind == "video" else {})}
                 for row in rows[:50]], "total": total, "next_offset": offset + 50 if len(rows) > 50 else None}
 
     def stage_summary(self) -> dict:

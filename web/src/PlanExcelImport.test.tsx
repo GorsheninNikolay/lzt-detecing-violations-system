@@ -1,0 +1,58 @@
+import { afterEach, expect, it, vi } from 'vitest'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import PlanExcelImport from './PlanExcelImport'
+afterEach(() => { cleanup(); vi.unstubAllGlobals() })
+const entry = { catalog_work_id: 'work', title: 'Работа', start_at: '2026-10-19T00:00:00+03:00', end_at: '2026-10-20T23:59:59+03:00', state: 'planned', stage_key: null, expected_equipment: [], allowed_equipment: [], excluded_equipment: [] }
+const response = (body: unknown) => ({ ok: true, json: async () => body })
+it('blocks applying a file with row errors', async () => {
+  const fetch = vi.fn().mockResolvedValue(response({ entries: [entry], errors: [{ row: 3, message: 'Ошибка даты' }], timezone: 'Europe/Moscow', expected_revision: 2 }))
+  vi.stubGlobal('fetch', fetch)
+  render(<PlanExcelImport zoneId="z" projectId="p" disabled={false} dirty={false} saved={vi.fn()} />)
+  fireEvent.change(screen.getByLabelText('План Excel'), { target: { files: [new File(['xlsx'], 'plan.xlsx')] } })
+  await screen.findByText('Строка 3: Ошибка даты')
+  expect(screen.getByRole('button', { name: 'Заменить план' }).hasAttribute('disabled')).toBe(true)
+  expect(fetch).toHaveBeenCalledTimes(1)
+})
+it('saves with preview revision and completes only after revision readback', async () => {
+  const fetch = vi.fn().mockResolvedValueOnce(response({ entries: [entry], errors: [], timezone: 'Europe/Moscow', expected_revision: 2 })).mockResolvedValueOnce(response({ revision_number: 3 })).mockResolvedValueOnce(response({ revision_number: 3 }))
+  vi.stubGlobal('fetch', fetch)
+  const saved = vi.fn().mockResolvedValue(undefined), event = vi.fn()
+  addEventListener('tutorial-plan-imported', event)
+  render(<PlanExcelImport zoneId="z" projectId="p" disabled={false} dirty={false} saved={saved} />)
+  fireEvent.change(screen.getByLabelText('План Excel'), { target: { files: [new File(['xlsx'], 'plan.xlsx')] } })
+  fireEvent.click(await screen.findByRole('button', { name: 'Заменить план' }))
+  await waitFor(() => expect(saved).toHaveBeenCalledTimes(1))
+  expect(JSON.parse(fetch.mock.calls[1][1].body).expected_revision).toBe(2)
+  expect(fetch.mock.calls[2][0]).toBe('/api/zones/z/plan?revision=3')
+  expect(event).toHaveBeenCalledTimes(1)
+  removeEventListener('tutorial-plan-imported', event)
+})
+it('reports pending activity and preview draft to the workspace', async () => {
+  let finish!: (value: unknown) => void
+  vi.stubGlobal('fetch', vi.fn().mockReturnValue(new Promise(resolve => { finish = resolve })))
+  const busy = vi.fn(), dirty = vi.fn()
+  const view = render(<PlanExcelImport zoneId="z" projectId="p" disabled={false} dirty={false} saved={vi.fn()} onBusyChange={busy} onDraftChange={dirty} />)
+  fireEvent.change(screen.getByLabelText('План Excel'), { target: { files: [new File(['xlsx'], 'plan.xlsx')] } })
+  await waitFor(() => expect(busy).toHaveBeenLastCalledWith(true))
+  finish(response({ entries: [entry], errors: [], timezone: 'Europe/Moscow', expected_revision: 2 }))
+  await screen.findByRole('button', { name: 'Заменить план' })
+  await waitFor(() => { expect(dirty).toHaveBeenLastCalledWith(true); expect(busy).toHaveBeenLastCalledWith(false) })
+  view.unmount()
+  expect(dirty).toHaveBeenLastCalledWith(false)
+})
+it('does not complete an import in a workspace left during the save', async () => {
+  let finish!: (value: unknown) => void
+  const fetch = vi.fn().mockResolvedValueOnce(response({ entries: [entry], errors: [], timezone: 'Europe/Moscow', expected_revision: 2 })).mockImplementationOnce(() => new Promise(resolve => { finish = resolve })).mockResolvedValueOnce(response({ revision_number: 3 }))
+  vi.stubGlobal('fetch', fetch)
+  const saved = vi.fn(), event = vi.fn()
+  addEventListener('tutorial-plan-imported', event)
+  const view = render(<PlanExcelImport zoneId="z" projectId="p" disabled={false} dirty={false} saved={saved} />)
+  fireEvent.change(screen.getByLabelText('План Excel'), { target: { files: [new File(['xlsx'], 'plan.xlsx')] } })
+  fireEvent.click(await screen.findByRole('button', { name: 'Заменить план' }))
+  view.unmount()
+  finish(response({ revision_number: 3 }))
+  await waitFor(() => expect(fetch).toHaveBeenCalledTimes(3))
+  expect(saved).not.toHaveBeenCalled()
+  expect(event).not.toHaveBeenCalled()
+  removeEventListener('tutorial-plan-imported', event)
+})

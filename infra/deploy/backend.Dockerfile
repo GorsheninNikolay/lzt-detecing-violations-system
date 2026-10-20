@@ -2,7 +2,7 @@ FROM python:3.13.15-slim-bookworm
 
 ENV PYTHONPATH=/app/backend YOLO_CONFIG_DIR=/tmp/ultralytics
 WORKDIR /app/backend
-RUN apt-get update && apt-get install -y --no-install-recommends libgl1 libglib2.0-0 && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg libgl1 libglib2.0-0 && rm -rf /var/lib/apt/lists/*
 RUN pip install --no-cache-dir uv==0.10.12
 COPY backend/pyproject.toml backend/uv.lock ./
 RUN uv export --frozen --no-dev --no-emit-project --format requirements-txt > /tmp/requirements.txt \

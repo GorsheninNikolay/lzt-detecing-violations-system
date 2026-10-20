@@ -34,6 +34,7 @@ type Progress = {
   selected: string[]
   signal: boolean
   planRead?: boolean
+  planImported?: boolean
   questionSubmitted?: boolean
   revealedSteps?: TutorialStep[]
   correction?: AnnotationObject[]
@@ -112,8 +113,10 @@ export function TutorialProvider({
         current.projectId === id ? { ...current, planRead: true } : current,
       )
     }
+    const imported = (event: Event) => { const id = (event as CustomEvent).detail?.id; setState(current => current.projectId === id ? { ...current, planImported: true } : current) }
+    addEventListener('tutorial-plan-imported', imported)
     addEventListener('tutorial-plan-loaded', loaded)
-    return () => removeEventListener('tutorial-plan-loaded', loaded)
+    return () => { removeEventListener('tutorial-plan-loaded', loaded); removeEventListener('tutorial-plan-imported', imported) }
   }, [])
   const start = () => {
     const next = state.step === 'complete' ? fresh() : state
@@ -160,7 +163,7 @@ const script: Record<TutorialStep, string> = {
     'Нажмите подсвеченную кнопку «Создать проект». В форме укажите название и подтвердите создание.',
   add_materials:
     'Проект готов! Добавьте учебный набор: план и фотографии. Действие доступно только для пустого проекта.',
-  plan: 'Посмотрите настоящий план проекта. В нём есть земляные работы и ожидаемая техника.',
+  plan: 'Скачайте учебный Excel, загрузите его в план и нажмите «Заменить план». После сохранения продолжите обучение.',
   photos:
     'Выберите учебные фотографии или свои кадры. Сейчас мы только готовим фотографии.',
   result:
@@ -201,7 +204,7 @@ export function TutorialGuide() {
     const targets: Record<TutorialStep, string[]> = {
       create_project: ['[data-tutorial="project-submit"]', '[data-tutorial="project-name"]', '[data-tutorial="create-project"]'],
       add_materials: ['[data-tutorial="add-materials"]'],
-      plan: ['[data-tutorial="plan-next"]', '[data-tutorial="plan-open"]'],
+      plan: state.planImported ? ['[data-tutorial="plan-next"]'] : ['[data-tutorial="plan-import"]', '[data-tutorial="plan-example"]', '[data-tutorial="plan-open"]'],
       photos: state.selected.length ? ['[data-tutorial="show-result"]'] : ['[data-tutorial="select-photos"]'],
       result: state.correction?.length ? ['[data-tutorial="open-signal"]'] : ['[data-tutorial="save-correction"]', '[data-tutorial="edit-box"]', '[data-tutorial="edit-annotation"]'],
       signals: ['[data-tutorial="take-signal"]', '[data-tutorial="expand-signal"]'],
@@ -239,7 +242,7 @@ export function TutorialGuide() {
       removeEventListener('resize', locate)
       removeEventListener('scroll', locate, true)
     }
-  }, [state?.step, state?.paused, state?.started, state?.selected.length, state?.correction, enabled])
+  }, [state?.step, state?.paused, state?.started, state?.planImported, state?.selected.length, state?.correction, enabled])
 
   useEffect(() => {
     if (!state?.started) return
@@ -420,10 +423,10 @@ export function TutorialGuide() {
                 <>
                   {location.pathname !== `/projects/${state.projectId}/plan` && <button data-tutorial="plan-open" onClick={() => go('plan', 'plan')}>Открыть план</button>}
                   {location.pathname === `/projects/${state.projectId}/plan` && <button data-tutorial="plan-next"
-                    disabled={!state.planRead}
+                    disabled={!state.planImported}
                     onClick={() => {
                       if (
-                        state.planRead &&
+                        state.planImported &&
                         location.pathname ===
                           `/projects/${state.projectId}/plan`
                       ) {
@@ -432,7 +435,7 @@ export function TutorialGuide() {
                       }
                     }}
                   >
-                    План посмотрел, к фотографиям
+                    План импортирован, к фотографиям
                   </button>}
                 </>
               )}

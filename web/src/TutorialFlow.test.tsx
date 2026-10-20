@@ -7,6 +7,7 @@ const dialogDescriptors = new Map(['show','showModal','close'].map(name => [name
 vi.mock('./engagement', () => ({ startActivity: () => () => {}, track: async () => {}, attributionHeaders: () => ({}) }))
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.restoreAllMocks(); localStorage.clear(); sessionStorage.clear(); for (const [name,descriptor] of dialogDescriptors) { if(descriptor)Object.defineProperty(HTMLDialogElement.prototype,name,descriptor); else Reflect.deleteProperty(HTMLDialogElement.prototype,name) } })
 it('guides real project creation from examples through an illustrative signal without inference', async () => {
+  const confirm = vi.spyOn(window, 'confirm').mockImplementation(() => { throw new Error('Completed tutorial import must not prompt to discard unsaved work') })
   localStorage.clear(); sessionStorage.clear(); localStorage.setItem('analysis-motion','off')
   history.replaceState({}, '', '/examples')
   vi.stubGlobal('matchMedia', () => ({ matches:false, addEventListener:vi.fn(), removeEventListener:vi.fn() }))
@@ -16,9 +17,9 @@ it('guides real project creation from examples through an illustrative signal wi
   const session=registration.session
   const fetcher=vi.fn(async (raw:string, options?:RequestInit) => {
     const headers=new Headers(options?.headers)
-    const body=options?.body?JSON.parse(String(options.body)):{}
+    const body=options?.body instanceof File ? { xlsx: new Uint8Array(await new Promise<ArrayBuffer>((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(reader.result as ArrayBuffer); reader.onerror = reject; reader.readAsArrayBuffer(options.body as File) })) } : options?.body ? JSON.parse(String(options.body)) : {}
     const response=await demo.request(options?.method ?? 'GET',raw,body,headers.get('Idempotency-Key')??'',session)
-    return { ok:response.status<400, status:response.status, json:async()=>response.data, blob:async()=>new Blob([response.artifact??''],{type:'image/jpeg'}) }
+    return { ok:response.status<400, status:response.status, json:async()=>response.data, blob:async()=>new Blob([response.artifact??''],{type:response.contentType??'image/jpeg'}) }
   })
   vi.stubGlobal('fetch',fetcher)
   render(<AccountShell><App /></AccountShell>)
@@ -33,8 +34,23 @@ it('guides real project creation from examples through an illustrative signal wi
   await clickHighlighted('Создать проект')
   await clickHighlighted('Добавить учебный набор')
   await waitFor(()=>expect(location.pathname).toMatch(/\/plan$/))
-  await waitFor(()=>expect((screen.getByRole('button',{name:'План посмотрел, к фотографиям'}) as HTMLButtonElement).disabled).toBe(false))
-  await clickHighlighted('План посмотрел, к фотографиям')
+  const next = await screen.findByRole('button',{name:'План импортирован, к фотографиям'}) as HTMLButtonElement
+  expect(next.disabled).toBe(true)
+  const download = await screen.findByRole('link',{name:'Скачать учебный Excel'})
+  await waitFor(()=>expect(download.getAttribute('data-tutorial-highlighted')).toBe('true'))
+  const downloaded = await fetcher(download.getAttribute('href')!)
+  const file = new File([await downloaded.blob()], 'tutorial-plan.xlsx', {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'})
+  fireEvent.change(screen.getByLabelText('План Excel'),{target:{files:[file]}})
+  await screen.findByRole('heading',{name:'Предпросмотр замены плана'})
+  expect(next.disabled).toBe(true)
+  await clickHighlighted('Заменить план')
+  await waitFor(()=>expect(next.disabled).toBe(false))
+  const planWrite = fetcher.mock.calls.find(([url,options])=>url.includes('/plan') && options?.method==='PUT')
+  expect(planWrite).toBeTruthy()
+  expect(JSON.parse(String(planWrite![1]!.body)).expected_revision).toBe(1)
+  const readback = fetcher.mock.calls.find(([url])=>url.includes('/plan?revision=2'))
+  expect(readback).toBeTruthy()
+  await clickHighlighted('План импортирован, к фотографиям')
   await screen.findByRole('heading',{name:'Подготовка фотографий'})
   await clickHighlighted('Выбрать учебные фотографии')
   await clickHighlighted('Посмотреть готовый пример')
@@ -51,6 +67,7 @@ it('guides real project creation from examples through an illustrative signal wi
   await clickHighlighted('Начать проверку')
   await screen.findByText(/Готово! Вы создали проект/)
   async function clickHighlighted(name: string | RegExp) { const button=await screen.findByRole('button',{name}); await waitFor(()=>expect(button.getAttribute('data-tutorial-highlighted')).toBe('true')); fireEvent.click(button) }
+  expect(confirm).not.toHaveBeenCalled()
   const writes=fetcher.mock.calls.filter(([,options])=>options?.method==='POST')
   expect(writes.some(([url])=>url.includes('/runs/'))).toBe(false)
   expect(writes.some(([url])=>url.includes('/assistant/'))).toBe(false)

@@ -6,7 +6,7 @@ install -d -m 700 /etc/lzt
 printf '#!/bin/sh\nexit 101\n' > /usr/sbin/policy-rc.d
 chmod 755 /usr/sbin/policy-rc.d
 apt-get update
-apt-get install -y --no-install-recommends systemd-sysv ca-certificates curl python3 python3-venv postgresql-17 nginx libgl1 libglib2.0-0 logrotate
+apt-get install -y --no-install-recommends systemd-sysv ca-certificates curl python3 python3-venv postgresql-17 nginx ffmpeg libgl1 libglib2.0-0 logrotate
 systemctl --root=/ disable nginx.service postgresql.service
 printf '[boot]\nsystemd=true\n[user]\ndefault=root\n' > /etc/wsl.conf
 install -d -m 755 /opt/lzt /opt/lzt/bin /opt/lzt/python /opt/lzt/releases
