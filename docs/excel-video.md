@@ -91,3 +91,40 @@ CUDA packages use the fixed torch 2.10.0 / torchvision 0.25.0 versions from the
 [official PyTorch installation matrix](https://pytorch.org/get-started/previous-versions/).
 The original CPU virtual environment is preserved when preparing a separate CUDA
 environment; do not replace the service interpreter before both model checks pass.
+
+## Verified Windows deployment
+
+The application commit `c73b61315ddd518cd187b07d0f90d781f89854dc` is deployed as
+immutable release `98b77ca0b130dbfb`. All 105 installed file hashes and the compiled
+JavaScript/CSS returned by the public URL were checked against the package.
+The source tree SHA-256 is
+`98b77ca0b130dbfb43c3de3e2c567ae000a25ceea7f1f4dd2ea30ae9c416d771`.
+Documentation-only commits can follow this deployed application commit.
+
+The final verified backup is
+`C:\ProgramData\LztEvidence\backups\20261020T134608Z`. Existing three accounts,
+seven projects/areas and five plan revisions remained present. Password/recovery
+hashes for all three existing accounts and the administrator matched the
+pre-deployment PostgreSQL backup. Runtime configuration and backed-up credential
+files were unchanged. No accounts, projects or uploads were reset.
+
+WSL exposes NVIDIA RTX 3060, driver 610.88. Both models passed as the actual
+service user with torch `2.10.0+cu130`, torchvision `0.25.0+cu130`, CUDA 13.0 and
+ultralytics `8.4.163`. The original CPU environment and previous release remain
+available. The backend uses a separate CUDA environment through its service
+drop-in; `/usr/lib/wsl/lib` is appended to that service's PATH for driver evidence.
+
+One synthetic three-frame video passed the real public HTTPS workflow: tutorial
+XLSX download, preview, revision save/readback, dual YOLO on `cuda:0`, successful
+DeepSeek explanation, MP4 integrity/codec/audio checks, authorized Range and
+outsider denial. A backend restart followed by receipt recovery preserved the
+same analysis; the cloud ledger stayed at four calls before and after recovery.
+This verifies execution and integration, not detector accuracy on construction
+incidents. GUI/browser visual acceptance was not performed.
+
+Private acceptance receipts, logs and final checks are under
+`C:\ProgramData\LztEvidence\staging\excel-video-20261020`; receipts contain
+test credentials and must remain private. A separate marked acceptance project
+and two test accounts were created; existing user projects were not used.
+All four application units are active, and
+<https://nikolay.tailaf11dc.ts.net:8443/> remains the public URL.
