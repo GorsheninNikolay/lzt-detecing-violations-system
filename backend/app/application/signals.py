@@ -44,6 +44,7 @@ def list_signals(request: Request, project_id: uuid.UUID | None = None,
         return JSONResponse({"code": "service_not_ready"}, status_code=503)
     engine = request.app.state.store.engine
     with engine.begin() as connection:
+        connection.execute(text("SELECT pg_advisory_xact_lock_shared(804298270115)"))
         due = connection.execute(text("""SELECT z.id AS zone_id,r.id AS revision_id,e.id AS entry_id,
             e.ends_at,e.catalog_work_id FROM site_zones z
             JOIN LATERAL (SELECT id FROM zone_plan_revisions WHERE zone_id=z.id
@@ -114,6 +115,7 @@ def update_signal(signal_id: uuid.UUID, request: Request, body: dict):
     if state not in STATES or not isinstance(comment, str) or len(comment) > 2000:
         return JSONResponse({"code": "invalid_signal_update"}, status_code=400)
     with request.app.state.store.engine.begin() as connection:
+        connection.execute(text("SELECT pg_advisory_xact_lock_shared(804298270115)"))
         row = connection.execute(text("""UPDATE site_signals SET state=:state,comment=:comment,updated_at=clock_timestamp()
             WHERE id=:id RETURNING id,state,comment"""),
             {"id": signal_id, "state": state, "comment": comment}).first()
@@ -129,6 +131,7 @@ def confirm_stage(run_id: uuid.UUID, request: Request, body: dict):
     if stage not in STAGES or not isinstance(comment, str) or len(comment) > 2000:
         return JSONResponse({"code": "invalid_stage_confirmation"}, status_code=400)
     with request.app.state.store.engine.begin() as connection:
+        connection.execute(text("SELECT pg_advisory_xact_lock_shared(804298270115)"))
         run = connection.execute(text("""SELECT r.state,b.zone_id,b.revision_id,b.frame_times
             FROM analysis_runs r LEFT JOIN run_plan_bindings b ON b.run_id=r.id
             WHERE r.id=:run AND r.purpose='ordinary' FOR UPDATE OF r"""),

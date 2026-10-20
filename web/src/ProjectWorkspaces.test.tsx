@@ -248,11 +248,13 @@ it('displays immutable saved work and no-plan per-frame capture time', async () 
   vi.stubGlobal('fetch', vi.fn(async (url: string) => url === `/api/runs/${run}` ? json({
     run_id: run, project_id: a, state: 'succeeded', stages: [], context: { project_id: a },
     plan_binding: { zone_id: zone, revision_id: 'revision-1', capture_times: [capture] },
+    result_projection: { outcome: 'observations_only', frames: [] },
     planned_works: [{ title: 'Работа первой версии', stage_key: 'excavation', starts_at: capture, ends_at: '2026-09-27T12:30:00+03:00', state: 'active' }],
   }) : url.includes('/plan') ? json({ revision_number: 2, entries: [] }) : reads(url)))
   render(<App />)
   expect(await screen.findByText(/Работа первой версии: Земляные работы/)).toBeTruthy()
-  expect(screen.queryByText('В выбранной версии плана нет работ.')).toBeNull()
+  expect(screen.queryByText('Этап по сохранённому плану')).toBeNull()
+  expect(screen.getByRole('region', { name: 'Сопоставление с планом' })).toBeTruthy()
 })
 
 it('locks plan editing while loading and confirms before creating another area', async () => {
@@ -469,4 +471,26 @@ it('makes the first action clear and only offers saving when the plan changes',a
  await user.click(add)
  await user.click(within(screen.getByRole('dialog',{name:'Выберите работу'})).getByRole('button',{name:'Выбрать: Подготовка (10.)'}))
  expect(screen.getByRole('button',{name:'Сохранить план'})).toBeTruthy()
+})
+
+it.each(['project', 'run'])('recovers unknown %s deletion after reload when the target GET is already 404', async kind => {
+ localStorage.clear()
+ const storage=`pending-deletion:account:${kind==='project'?'projects':'runs'}:${kind==='project'?a:run}`
+ localStorage.setItem(storage,'{}')
+ history.replaceState({},'',kind==='project'?`/projects/${a}`:`/projects/${a}/runs/${run}`)
+ const endpoint=kind==='project'?`/api/projects/${a}`:`/api/runs/${run}`
+ const fetcher=vi.fn(async(url:string,options?:RequestInit)=>{
+  if(url===endpoint)return options?.method==='DELETE'?json({deletion_id:'11111111-1111-4111-8111-111111111111',status:'completed'},202):json({detail:'not_found'},404)
+  if(url==='/api/deletions/11111111-1111-4111-8111-111111111111')return json({deletion_id:'11111111-1111-4111-8111-111111111111',status:'completed'})
+  if(url==='/api/projects')return json({projects:kind==='project'?[]:[{...projects[0],role:'owner'}]})
+  return reads(url)
+ })
+ vi.stubGlobal('fetch',fetcher)
+ render(<AccountIdentity.Provider value="account"><App /></AccountIdentity.Provider>)
+ await screen.findByText('Результат запроса пока не подтверждён.')
+ expect(fetcher.mock.calls.filter(([,options])=>options?.method==='DELETE')).toHaveLength(0)
+ fireEvent.click(screen.getByRole('button',{name:'Проверить статус удаления'}))
+ await waitFor(()=>expect(location.pathname).toBe(kind==='project'?'/':`/projects/${a}/analyses`))
+ expect(fetcher.mock.calls.find(([,options])=>options?.method==='DELETE')?.[0]).toBe(endpoint)
+ expect(localStorage.getItem(storage)).toBeNull()
 })

@@ -78,7 +78,7 @@ def test_request_endpoint_and_headers_are_provider_specific(provider, monkeypatc
         assert request_body['temperature'] == 0
         assert request_body['max_output_tokens'] == 8192
         assert request_body['store'] is False
-        assert request_body['text']['format']['schema'] == deepseek.SCHEMA
+        assert request_body['text']['format']['schema'] == deepseek.compact_output_schema(deepseek.SCHEMA)
         raw = direct_response() if provider == 'deepseek' else response(annotation())
         return raw
 

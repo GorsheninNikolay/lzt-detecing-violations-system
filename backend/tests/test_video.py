@@ -441,3 +441,52 @@ def test_playlist_rejected_with_forced_mov_demuxer(tmp_path):
     path.write_text('#EXTM3U\n#EXT-X-TARGETDURATION:1\n#EXTINF:1,\nhttps://127.0.0.1:1/never-fetch.ts\n#EXT-X-ENDLIST\n')
     with pytest.raises(ValueError,match='video_decode_failed'):
         video.probe(path)
+
+
+@pytest.mark.parametrize('phase', ['probe', 'publication'])
+@pytest.mark.parametrize('next_role', ['viewer', None])
+def test_video_upload_rechecks_membership_in_both_publication_transactions(accounts, monkeypatch, phase, next_role):
+    import hashlib
+    from test_accounts import project
+    make, store = accounts
+    owner, _ = make()
+    editor, user = make()
+    own = project(owner)
+    invitation = owner.post(f'/projects/{own["id"]}/invitations', json={'email': user['email'], 'role': 'editor'}).json()
+    assert editor.post('/invitations/accept', json={'token': invitation['token']}).status_code == 200
+    profile_id = provision(store, 'video-role-race-'+str(uuid4()))
+    _, revision = store.require_authorized(profile_id)
+    editor.app.state.claim_loop.runtime_binding = (profile_id, revision)
+    editor.app.state.artifacts = SimpleNamespace()
+    mutations = []
+
+    def revoke_role():
+        route = f'/projects/{own["id"]}/members/{user["id"]}'
+        response = owner.delete(route) if next_role is None else owner.patch(route, json={'role': next_role})
+        assert response.status_code == 200, response.text
+        mutations.append(True)
+
+    def probe(path):
+        if phase == 'probe':
+            revoke_role()
+        return {'frame_count': 1}
+
+    def put_file(artifacts, path, content_type):
+        if phase == 'publication':
+            revoke_role()
+        payload = path.read_bytes()
+        digest = hashlib.sha256(payload).hexdigest()
+        return 'video/sha256/'+digest, digest, len(payload)
+
+    monkeypatch.setattr(video, 'probe', probe)
+    monkeypatch.setattr(video, 'put_file', put_file)
+    key = str(uuid4())
+    response = editor.post('/runs/video', params={'project_id': own['id'], 'zone_id': own['default_zone_id'],
+        'cloud_processing_consent': 'true', 'cloud_provider': 'yandex_ai_studio'},
+        headers={'Idempotency-Key': key, 'Content-Type': 'video/mp4'}, content=b'local test upload')
+    assert mutations == [True]
+    assert response.status_code == (404 if next_role is None else 403), response.text
+    with store.engine.connect() as db:
+        assert db.execute(text('SELECT count(*) FROM video_jobs WHERE project_id=:p'), {'p': own['id']}).scalar_one() == 0
+        admission = db.execute(text('SELECT state FROM video_admissions WHERE project_id=:p AND request_key=:key'), {'p': own['id'], 'key': key}).scalar()
+    assert admission == ('failed' if phase == 'publication' else None)

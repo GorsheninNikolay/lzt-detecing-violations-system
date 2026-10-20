@@ -199,7 +199,7 @@ def submit(store: PostgresStore, artifacts: ArtifactStore, key: str, body: dict,
     if snapshot.get("kind") == "cloud_api" and hashlib.sha256(image).hexdigest() not in snapshot["allowed_input_sha256"]:
         raise SubmissionError("cloud_image_not_authorized")
     try:
-        state, existing_run, intent_id, error = store.begin_submission(key, request_hash, media_type)
+        state, existing_run, intent_id, error = store.begin_submission(key, request_hash, media_type, **({"project_id": context["project_id"]} if "project_id" in context else {}))
     except Exception as exc:
         log_submission_failure("registration", False, exc)
         if isinstance(exc, AdmissionStoreError) and str(exc) == "idempotency_key_conflict":
@@ -264,7 +264,7 @@ def submit_series(store: PostgresStore, artifacts: ArtifactStore, key: str, body
             hashlib.sha256(image).hexdigest() not in snapshot["allowed_input_sha256"] for image in images):
         raise SubmissionError("cloud_image_not_authorized")
     try:
-        state, existing_run, first_intent, error = store.begin_submission(key, request_hash, media_types[0])
+        state, existing_run, first_intent, error = store.begin_submission(key, request_hash, media_types[0], **({"project_id": context["project_id"]} if "project_id" in context else {}))
     except Exception as exc:
         log_submission_failure("registration", True, exc)
         if isinstance(exc, AdmissionStoreError) and str(exc) == "idempotency_key_conflict":

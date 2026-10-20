@@ -22,7 +22,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from PIL import Image, ImageDraw
 from sqlalchemy import text
 
-from app.application.accounts import require_project
+from app.application.accounts import auth_required, current_user, require_project
 from app.adapters.postgres import AdmissionStoreError
 from app.config import Config
 from app.profiles.deepseek import DeepSeek, EQUIPMENT, validate_consent
@@ -107,6 +107,7 @@ def update(engine, identifier, **fields):
         assignments.append(f'{key}=CAST(:{key} AS jsonb)' if key in {'device','result'} else f'{key}=:{key}')
     params = {key: json.dumps(value) if key in {'device','result'} else value for key,value in fields.items()}
     with engine.begin() as db:
+        db.execute(text("SELECT pg_advisory_xact_lock_shared(804298270115)"))
         db.execute(text('UPDATE video_jobs SET ' + ','.join(assignments) + ',updated_at=clock_timestamp() WHERE id=:id'), {'id':identifier, **params})
 
 
@@ -130,6 +131,29 @@ def put_file(artifacts, path, content_type):
     if measured.hexdigest() != digest:
         raise ValueError('artifact_integrity_failed')
     return key, digest, path.stat().st_size
+
+
+
+def put_job_file(engine, artifacts, job_id, path, content_type):
+    with path.open('rb') as source:
+        key = 'video/sha256/' + hashlib.file_digest(source, 'sha256').hexdigest()
+    with engine.begin() as db:
+        db.execute(text('SELECT pg_advisory_xact_lock_shared(804298270115)'))
+        db.execute(text('SELECT pg_advisory_xact_lock(hashtextextended(:key,804298270116))'), {'key': key})
+        db.execute(text('INSERT INTO video_artifacts(job_id,object_key) VALUES (:id,:key) ON CONFLICT DO NOTHING'),
+                   {'id': job_id, 'key': key})
+    return put_file(artifacts, path, content_type)
+
+
+def require_locked_video_writer(db, request, project):
+    if not auth_required():
+        return
+    role = db.execute(text('SELECT role FROM project_members WHERE project_id=:project AND user_id=:user'),
+                      {'project': project, 'user': current_user(request)['id']}).scalar()
+    if role is None:
+        raise HTTPException(404, 'project_not_found')
+    if role not in ('owner', 'editor'):
+        raise HTTPException(403, 'insufficient_project_role')
 
 
 def load_job(request, identifier, write=False):
@@ -207,10 +231,34 @@ async def upload_video(request: Request):
             metadata = await asyncio.to_thread(probe, path)
         except (ValueError, KeyError, json.JSONDecodeError) as exc:
             raise HTTPException(400, str(exc) if re.fullmatch(r'[a-z][a-z0-9_]{0,100}',str(exc)) else 'invalid_video_file') from None
+        admission_created = False
         try:
+            with request.app.state.store.engine.begin() as db:
+                db.execute(text('SELECT pg_advisory_xact_lock_shared(804298270115)'))
+                if not db.execute(text('SELECT id FROM site_projects WHERE id=:project FOR UPDATE'), {'project': project}).first():
+                    raise HTTPException(404, 'project_not_found')
+                require_locked_video_writer(db, request, project)
+                if db.execute(text("SELECT 1 FROM deleted_request_keys WHERE kind='video' AND request_key=:key"), {'key': str(project)+':'+key}).first():
+                    raise HTTPException(410, 'resource_deleted')
+                prior = db.execute(text('SELECT request_hash,state FROM video_admissions WHERE project_id=:project AND request_key=:key FOR UPDATE'), {'project': project, 'key': key}).first()
+                if prior and prior.request_hash != request_hash:
+                    raise HTTPException(409, 'idempotency_key_conflict')
+                if prior and prior.state == 'publishing':
+                    raise HTTPException(409, 'submission_in_progress')
+                db.execute(text('''INSERT INTO video_admissions(project_id,request_key,request_hash,source_key,state)
+                    VALUES (:project,:key,:hash,:source,'publishing') ON CONFLICT(project_id,request_key)
+                    DO UPDATE SET state='publishing' '''),
+                    {'project': project, 'key': key, 'hash': request_hash, 'source': 'video/sha256/'+source_hash})
+            admission_created = True
             source_key, _, _ = await asyncio.to_thread(put_file, request.app.state.artifacts,path,'video/mp4')
             identifier = uuid.uuid4()
             with request.app.state.store.engine.begin() as db:
+                db.execute(text("SELECT pg_advisory_xact_lock_shared(804298270115)"))
+                if db.execute(text("SELECT 1 FROM deleted_request_keys WHERE kind='video' AND request_key=:key"), {'key': str(project)+':'+key}).first():
+                    raise HTTPException(410, 'resource_deleted')
+                if not db.execute(text('SELECT id FROM site_projects WHERE id=:project FOR UPDATE'), {'project': project}).first():
+                    raise HTTPException(404, 'project_not_found')
+                require_locked_video_writer(db, request, project)
                 db.execute(text('SELECT id FROM site_zones WHERE id=:zone FOR UPDATE'),{'zone':zone})
                 revision = db.execute(text('SELECT id FROM zone_plan_revisions WHERE zone_id=:zone ORDER BY revision_number DESC LIMIT 1'), {'zone':zone}).scalar()
                 if params.get('plan_revision_id') and str(revision) != params['plan_revision_id']:
@@ -224,11 +272,17 @@ async def upload_video(request: Request):
                 saved = db.execute(text('SELECT * FROM video_jobs WHERE project_id=:project AND request_key=:key'), {'project':project,'key':key}).mappings().one()
                 if saved['request_hash'] != request_hash:
                     raise HTTPException(409,'idempotency_key_conflict')
+                db.execute(text('DELETE FROM video_admissions WHERE project_id=:project AND request_key=:key'), {'project': project, 'key': key})
             return JSONResponse(public_job(saved),status_code=202)
         except HTTPException:
             raise
         except Exception:
             raise HTTPException(503,'video_publication_failed') from None
+        finally:
+            if admission_created:
+                with request.app.state.store.engine.begin() as db:
+                    db.execute(text('SELECT pg_advisory_xact_lock_shared(804298270115)'))
+                    db.execute(text("UPDATE video_admissions SET state='failed' WHERE project_id=:project AND request_key=:key AND request_hash=:hash"), {'project': project, 'key': key, 'hash': request_hash})
 
 
 @router.get('/video-runs/{identifier}')
@@ -326,6 +380,7 @@ def require_video_authorization(db,row):
 def cloud_call(engine, row, observer, key, kind, context, image=None, images=None):
     # A reservation without a result is an unknown paid outcome and is never replayed.
     with engine.begin() as db:
+        db.execute(text("SELECT pg_advisory_xact_lock_shared(804298270115)"))
         previous = db.execute(text('SELECT result FROM video_calls WHERE job_id=:id AND call_key=:key'),{'id':row['id'],'key':key}).first()
         if previous:
             if previous.result is None:
@@ -336,6 +391,7 @@ def cloud_call(engine, row, observer, key, kind, context, image=None, images=Non
                    {'id':row['id'],'key':key,'context':json.dumps(context)})
     result = observer.call(kind,context,image,120,images=images)
     with engine.begin() as db:
+        db.execute(text("SELECT pg_advisory_xact_lock_shared(804298270115)"))
         db.execute(text('UPDATE video_calls SET result=CAST(:result AS jsonb) WHERE job_id=:id AND call_key=:key'),
                    {'id':row['id'],'key':key,'result':json.dumps(result)})
     if result.get('valid') is not True:
@@ -423,7 +479,7 @@ def run_video(app, row):
                     concat.write(f"file '{len(timestamps)-1:05}.jpg'\n")
                     if read_decoder(decoder,1,allow_eof=True,cancelled=lambda:not app.state.readiness.ready.is_set()) or decoder.wait(timeout=30) != 0:
                         raise ValueError('video_frame_count_mismatch')
-            evidence_key,_,_ = put_file(artifacts,root/'detections.jsonl','application/x-ndjson')
+            evidence_key,_,_ = put_job_file(engine,artifacts,identifier,root/'detections.jsonl','application/x-ndjson')
             update(engine,identifier,stage='assembly',progress=1)
             output = root/'analysis.mp4'
             duration = timestamps[-1]+metadata['last_frame_duration']
@@ -434,12 +490,12 @@ def run_video(app, row):
                 '-enc_time_base','1:90000','-video_track_timescale','90000',
                 '-af',f'atrim=start={-metadata.get("audio_offset_seconds",0)},asetpts=PTS-({-metadata.get("audio_offset_seconds",0)})/TB,aresample=async=1:first_pts=0',
                 '-c:a','aac','-t',str(duration),'-movflags','+faststart',str(output)],timeout=600)
-            output_key,output_hash,output_size = put_file(artifacts,output,'video/mp4')
+            output_key,output_hash,output_size = put_job_file(engine,artifacts,identifier,output,'video/mp4')
             saved_frames = []
             for frame in selected_frames:
                 path = root/(frame['input_id']+'.jpg')
                 path.write_bytes(frame['image'])
-                frame_key,_,_ = put_file(artifacts,path,'image/jpeg')
+                frame_key,_,_ = put_job_file(engine,artifacts,identifier,path,'image/jpeg')
                 saved_frames.append({k:v for k,v in frame.items() if k not in ('image','detectors')} | {'artifact_key':frame_key})
             result = {'artifact_key':output_key,'sha256':output_hash,'size':output_size,
                       'video_url':f'/api/video-runs/{identifier}/media','processed_frame_count':len(timestamps),
@@ -510,6 +566,7 @@ def claim_video(engine):
             connection.close()
             return None,None
         with engine.begin() as db:
+            db.execute(text("SELECT pg_advisory_xact_lock_shared(804298270115)"))
             db.execute(text("UPDATE video_jobs SET state='failed',error='video_interrupted',updated_at=clock_timestamp() WHERE state='running'"))
             row = db.execute(text("SELECT * FROM video_jobs WHERE state='queued' ORDER BY created_at LIMIT 1 FOR UPDATE SKIP LOCKED")).mappings().first()
             if row:
@@ -551,6 +608,7 @@ def retry_video_cpu(identifier:uuid.UUID,request:Request):
     if not re.fullmatch(r'[!-~]{1,128}',key):
         raise HTTPException(400,'invalid_idempotency_key')
     with request.app.state.store.engine.begin() as db:
+        db.execute(text("SELECT pg_advisory_xact_lock_shared(804298270115)"))
         row = dict(db.execute(text('SELECT * FROM video_jobs WHERE id=:id FOR UPDATE'),{'id':identifier}).mappings().one())
         existing_key = db.execute(text('SELECT * FROM video_jobs WHERE project_id=:project AND request_key=:key'),{'project':row['project_id'],'key':key}).mappings().first()
         if existing_key and existing_key['retry_of'] != identifier:

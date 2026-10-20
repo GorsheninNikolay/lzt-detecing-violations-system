@@ -139,6 +139,10 @@ def validate_usage(response):
 def validate_response(response, model, effort, provider="yandex_ai_studio"):
     if provider not in ("yandex_ai_studio", "deepseek"):
         raise ValueError("cloud_provider_unavailable")
+    if (isinstance(response, dict) and response.get('status') == 'incomplete'
+            and isinstance(response.get('incomplete_details'), dict)
+            and response['incomplete_details'].get('reason') == 'max_output_tokens'):
+        raise ValueError('response_output_truncated')
     if (not isinstance(response, dict) or response.get('model') not in (model, model.removesuffix('/latest'))
             or not isinstance(response.get('id'), str) or not response['id'].strip()
             or response.get('status') != 'completed' or response.get('error') is not None
@@ -308,6 +312,23 @@ def validate_assessment(value, context):
     return value
 
 
+def compact_output_schema(schema):
+    """Bound prose only; keep complete object lists and evidence references."""
+    from copy import deepcopy
+    result = deepcopy(schema)
+    def visit(node):
+        if isinstance(node, dict):
+            if node == TEXT:
+                node['maxLength'] = 240
+            for value in node.values():
+                visit(value)
+        elif isinstance(node, list):
+            for value in node:
+                visit(value)
+    visit(result)
+    return result
+
+
 class DeepSeek:
     def __init__(self, profile, api_key):
         from app.profiles.hybrid import snapshot as hybrid_snapshot
@@ -320,6 +341,25 @@ class DeepSeek:
         if not api_key:
             raise ValueError('cloud_credential_missing')
         self.profile, self.api_key = profile, api_key
+
+    def revalidate(self, kind, context, original):
+        from app.profiles import hybrid
+        rejection = original.get('rejection')
+        if original.get('valid') is not True and (not isinstance(rejection, str) or not rejection.startswith(
+                ('annotation_', 'assessment_', 'hybrid_', 'response_'))):
+            raise ValueError('revalidation_administrative_rejection')
+        raw = original['raw']
+        if (original.get('request', {}).get('model') != self.profile['requested_model_identity']['id']
+                or original.get('request_sha256') != digest(canonical_bytes(original['request']))
+                or original.get('instruction_version') != self.profile['instruction_version']
+                or original.get('schema_version') != self.profile['schema_version']):
+            raise ValueError('revalidation_request_mismatch')
+        value = validate_response(raw, self.profile['requested_model_identity']['id'], 'none', provider_for(self.profile))
+        is_hybrid = self.profile.get('observation_contract') == hybrid.REVISION
+        value = ((hybrid.validate_frame(value, context) if kind == 'frame' else hybrid.validate_assessment(value, context))
+                 if is_hybrid else (validate_annotation(value) if kind == 'frame' else validate_assessment(value, context)))
+        return {**original, 'value': value, 'valid': True, 'rejection': None, 'usage': None,
+                'receipt_kind': 'local_revalidation', 'latency_ms': 0}
 
     def call(self, kind, context, image=None, timeout=120, images=None):
         from app.profiles import hybrid
@@ -336,6 +376,7 @@ class DeepSeek:
             content.append({'type': 'input_text', 'text': 'Current frame input_id: ' + str(frame_id)})
             content.append({'type': 'input_image', 'image_url': f'data:{media};base64,' + base64.b64encode(pixels).decode(), 'detail': 'auto'})
         schema = (hybrid.FRAME_SCHEMA if kind == 'frame' else hybrid.assessment_schema(context)) if is_hybrid else (SCHEMA if kind == 'frame' else ASSESSMENT_SCHEMA)
+        schema = compact_output_schema(schema)
         body = {"model": self.profile['requested_model_identity']['id'], "store": False,
                 "temperature": 0, "max_output_tokens": MAX_OUTPUT, "reasoning": {"effort": "none"},
                 "text": {"format": {"type": "json_schema", "name": kind, "strict": True, "schema": schema}},

@@ -587,118 +587,41 @@ describe('Observation result', () => {
     expect(JSON.stringify(historical)).toBe(saved)
   })
 
-  it('retries a failed run and keeps predecessor and history navigation', async () => {
-    const user = userEvent.setup()
-    const nextId = '22345678-1234-1234-1234-123456789abc'
-    vi.stubGlobal('fetch', vi.fn(async (url: string, options?: RequestInit) => {
-      if (url === `/api/runs/${runId}/retry` && options?.method === 'POST')
-        return { ok: true, json: async () => ({ run_id: nextId }) }
-      if (url === `/api/runs/${nextId}`)
-        return { ok: true, json: async () => ({ ...snapshot('queued'), retry_of_run_id: runId, retry_eligible: false }) }
-      if (url === '/api/runs?unassigned=true')
-        return { ok: true, json: async () => ({ runs: [{ id: runId, state: 'failed', created_at: '2026-09-24T10:00:00Z', retry_of_run_id: null, successor_run_id: nextId }] }) }
-      return { ok: true, json: async () => ({ ...snapshot('failed'), retry_eligible: true, successor_run_id: null,
-        profile_id: 'old-profile', retry_profile_id: 'current-profile', retry_authorization_revision: 2 }) }
-    }))
+  it('retries only the failed eligible stage in the same analysis and retains historical links', async () => {
+    vi.mocked(crypto.randomUUID).mockReset().mockReturnValue('44444444-4444-4444-8444-444444444444')
+    let retried = false
+    const fetcher = vi.fn(async (url: string, options?: RequestInit) => {
+      if (options?.method === 'POST') { retried = true; return { ok: true, json: async () => ({ run_id: runId, attempt_id: '33333333-3333-4333-8333-333333333333' }) } }
+      return { ok: true, json: async () => ({ ...snapshot(retried ? 'queued' : 'failed'), current_attempt_id: retried ? '33333333-3333-4333-8333-333333333333' : '22222222-2222-4222-8222-222222222222', retry_of_run_id: 'historical', stages: [
+        { name: 'frame_usability', state: 'succeeded', retryable: false },
+        { name: 'equipment_observation', state: retried ? 'pending' : 'failed', retryable: !retried, retry_cost: true },
+        { name: 'result_projection', state: 'pending', retryable: false },
+      ] }) }
+    })
+    vi.stubGlobal('fetch', fetcher)
     render(<App />)
-    expect(await screen.findByRole('button', { name: 'Отправить фото ещё раз' })).toBeTruthy()
-    expect(screen.getByText('Для повтора будет использована другая модель распознавания.')).toBeTruthy()
-    expect(screen.getByText('Фотографии будут обработаны заново. Это может повторно расходовать средства.')).toBeTruthy()
-    expect(vi.mocked(fetch).mock.calls.filter(([, options]) => options?.method === 'POST')).toHaveLength(0)
-    expect(document.body.textContent).not.toContain('old-profile')
-    expect(document.body.textContent).not.toContain('current-profile')
-    await user.click(await screen.findByRole('button', { name: 'Отправить фото ещё раз' }))
-    expect(await screen.findByText('Повтор анализа', { exact: false })).toBeTruthy()
-    expect(location.pathname).toBe(`/runs/${nextId}`)
-    expect(vi.mocked(fetch).mock.calls.find(([url]) => String(url).endsWith('/retry'))?.[1]?.body).toBe(JSON.stringify({ repeat_processing: true }))
-    expect(screen.getByRole('link', { name: 'Открыть исходный анализ' }).getAttribute('href')).toBe(`/runs/${runId}`)
-    expect(document.body.textContent).not.toContain(runId)
+    const button = await screen.findByRole('button', { name: 'Перезапустить этап' })
+    expect(screen.getAllByRole('button', { name: 'Перезапустить этап' })).toHaveLength(1)
+    expect(screen.queryByText('Этапы анализа')).toBeNull()
     expect(screen.queryByRole('button', { name: 'Отправить фото ещё раз' })).toBeNull()
-    await user.click(screen.getByRole('link', { name: 'Анализы' }))
-    expect(await screen.findByRole('heading', { name: 'Архив без проекта' })).toBeTruthy()
-    expect(runLink(runId)).toBeTruthy()
-  })
-
-  it('sends one manual request while busy and recovers a lost retry response explicitly', async () => {
-    const nextId = '22345678-1234-1234-1234-123456789abc'
-    let reject: (reason: unknown) => void = () => {}
-    let posts = 0
-    vi.stubGlobal('fetch', vi.fn((url: string, options?: RequestInit) => {
-      if (options?.method === 'POST' && url.endsWith('/retry')) {
-        posts++
-        if (posts === 1) return new Promise((_, failure) => { reject = failure })
-        return Promise.resolve({ ok: true, json: async () => ({ run_id: nextId }) })
-      }
-      return Promise.resolve({ ok: true, json: async () => ({ ...snapshot(url.endsWith(nextId) ? 'queued' : 'failed'), retry_eligible: !url.endsWith(nextId) }) })
-    }))
-    render(<App />)
-    const button = await screen.findByRole('button', { name: 'Отправить фото ещё раз' })
-    expect(posts).toBe(0)
-    fireEvent.click(button)
-    fireEvent.click(button)
-    expect(posts).toBe(1)
-    expect(button).toHaveProperty('disabled', true)
-    await act(async () => reject(new TypeError('lost response')))
-    expect(posts).toBe(1)
-    await userEvent.setup().click(await screen.findByRole('button', { name: 'Отправить фото ещё раз' }))
-    await waitFor(() => expect(location.pathname).toBe(`/runs/${nextId}`))
-    expect(posts).toBe(2)
-  })
-
-  it('bounds a stalled retry response body and ignores its late acceptance', async () => {
-    const nextId = '22345678-1234-1234-1234-123456789abc'
-    let release: (value: unknown) => void = () => {}
-    let posts = 0
-    let signal: AbortSignal | null | undefined
-    vi.stubGlobal('fetch', vi.fn(async (url: string, options?: RequestInit) => {
-      if (url.endsWith('/retry')) {
-        posts++
-        signal = options?.signal
-        return { ok: true, json: () => posts === 1 ? new Promise(resolve => { release = resolve }) : Promise.resolve({ run_id: nextId }) }
-      }
-      return { ok: true, json: async () => ({ ...snapshot('failed'), retry_eligible: true }) }
-    }))
-    render(<App />)
-    const button = await screen.findByRole('button', { name: 'Отправить фото ещё раз' })
-    vi.useFakeTimers()
-    fireEvent.click(button)
-    await act(async () => { await vi.advanceTimersByTimeAsync(180000) })
-    expect(signal?.aborted).toBe(true)
-    expect(screen.getByRole('alert').textContent).toBe('Обратитесь к администратору')
-    expect(button).toHaveProperty('disabled', false)
-    await act(async () => release({ run_id: nextId }))
+    expect(screen.getByRole('link', { name: 'Открыть исходный анализ' }).getAttribute('href')).toBe('/runs/historical')
+    expect(fetcher.mock.calls.filter(([, options]) => options?.method === 'POST')).toHaveLength(0)
+    await userEvent.setup().click(button)
+    await screen.findByRole('heading', { name: 'Анализ поставлен в очередь' })
     expect(location.pathname).toBe(`/runs/${runId}`)
-    expect(posts).toBe(1)
-    await act(async () => fireEvent.click(button))
-    expect(location.pathname).toBe(`/runs/${nextId}`)
-    expect(posts).toBe(2)
-    vi.useRealTimers()
+    expect(fetcher.mock.calls.find(([, options]) => options?.method === 'POST')?.[0]).toBe(`/api/runs/${runId}/stages/equipment_observation/retry`)
   })
 
-  it('disables photo reanalysis for a viewer', async () => {
+  it('hides stage recovery and deletion actions for a viewer', async () => {
     const projectId = '33333333-3333-3333-3333-333333333333'
     history.replaceState({}, '', `/projects/${projectId}/runs/${runId}`)
     vi.stubGlobal('fetch', vi.fn(async (url: string) => ({ ok: true, json: async () => url === '/api/projects'
       ? { projects: [{ id: projectId, name: 'Viewer project', role: 'viewer' }] }
-      : { ...snapshot('failed'), project_id: projectId, retry_eligible: true } })))
+      : { state: 'failed', project_id: projectId, stages: [{ name: 'equipment_observation', state: 'failed', retryable: true }] } })))
     render(<App />)
-    const button = await screen.findByRole('button', { name: 'Отправить фото ещё раз' })
-    await waitFor(() => expect(button).toHaveProperty('disabled', true))
-    fireEvent.click(button)
-    expect(vi.mocked(fetch).mock.calls.filter(([, options]) => options?.method === 'POST')).toHaveLength(0)
-  })
-
-  it.each(['network', 'server'])('shows only the administrator message after a retry %s failure', async failure => {
-    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
-      if (url.endsWith('/retry')) {
-        if (failure === 'network') throw new TypeError('private network details')
-        return { ok: false, status: 503, json: async () => ({ code: 'retry_source_unavailable' }) }
-      }
-      return { ok: true, json: async () => ({ ...snapshot('failed'), retry_eligible: true }) }
-    }))
-    render(<App />)
-    await userEvent.setup().click(await screen.findByRole('button', { name: 'Отправить фото ещё раз' }))
-    expect((await screen.findByRole('alert')).textContent).toBe('Обратитесь к администратору')
+    await screen.findByRole('heading', { name: 'Анализ завершился ошибкой' })
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Перезапустить этап' })).toBeNull())
+    expect(screen.queryByRole('button', { name: 'Удалить анализ' })).toBeNull()
   })
 
   it.each(['idempotency_key_conflict', 'cloud_consent_required', 'profile_unauthorized'])('does not expose technical recovery advice for %s', async code => {
@@ -745,23 +668,6 @@ describe('Observation result', () => {
     await user.click(await screen.findByRole('button', { name: 'Показать ещё' }))
     expect(await screen.findByText('Время создания неизвестно')).toBeTruthy()
     expect(screen.getAllByRole('listitem')).toHaveLength(2)
-  })
-
-  it('ignores a retry response after leaving the failed run', async () => {
-    const user = userEvent.setup()
-    let release: (response: unknown) => void = () => {}
-    const delayed = new Promise(resolve => { release = resolve })
-    vi.stubGlobal('fetch', vi.fn((url: string) => {
-      if (url === `/api/runs/${runId}/retry`) return delayed
-      if (url === '/api/runs?unassigned=true') return Promise.resolve({ ok: true, json: async () => ({ runs: [], next_offset: null }) })
-      return Promise.resolve({ ok: true, json: async () => ({ ...snapshot('failed'), retry_eligible: true }) })
-    }))
-    render(<App />)
-    await user.click(await screen.findByRole('button', { name: 'Отправить фото ещё раз' }))
-    await user.click(screen.getByRole('link', { name: 'Анализы' }))
-    await act(async () => { release({ ok: true, json: async () => ({ run_id: '22345678-1234-1234-1234-123456789abc' }) }) })
-    expect(location.pathname).toBe('/archive')
-    expect(await screen.findByText('Анализов пока нет.')).toBeTruthy()
   })
 
   it('shows source-bound rows, series evidence, focus jump, and native provenance', async () => {
@@ -919,9 +825,9 @@ describe('Observation result', () => {
     expect(view.container.querySelector('.result-basis')?.textContent).not.toContain('input-1')
     expect(view.container.textContent).not.toContain('Входной ID: input-1')
     expect(screen.queryByText('Этапы анализа')).toBeNull()
-    await user.click(within(thumbnails[0]).getByRole('button', { name: 'Выбрать кадр 1' }))
+    await user.click(within(thumbnails[0]).getByRole('button', { name: 'Кадр 1' }))
     expect(await within(feature).findByRole('img', { name: /Кадр 1/ })).toBeTruthy()
-    expect(within(thumbnails[0]).getByRole('button', { name: 'Выбрать кадр 1' }).getAttribute('aria-pressed')).toBe('true')
+    expect(within(thumbnails[0]).getByRole('button', { name: 'Кадр 1' }).getAttribute('aria-pressed')).toBe('true')
   })
 
   it('focuses a completed result after loading without taking focus from later interaction', async () => {
@@ -1080,7 +986,7 @@ describe('Observation result', () => {
     expect(screen.getByText('Пригодность: пригоден.')).toBeTruthy()
     expect(screen.getByText(/Проверка по проекции/)).toBeTruthy()
     expect(screen.getByText('Источник правила: Источник из проекции.')).toBeTruthy()
-    expect(within(view.container.querySelectorAll<HTMLElement>('.source-thumbnail')[0]).getByRole('heading', { name: 'Кадр 1' })).toBeTruthy()
+    expect(within(view.container.querySelectorAll<HTMLElement>('.source-thumbnail')[0]).getByRole('button', { name: 'Кадр 1' })).toBeTruthy()
     expect(view.container.querySelector('.rule-provenance')?.textContent).toContain('Результат правила: Результат из проекции')
     expect(screen.getByText('Неопределённость из проекции')).toBeTruthy()
     expect(screen.queryByRole('region', { name: 'Проверка человеком' })).toBeNull()
@@ -2252,8 +2158,8 @@ describe('New Analysis', () => {
     vi.useFakeTimers()
     await act(async () => { render(<App />) })
     expect(screen.getByRole('heading', { name: 'Анализ поставлен в очередь' })).toBeTruthy()
-    const list = screen.getByRole('list', { name: '' })
-    expect(within(list).getAllByRole('listitem').map(item => within(item).getByRole('heading').textContent)).toEqual([
+    const list = screen.getByRole('list', { name: 'Краткие этапы' })
+    expect(within(list).getAllByRole('listitem').map(item => item.textContent?.replace(/Ожидает$/, ''))).toEqual([
       'Регистрация входных данных', 'Проверка пригодности кадров', 'Распознавание техники',
       'Объединение наблюдений серии', 'Проверка правила', 'Формирование результата',
     ])

@@ -158,11 +158,14 @@ def explanatory_text(value):
 
 
 def asserts(text, pattern, *, recommendations_allowed=True):
-    for clause in re.split(r'[.!?;\n]|\b(?:но|однако|but|however)\b', text, flags=re.I):
+    clauses = re.split(r'[.!?;\n]|\b(?:но|однако|but|however)\b'
+                       r'|,\s*(?=(?:техника|машина|экскаватор|equipment)\b|(?:работа|простой|длительность|idle)\s+(?:состав|длит|продолжа|подтверж|last|is))'
+                       r'|\bи\s+(?=(?:техника|машина|экскаватор)\s+(?:простаива|бездейств|работа))', text, flags=re.I)
+    for clause in clauses:
         if not re.search(pattern, clause, re.I):
             continue
         if re.search(r'невозможн|нельзя|недостаточно|нет данных|не подтвержд|не установл|не измер'
-                     r'|не позволяет|не да[её]т|неизвестн|не доказыва|не доказан|не определ|не дела[ею]|не формиру|cannot|insufficient|unknown'
+                     r'|не позволя(?:ет|ют)|не да[её]т|неизвестн|не доказыва|не доказан|не определ|не дела[ею]|не формиру|cannot|insufficient|unknown'
                      r'|not (?:verified|confirmed|established|measured)', clause, re.I):
             continue
         if recommendations_allowed and re.match(

@@ -276,3 +276,69 @@ def test_explicit_photo_retry_rejects_viewer_and_other_project(accounts):
     assert viewer.post(f'/runs/{source}/retry', json={'repeat_processing': True}).status_code == 403
     assert outsider.post(f'/runs/{source}/retry', json={'repeat_processing': True}).status_code == 404
     assert store.read_ordinary(source) == original
+
+
+def test_owner_role_management_is_immediate_and_audited(accounts):
+    make, store = accounts
+    owner, owner_user = make()
+    member, user = make()
+    outsider, _ = make()
+    own = project(owner)
+    route = f'/projects/{own["id"]}/members/{user["id"]}'
+    invitation = owner.post(f'/projects/{own["id"]}/invitations', json={'email': user['email'], 'role': 'viewer'}).json()
+    assert member.post('/invitations/accept', json={'token': invitation['token']}).status_code == 200
+    assert member.patch(route, json={'role': 'editor'}).status_code == 403
+    assert outsider.patch(route, json={'role': 'editor'}).status_code == 404
+    assert owner.patch(route, json={'role': 'owner'}).status_code == 400
+    assert owner.patch(route, json={'role': 'editor'}, headers={'Origin': 'http://evil.test'}).status_code == 403
+    assert owner.patch(route, json={'role': 'editor'}).status_code == 200
+    assert member.post(f'/projects/{own["id"]}/zones', json={'name': 'Allowed'}).status_code == 201
+    assert owner.patch(route, json={'role': 'viewer'}).status_code == 200
+    assert member.post(f'/projects/{own["id"]}/zones', json={'name': 'Forbidden'}).status_code == 403
+    owner_route = f'/projects/{own["id"]}/members/{owner_user["id"]}'
+    assert owner.patch(owner_route, json={'role': 'viewer'}).status_code == 409
+    assert owner.delete(owner_route).status_code == 409
+    assert owner.delete(route).status_code == 200
+    assert member.get(f'/projects/{own["id"]}/members').status_code == 404
+    with store.engine.connect() as connection:
+        changes = connection.execute(text('SELECT actor_id,previous_role,next_role FROM project_membership_audit WHERE project_id=:p ORDER BY created_at'), {'p': own['id']}).all()
+    assert [(row.previous_role, row.next_role) for row in changes] == [('viewer', 'editor'), ('editor', 'viewer'), ('viewer', None)]
+    assert all(str(row.actor_id) == owner_user['id'] for row in changes)
+
+
+def test_accept_and_revoke_lock_project_before_revalidating_invitation(accounts, monkeypatch):
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Event
+    from app.application import accounts as module
+    make, _ = accounts
+    owner, _ = make()
+    recipient, user = make()
+    own = project(owner)
+    invitation = owner.post(f'/projects/{own["id"]}/invitations', json={'email': user['email'], 'role': 'editor'}).json()
+    initial_read, revoke_locked, allow_revoke = Event(), Event(), Event()
+    original_invitation, original_owner = module.invitation, module.locked_project_owner
+
+    def read_invitation(*args, **kwargs):
+        row = original_invitation(*args, **kwargs)
+        if not kwargs.get('lock'):
+            initial_read.set()
+            assert revoke_locked.wait(3)
+        return row
+
+    def lock_owner(*args, **kwargs):
+        result = original_owner(*args, **kwargs)
+        revoke_locked.set()
+        assert allow_revoke.wait(3)
+        return result
+
+    monkeypatch.setattr(module, 'invitation', read_invitation)
+    monkeypatch.setattr(module, 'locked_project_owner', lock_owner)
+    with ThreadPoolExecutor() as pool:
+        accepting = pool.submit(recipient.post, '/invitations/accept', json={'token': invitation['token']})
+        assert initial_read.wait(3)
+        revoking = pool.submit(owner.delete, f'/projects/{own["id"]}/invitations/{invitation["id"]}')
+        assert revoke_locked.wait(3)
+        allow_revoke.set()
+        assert revoking.result(timeout=3).status_code == 200
+        assert accepting.result(timeout=3).status_code == 404
+    assert recipient.get(f'/projects/{own["id"]}/members').status_code == 404

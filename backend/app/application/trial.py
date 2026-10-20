@@ -224,6 +224,9 @@ async def import_trial(request: Request):
     body_hash = hashlib.sha256(data).hexdigest()
     project, zone = uuid4(), uuid4()
     with request.app.state.store.engine.begin() as connection:
+        connection.execute(text("SELECT pg_advisory_xact_lock_shared(804298270115)"))
+        if connection.execute(text("SELECT 1 FROM deleted_request_keys WHERE kind='trial' AND request_key=:key"), {'key': str(user['id'])+':'+str(key)}).first():
+            raise HTTPException(410, 'resource_deleted')
         connection.execute(text('SELECT pg_advisory_xact_lock(:lock)'), {'lock': key.int % (2**63)})
         previous = connection.execute(text('SELECT body_sha256,project_id FROM trial_imports WHERE user_id=:user AND request_key=:key'), {'user':user['id'], 'key':key}).first()
         if previous:
@@ -239,7 +242,7 @@ async def import_trial(request: Request):
 
 def _seed_trial(connection, user_id, key, project, zone, manifest, photos, body_hash):
     source_hash = hashlib.sha256(json.dumps(manifest['plan'],sort_keys=True).encode()).hexdigest()
-    connection.execute(text('SELECT pg_advisory_xact_lock(804298270115)'))
+    connection.execute(text('SELECT pg_advisory_xact_lock(804298270117)'))
     connection.execute(text("INSERT INTO catalog_sources(sha256,filename,sheet_name,row_count) VALUES (:hash,'trial-manifest.json','Учебный план',:count) ON CONFLICT DO NOTHING"), {'hash':source_hash,'count':len(manifest['plan'])})
     revision = uuid4()
     connection.execute(text('INSERT INTO zone_plan_revisions(id,zone_id,revision_number) VALUES (:id,:zone,(SELECT coalesce(max(revision_number),0)+1 FROM zone_plan_revisions WHERE zone_id=:zone))'), {'id':revision,'zone':zone})
@@ -269,6 +272,9 @@ def seed_project_trial(project_id: UUID, request: Request):
     manifest, photos = validate_archive(data)
     body_hash = hashlib.sha256(b'tutorial-seed:' + str(project_id).encode() + b':' + data).hexdigest()
     with request.app.state.store.engine.begin() as connection:
+        connection.execute(text("SELECT pg_advisory_xact_lock_shared(804298270115)"))
+        if connection.execute(text("SELECT 1 FROM deleted_request_keys WHERE kind='trial' AND request_key=:key"), {'key': str(user['id'])+':'+str(key)}).first():
+            raise HTTPException(410, 'resource_deleted')
         connection.execute(text('SELECT pg_advisory_xact_lock(:lock)'), {'lock': key.int % (2**63)})
         role = connection.execute(text('SELECT role FROM project_members WHERE project_id=:project AND user_id=:user FOR UPDATE'), {'project':project_id,'user':user['id']}).scalar_one_or_none()
         if role is None:

@@ -32,6 +32,18 @@ from app.main import create_app
 MIGRATIONS = str(Path(__file__).resolve().parents[1] / "migrations")
 
 
+def delete_test_runs(connection, statement, parameters):
+    from app.application.deletions import _delete_rows
+    operation = uuid.uuid4()
+    rows = connection.execute(text(str(statement).replace('DELETE FROM analysis_runs', 'SELECT id FROM analysis_runs', 1)), parameters).scalars().all()
+    connection.execute(text("INSERT INTO deletion_operations(id,target_kind,target_id,state) VALUES (:id,'run',:id,'cleaning')"), {'id':operation})
+    connection.execute(text("SELECT set_config('app.deletion_id',:id,true)"), {'id':str(operation)})
+    connection.execute(text('SET CONSTRAINTS ALL DEFERRED'))
+    _delete_rows(connection, operation, 'run_attempts', 'run_id=ANY(:runs)', {'runs':rows})
+    connection.execute(statement, parameters)
+
+
+
 def test_non_postgresql_rejected_before_adapters(monkeypatch):
     monkeypatch.setenv("DATABASE_URL", "sqlite:///unwanted.db")
     with pytest.raises(ConfigurationError, match="invalid_database_dialect"):
@@ -431,7 +443,7 @@ def test_reconciliation_quarantines_interrupted_states_without_touching_bytes(in
             artifacts.client.delete_object(Bucket=config.s3_bucket, Key=key)
         with store.engine.begin() as connection:
             connection.execute(text("DELETE FROM publication_intents WHERE id = ANY(:ids)"), {"ids": intents})
-            connection.execute(text("DELETE FROM analysis_runs WHERE id = ANY(:ids)"), {"ids": run_ids})
+            delete_test_runs(connection, text("DELETE FROM analysis_runs WHERE id = ANY(:ids)"), {"ids": run_ids})
 
 
 def test_startup_reconciliation_fails_interrupted_submission(integration):
@@ -496,7 +508,7 @@ def test_reconciliation_integrity_failure_blocks_gate(integration, monkeypatch, 
             artifacts.client.delete_object(Bucket=config.s3_bucket, Key=key)
         with store.engine.begin() as connection:
             connection.execute(text("DELETE FROM publication_intents WHERE id = :id"), {"id": intent})
-            connection.execute(text("DELETE FROM analysis_runs WHERE id = :id"), {"id": run_id})
+            delete_test_runs(connection, text("DELETE FROM analysis_runs WHERE id = :id"), {"id": run_id})
 
 
 def test_reconciliation_rejects_wrong_temporary_creator(integration, monkeypatch):
@@ -524,7 +536,7 @@ def test_reconciliation_rejects_wrong_temporary_creator(integration, monkeypatch
         artifacts.client.delete_object(Bucket=config.s3_bucket, Key=temporary)
         with store.engine.begin() as connection:
             connection.execute(text("DELETE FROM publication_intents WHERE id = :id"), {"id": intent})
-            connection.execute(text("DELETE FROM analysis_runs WHERE id = :id"), {"id": run_id})
+            delete_test_runs(connection, text("DELETE FROM analysis_runs WHERE id = :id"), {"id": run_id})
 
 
 def test_reconciliation_s3_outage_blocks_readiness(integration, monkeypatch):
@@ -544,7 +556,7 @@ def test_reconciliation_s3_outage_blocks_readiness(integration, monkeypatch):
     finally:
         with store.engine.begin() as connection:
             connection.execute(text("DELETE FROM publication_intents WHERE id = :id"), {"id": intent})
-            connection.execute(text("DELETE FROM analysis_runs WHERE id = :id"), {"id": run_id})
+            delete_test_runs(connection, text("DELETE FROM analysis_runs WHERE id = :id"), {"id": run_id})
 
 
 def test_duplicate_content_keeps_first_creator(integration):
@@ -589,7 +601,7 @@ def test_duplicate_content_keeps_first_creator(integration):
         with store.engine.begin() as connection:
             connection.execute(text("DELETE FROM artifact_metadata WHERE id = :id"), {"id": orphan_artifact})
             connection.execute(text("DELETE FROM publication_intents WHERE id = ANY(:ids)"), {"ids": intents})
-            connection.execute(text("DELETE FROM analysis_runs WHERE id = ANY(:ids)"), {"ids": run_ids})
+            delete_test_runs(connection, text("DELETE FROM analysis_runs WHERE id = ANY(:ids)"), {"ids": run_ids})
 
 
 def test_reconciliation_attaches_verified_deduplicated_reference(integration):
@@ -635,7 +647,7 @@ def test_reconciliation_attaches_verified_deduplicated_reference(integration):
             connection.execute(text("DELETE FROM artifact_metadata WHERE id = :id"), {"id": artifact_id})
             connection.execute(text("DELETE FROM publication_intents WHERE id IN (:creator, :later)"),
                                {"creator": creator, "later": later})
-            connection.execute(text("DELETE FROM analysis_runs WHERE id IN (:creator, :later)"),
+            delete_test_runs(connection, text("DELETE FROM analysis_runs WHERE id IN (:creator, :later)"),
                                {"creator": creator_run, "later": attached_run})
 
 
@@ -664,7 +676,7 @@ def test_reconciliation_preserves_live_owner_before_recovery(integration):
         with store.engine.begin() as connection:
             connection.execute(text("DELETE FROM publication_intents WHERE id IN (:live, :expired)"),
                                {"live": live_intent, "expired": expired_intent})
-            connection.execute(text("DELETE FROM analysis_runs WHERE id IN (:live, :expired)"),
+            delete_test_runs(connection, text("DELETE FROM analysis_runs WHERE id IN (:live, :expired)"),
                                {"live": live, "expired": expired})
 
 
@@ -707,7 +719,7 @@ def test_startup_reconciles_lease_that_expires_after_first_pass(integration, mon
     finally:
         with store.engine.begin() as connection:
             connection.execute(text("DELETE FROM publication_intents WHERE id = :id"), {"id": intent})
-            connection.execute(text("DELETE FROM analysis_runs WHERE id = :id"), {"id": run_id})
+            delete_test_runs(connection, text("DELETE FROM analysis_runs WHERE id = :id"), {"id": run_id})
 
 
 def test_idle_claim_loop_recovers_later_expiry(integration, monkeypatch):
@@ -745,7 +757,7 @@ def test_idle_claim_loop_recovers_later_expiry(integration, monkeypatch):
     finally:
         with store.engine.begin() as connection:
             connection.execute(text("DELETE FROM publication_intents WHERE id = :id"), {"id": intent})
-            connection.execute(text("DELETE FROM analysis_runs WHERE id = :id"), {"id": run_id})
+            delete_test_runs(connection, text("DELETE FROM analysis_runs WHERE id = :id"), {"id": run_id})
 
 
 def _reserve_and_hold_provider(database_url, run_id, input_id, profile_id, invocation_id, ready):
@@ -843,7 +855,7 @@ def test_process_death_during_reserved_provider_call(integration, monkeypatch):
             connection.execute(text("DELETE FROM observer_invocations WHERE run_id = :id"), {"id": run_id})
             connection.execute(text("DELETE FROM analysis_stages WHERE run_id = :id"), {"id": run_id})
             connection.execute(text("DELETE FROM run_inputs WHERE run_id = :id"), {"id": run_id})
-            connection.execute(text("DELETE FROM analysis_runs WHERE id = :id"), {"id": run_id})
+            delete_test_runs(connection, text("DELETE FROM analysis_runs WHERE id = :id"), {"id": run_id})
             connection.execute(text("DELETE FROM observer_profiles WHERE id = :id"), {"id": profile_id})
 
 
@@ -857,7 +869,7 @@ def test_guarded_recovery(database):
         with pytest.raises(RecoveryGateError, match="recovery_unknown_ownership"):
             store.recover()
         with store.engine.begin() as connection:
-            connection.execute(text("DELETE FROM analysis_runs WHERE id = :unknown"), {"unknown": unknown})
+            delete_test_runs(connection, text("DELETE FROM analysis_runs WHERE id = :unknown"), {"unknown": unknown})
         with store.engine.connect() as connection:
             transaction = connection.begin()
             connection.execute(text("SELECT id FROM analysis_runs WHERE id = :id FOR UPDATE"), {"id": active})
@@ -875,7 +887,7 @@ def test_guarded_recovery(database):
     finally:
         with store.engine.begin() as connection:
             connection.execute(text("DELETE FROM analysis_stages WHERE run_id = :expired"), {"expired": expired})
-            connection.execute(text("DELETE FROM analysis_runs WHERE id IN (:queued, :active, :expired, :unknown)"),
+            delete_test_runs(connection, text("DELETE FROM analysis_runs WHERE id IN (:queued, :active, :expired, :unknown)"),
                                {"queued": queued, "active": active, "expired": expired, "unknown": unknown})
 
 
@@ -1086,5 +1098,63 @@ def assert_service_gate(code):
                 response = await client.get("/health/ready")
                 assert response.status_code == 503
                 assert response.json() == {"ready": False, "code": code}
+
+    asyncio.run(check())
+
+
+def test_lifespan_resumes_queued_deletion_after_storage_failure_and_restart(integration, monkeypatch):
+    config, store, artifacts = integration
+    set_service_env(monkeypatch, config)
+    monkeypatch.delenv('OBSERVER_PROFILE_ID', raising=False)
+    operation, key = uuid.uuid4(), 'tmp/'+str(uuid.uuid4())
+    artifacts.client.put_object(Bucket=artifacts.bucket, Key=key, Body=b'queued deletion')
+    with store.engine.begin() as connection:
+        connection.execute(text("INSERT INTO deletion_operations(id,target_kind,target_id,state) VALUES (:id,'run',:id,'cleaning')"), {'id': operation})
+        connection.execute(text('INSERT INTO deletion_objects(deletion_id,object_key) VALUES (:id,:key)'), {'id': operation, 'key': key})
+    original = ArtifactStore._delete_report_temporary
+    failed = threading.Event()
+
+    def fail_target(instance, object_key):
+        if object_key == key:
+            failed.set()
+            raise OSError('temporary local storage failure')
+        return original(instance, object_key)
+
+    async def wait_until(predicate):
+        deadline = time.monotonic()+5
+        while time.monotonic()<deadline:
+            if await asyncio.to_thread(predicate):
+                return
+            await asyncio.sleep(.02)
+        pytest.fail('background deletion did not reach expected state')
+
+    def status():
+        with store.engine.connect() as connection:
+            return connection.execute(text('SELECT state FROM deletion_operations WHERE id=:id'), {'id': operation}).scalar_one()
+
+    def retry_scheduled():
+        with store.engine.connect() as connection:
+            return connection.execute(text('SELECT retry_after>clock_timestamp() FROM deletion_objects WHERE deletion_id=:id'), {'id': operation}).scalar()
+
+    async def check():
+        monkeypatch.setattr(ArtifactStore, '_delete_report_temporary', fail_target)
+        first = create_app()
+        async with first.router.lifespan_context(first):
+            await first.state.startup_task
+            assert first.state.readiness.ready.is_set()
+            await wait_until(failed.is_set)
+            await wait_until(retry_scheduled)
+        assert status() == 'cleaning'
+        assert artifacts.client.head_object(Bucket=artifacts.bucket, Key=key)['ContentLength'] > 0
+        with store.engine.begin() as connection:
+            connection.execute(text('UPDATE deletion_objects SET retry_after=clock_timestamp() WHERE deletion_id=:id'), {'id': operation})
+        monkeypatch.setattr(ArtifactStore, '_delete_report_temporary', original)
+        restarted = create_app()
+        async with restarted.router.lifespan_context(restarted):
+            await restarted.state.startup_task
+            assert restarted.state.readiness.ready.is_set()
+            await wait_until(lambda: status() == 'completed')
+        assert artifacts.inspect_reconciliation(key)[0] == 'missing'
+        assert artifacts._health_versions(key) == []
 
     asyncio.run(check())

@@ -152,3 +152,47 @@ it('groups account actions and replaces the native theme select with explicit ch
   fireEvent.keyDown(screen.getByLabelText('Меню аккаунта'), {key: 'Escape'})
   expect((document.querySelector('.account-menu') as HTMLDetailsElement).open).toBe(false)
 })
+
+it('edits member roles, prevents owner changes, and refreshes after removal', async () => {
+ history.replaceState({},'', '/projects/A')
+ let role='viewer', removed=false, finish!: (value:unknown)=>void
+ const fetcher=vi.fn(async(url:string,options?:RequestInit)=>{
+  if(options?.method==='PATCH' && url.endsWith('/members/editor')) {role=JSON.parse(String(options.body)).role;return new Promise(resolve=>{finish=resolve})}
+  if(options?.method==='DELETE' && url.endsWith('/members/editor')) {removed=true;return ok({})}
+  return ok(url.endsWith('/session')?{user:owner}:url.endsWith('/members')?{members:[{user_id:'owner',name:'Владелец',role:'owner'},...removed?[]:[{user_id:'editor',name:'Коллега',role}]]}:url.endsWith('/notifications')?{notifications:[]}:{invitations:[]})
+ })
+ vi.stubGlobal('fetch',fetcher)
+ render(<AccountShell><p>Private content</p></AccountShell>)
+ await screen.findByText('Private content')
+ act(()=>{const details=document.querySelector('.collaboration') as HTMLDetailsElement;details.open=true;fireEvent(details,new Event('toggle'))})
+ const select=await screen.findByRole('combobox',{name:'Роль Коллега'})
+ expect(screen.queryByRole('combobox',{name:'Роль Владелец'})).toBeNull()
+ fireEvent.change(select,{target:{value:'editor'}})
+ expect(select).toHaveProperty('disabled',true)
+ await act(async()=>finish(ok({})))
+ await vi.waitFor(()=>expect(select).toHaveProperty('value','editor'))
+ expect(fetcher.mock.calls.find(([, options])=>options?.method==='PATCH')?.[0]).toBe('/api/projects/A/members/editor')
+ fireEvent.click(screen.getByRole('button',{name:'Удалить доступ'}))
+ await vi.waitFor(()=>expect(screen.queryByRole('combobox',{name:'Роль Коллега'})).toBeNull())
+})
+
+it('ignores a delayed member role change after switching projects', async () => {
+ history.replaceState({},'', '/projects/A')
+ let finish!: (value:unknown)=>void
+ const fetcher=vi.fn(async(url:string,options?:RequestInit)=>{
+  if(options?.method==='PATCH')return new Promise(resolve=>{finish=resolve})
+  return ok(url.endsWith('/session')?{user:owner}:url.endsWith('/members')?{members:[{user_id:'owner',name:'Владелец',role:'owner'},{user_id:'editor',name:url.includes('/A/')?'Коллега А':'Коллега Б',role:'viewer'}]}:url.endsWith('/notifications')?{notifications:[]}:{invitations:[]})
+ })
+ vi.stubGlobal('fetch',fetcher)
+ render(<AccountShell><p>Private content</p></AccountShell>)
+ await screen.findByText('Private content')
+ const open=()=>act(()=>{const details=document.querySelector('.collaboration') as HTMLDetailsElement;details.open=true;fireEvent(details,new Event('toggle'))})
+ open()
+ fireEvent.change(await screen.findByRole('combobox',{name:'Роль Коллега А'}),{target:{value:'editor'}})
+ act(()=>{history.pushState({},'','/projects/B');dispatchEvent(new Event('workspace-navigation'))})
+ open()
+ await screen.findByRole('combobox',{name:'Роль Коллега Б'})
+ await act(async()=>finish(ok({})))
+ expect(screen.queryByRole('combobox',{name:'Роль Коллега А'})).toBeNull()
+ expect(screen.getByRole('combobox',{name:'Роль Коллега Б'})).toHaveProperty('value','viewer')
+})

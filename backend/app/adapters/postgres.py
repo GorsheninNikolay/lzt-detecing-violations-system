@@ -64,6 +64,7 @@ class PostgresStore:
         with lock_path.open("a+b") as file_lock:
             fcntl.flock(file_lock, fcntl.LOCK_EX)
             with self.engine.begin() as connection:
+                connection.execute(text("SELECT pg_advisory_xact_lock_shared(804298270115)"))
                 connection.execute(text("SELECT pg_advisory_xact_lock(:id)"), {"id": LOCK_ID + 1})
                 decision = inspect_evaluation_set(manifest_path, archive_path, inventory_paths,
                                                   contract_path, admission_path, historical_path)
@@ -101,6 +102,7 @@ class PostgresStore:
     def freeze_comparison_campaign(self, evaluation_revision_id: uuid.UUID,
                                    local_profile_id: uuid.UUID, cloud_profile_id: uuid.UUID) -> uuid.UUID:
         with self.engine.begin() as connection:
+            connection.execute(text("SELECT pg_advisory_xact_lock_shared(804298270115)"))
             connection.execute(text("SELECT pg_advisory_xact_lock(:id)"), {"id": LOCK_ID + 2})
             evaluation = connection.execute(text("""SELECT manifest, manifest_hash FROM evaluation_set_revisions
                 WHERE id = :id FOR SHARE"""), {"id": evaluation_revision_id}).one_or_none()
@@ -280,6 +282,7 @@ class PostgresStore:
         report_id = uuid.uuid4()
         key = artifacts.publish_report(report_id, payload, digest)
         with self.engine.begin() as connection:
+            connection.execute(text("SELECT pg_advisory_xact_lock_shared(804298270115)"))
             inserted = connection.execute(text("""INSERT INTO evaluation_reports
                 (id, campaign_id, evaluation_revision_id, policy_revision, evidence_digest,
                  content_sha256, content_size, artifact_key, snapshot)
@@ -377,6 +380,7 @@ class PostgresStore:
 
     def next_comparison_cell(self, campaign_id: uuid.UUID) -> dict | None:
         with self.engine.begin() as connection:
+            connection.execute(text("SELECT pg_advisory_xact_lock_shared(804298270115)"))
             connection.execute(text("SELECT 1 FROM comparison_campaigns WHERE id = :id FOR UPDATE"),
                                {"id": campaign_id})
             row = connection.execute(text("""SELECT c.repeat_ordinal, c.fixture_ordinal,
@@ -390,6 +394,7 @@ class PostgresStore:
 
     def require_comparison_authorized(self, run_id: uuid.UUID) -> None:
         with self.engine.begin() as connection:
+            connection.execute(text("SELECT pg_advisory_xact_lock_shared(804298270115)"))
             row = connection.execute(text("""SELECT r.profile_id, r.profile_snapshot, r.authorization_revision, a.revision,
                 a.state FROM analysis_runs r JOIN profile_authorizations a
                 ON a.profile_id = r.profile_id WHERE r.id = :id"""),
@@ -405,6 +410,7 @@ class PostgresStore:
     def publish_comparison_input(self, run_id: uuid.UUID, frame: dict,
                                  payload: bytes, artifacts: ArtifactStore) -> None:
         with self.engine.begin() as gate:
+            gate.execute(text("SELECT pg_advisory_xact_lock_shared(804298270115)"))
             row = gate.execute(text("""SELECT r.profile_id, r.profile_snapshot, r.authorization_revision, a.revision, a.state
                 FROM analysis_runs r JOIN profile_authorizations a ON a.profile_id = r.profile_id
                 WHERE r.id = :run AND r.purpose = 'comparison_campaign'
@@ -423,6 +429,7 @@ class PostgresStore:
         image = frame['image']
         key = f"comparison:{run_id}:input:{frame['ordinal']}"
         with self.engine.begin() as connection:
+            connection.execute(text("SELECT pg_advisory_xact_lock_shared(804298270115)"))
             connection.execute(text("""INSERT INTO publication_intents
                 (id, run_id, idempotency_key, media_type, state)
                 VALUES (:id, :run, :key, 'image/jpeg', 'pending_upload')
@@ -445,6 +452,7 @@ class PostgresStore:
             self.publication_object_published(intent.id)
         artifacts.read_verified(f"sha256/{image['sha256']}", image['sha256'], image['size'])
         with self.engine.begin() as connection:
+            connection.execute(text("SELECT pg_advisory_xact_lock_shared(804298270115)"))
             run = connection.execute(text("SELECT state FROM analysis_runs WHERE id = :run FOR UPDATE"),
                                      {"run": run_id}).scalar_one()
             if run != 'planned':
@@ -474,6 +482,7 @@ class PostgresStore:
         self.require_comparison_authorized(run_id)
         owner = str(uuid.uuid4())
         with self.engine.begin() as connection:
+            connection.execute(text("SELECT pg_advisory_xact_lock_shared(804298270115)"))
             campaign = connection.execute(text("""SELECT p.id FROM comparison_campaigns p
                 JOIN comparison_cells c ON c.campaign_id = p.id WHERE c.run_id = :run
                 FOR UPDATE OF p"""), {"run": run_id}).scalar_one_or_none()
@@ -515,6 +524,7 @@ class PostgresStore:
     def renew_comparison(self, run_id: uuid.UUID, owner: str, revision: int,
                          lease_seconds: int = 30) -> None:
         with self.engine.begin() as connection:
+            connection.execute(text("SELECT pg_advisory_xact_lock_shared(804298270115)"))
             changed = connection.execute(text("""UPDATE analysis_runs SET
                 lease_expires_at = clock_timestamp() + (:seconds * interval '1 second')
                 WHERE id = :run AND purpose = 'comparison_campaign' AND state = 'running'
@@ -527,6 +537,7 @@ class PostgresStore:
     def settle_comparison_invocation(self, run_id: uuid.UUID, owner: str,
                                      invocation_id: uuid.UUID) -> None:
         with self.engine.begin() as connection:
+            connection.execute(text("SELECT pg_advisory_xact_lock_shared(804298270115)"))
             run = connection.execute(text("""SELECT state, lease_owner,
                 lease_expires_at > clock_timestamp() AS live FROM analysis_runs
                 WHERE id = :run FOR UPDATE"""), {"run": run_id}).one_or_none()
@@ -545,6 +556,7 @@ class PostgresStore:
     def fail_comparison_cell(self, run_id: uuid.UUID, code: str,
                              owner: str | None = None) -> None:
         with self.engine.begin() as connection:
+            connection.execute(text("SELECT pg_advisory_xact_lock_shared(804298270115)"))
             row = connection.execute(text("""SELECT r.state, r.lease_owner,
                 lease_expires_at > clock_timestamp() AS live,
                 provider_safe_after > clock_timestamp() AS provider_active
@@ -582,6 +594,7 @@ class PostgresStore:
 
     def recover_comparison_campaign(self, campaign_id: uuid.UUID) -> int:
         with self.engine.begin() as connection:
+            connection.execute(text("SELECT pg_advisory_xact_lock_shared(804298270115)"))
             connection.execute(text("SELECT 1 FROM comparison_campaigns WHERE id = :id FOR UPDATE"),
                                {"id": campaign_id})
             rows = connection.execute(text("""SELECT r.id, r.lease_owner, r.lease_expires_at,
@@ -609,6 +622,7 @@ class PostgresStore:
 
     def bind_evaluation_report(self, report_id: uuid.UUID, revision_id: uuid.UUID) -> None:
         with self.engine.begin() as connection:
+            connection.execute(text("SELECT pg_advisory_xact_lock_shared(804298270115)"))
             connection.execute(text("""INSERT INTO evaluation_report_bindings (report_id, revision_id)
                 VALUES (:report, :revision)"""), {"report": report_id, "revision": revision_id})
 
@@ -616,6 +630,7 @@ class PostgresStore:
         try:
             expected = ScriptDirectory(migrations_path).get_current_head()
             with self.engine.begin() as connection:
+                connection.execute(text("SELECT pg_advisory_xact_lock_shared(804298270115)"))
                 actual = MigrationContext.configure(connection).get_current_revision()
             if actual != expected or expected is None:
                 raise DatabaseGateError("database_migration_mismatch")
@@ -637,6 +652,7 @@ class PostgresStore:
         observed_count = 0
         try:
             with self.engine.begin() as connection:
+                connection.execute(text("SELECT pg_advisory_xact_lock_shared(804298270115)"))
                 locked = connection.execute(text("SELECT pg_try_advisory_xact_lock(:id)"), {"id": LOCK_ID}).scalar_one()
                 if not locked:
                     raise ReconciliationGateError("reconciliation_lock_unavailable")
@@ -654,7 +670,8 @@ class PostgresStore:
                 def inspect_final(row):
                     status, creator = artifacts.inspect_reconciliation(row.final_key, row.sha256, row.size)
                     if status == "verified" and not connection.execute(text("""SELECT 1 FROM publication_intents
-                        WHERE id = :creator AND sha256 = :hash AND size = :size AND final_key = :key"""),
+                        WHERE id = :creator AND sha256 = :hash AND size = :size AND final_key = :key
+                        UNION ALL SELECT 1 FROM deleted_receipt_ids WHERE id=:creator"""),
                         {"creator": uuid.UUID(creator), "hash": row.sha256, "size": row.size,
                          "key": row.final_key}).first():
                         raise ArtifactGateError("artifact_integrity_failed")
@@ -725,13 +742,20 @@ class PostgresStore:
     def _record_reconciliation_failure(self, code: str, intent_count: int) -> None:
         try:
             with self.engine.begin() as connection:
+                connection.execute(text("SELECT pg_advisory_xact_lock_shared(804298270115)"))
                 connection.execute(text("INSERT INTO reconciliation_runs (started_at, completed_at, intent_count, status, error_code) VALUES (clock_timestamp(), clock_timestamp(), :count, 'failed', :code)"), {"count": intent_count, "code": code})
         except Exception:
             pass
 
+    def recover_interrupted_video_admissions(self) -> None:
+        with self.engine.begin() as connection:
+            connection.execute(text("SELECT pg_advisory_xact_lock(804298270115)"))
+            connection.execute(text("UPDATE video_admissions SET state='failed' WHERE state='publishing'"))
+
     def recover(self) -> int:
         try:
             with self.engine.begin() as connection:
+                connection.execute(text("SELECT pg_advisory_xact_lock_shared(804298270115)"))
                 connection.execute(text("SET LOCAL lock_timeout = '1s'"))
                 rows = connection.execute(text("SELECT id, lease_owner, lease_expires_at, clock_timestamp() AS db_now FROM analysis_runs WHERE state = 'running' AND purpose != 'comparison_campaign' AND (lease_expires_at IS NULL OR lease_expires_at <= clock_timestamp()) FOR UPDATE NOWAIT")).all()
                 for run_id, owner, expiry, db_now in rows:
@@ -764,6 +788,7 @@ class PostgresStore:
         profile_id, fixture_set_id = uuid.uuid4(), uuid.uuid4()
         run_ids = [uuid.uuid4() for _ in fixtures]
         with self.engine.begin() as connection:
+            connection.execute(text("SELECT pg_advisory_xact_lock_shared(804298270115)"))
             connection.execute(text("INSERT INTO observer_profiles (id, status, profile_hash, snapshot) VALUES (:id, 'draft', :hash, CAST(:snapshot AS jsonb)) ON CONFLICT (profile_hash) DO NOTHING"),
                 {"id": profile_id, "hash": profile_hash, "snapshot": json.dumps(snapshot)})
             profile_id = connection.execute(text("SELECT id FROM observer_profiles WHERE profile_hash = :hash AND status = 'draft'"), {"hash": profile_hash}).scalar_one()
@@ -790,6 +815,7 @@ class PostgresStore:
         invocation_id = uuid.uuid4()
         input_hash = digest(input_bytes)
         with self.engine.begin() as connection:
+            connection.execute(text("SELECT pg_advisory_xact_lock_shared(804298270115)"))
             row = connection.execute(text("""SELECT r.profile_id, r.bootstrap_watchdog_seconds, r.profile_snapshot, i.sha256, i.size, i.input_id, p.status
                 FROM analysis_runs r JOIN run_inputs i ON i.run_id = r.id JOIN observer_profiles p ON p.id = r.profile_id
                 WHERE r.id = :id AND r.purpose = 'profile_admission' AND r.state = 'queued' FOR UPDATE OF r"""), {"id": run_id}).one_or_none()
@@ -812,6 +838,7 @@ class PostgresStore:
     def complete_invocation(self, run_id: uuid.UUID, invocation_id: uuid.UUID, result: dict) -> None:
         states = normalized_states(result["states"])
         with self.engine.begin() as connection:
+            connection.execute(text("SELECT pg_advisory_xact_lock_shared(804298270115)"))
             reservation = connection.execute(text("""SELECT r.state AS run_state, r.lease_owner,
                 r.lease_expires_at > clock_timestamp() AS lease_live,
                 r.profile_snapshot, r.profile_snapshot->'model_files'->>'model.safetensors' AS checkpoint_sha256,
@@ -865,6 +892,7 @@ class PostgresStore:
     def create_publication_intent(self, run_id: uuid.UUID, media_type: str, idempotency_key: str) -> uuid.UUID:
         intent_id = uuid.uuid4()
         with self.engine.begin() as connection:
+            connection.execute(text("SELECT pg_advisory_xact_lock_shared(804298270115)"))
             connection.execute(text("""INSERT INTO publication_intents (id, run_id, idempotency_key, media_type, state)
                 VALUES (:id, :run, :key, :media, 'pending_upload')"""),
                 {"id": intent_id, "run": run_id, "key": idempotency_key, "media": media_type})
@@ -873,6 +901,7 @@ class PostgresStore:
     def create_submission_intent(self, key: str, media_type: str = "image/jpeg") -> uuid.UUID:
         intent_id = uuid.uuid4()
         with self.engine.begin() as connection:
+            connection.execute(text("SELECT pg_advisory_xact_lock_shared(804298270115)"))
             connection.execute(text("""INSERT INTO publication_intents
                 (id, idempotency_key, submission_key, media_type, state)
                 VALUES (:id, :intent_key, :key, :media, 'pending_upload')"""),
@@ -882,6 +911,7 @@ class PostgresStore:
 
     def publication_content_verified(self, intent_id: uuid.UUID, sha256: str, size: int, final_key: str) -> None:
         with self.engine.begin() as connection:
+            connection.execute(text("SELECT pg_advisory_xact_lock_shared(804298270115)"))
             changed = connection.execute(text("""UPDATE publication_intents SET state = 'content_verified',
                 sha256 = :hash, size = :size, final_key = :key WHERE id = :id AND state = 'pending_upload'"""),
                 {"hash": sha256, "size": size, "key": final_key, "id": intent_id})
@@ -890,18 +920,21 @@ class PostgresStore:
 
     def publication_object_published(self, intent_id: uuid.UUID) -> None:
         with self.engine.begin() as connection:
+            connection.execute(text("SELECT pg_advisory_xact_lock_shared(804298270115)"))
             changed = connection.execute(text("UPDATE publication_intents SET state = 'object_published' WHERE id = :id AND state = 'content_verified'"), {"id": intent_id})
             if changed.rowcount != 1:
                 raise AdmissionStoreError("publication_state_changed")
 
     def publication_failed_integrity(self, intent_id: uuid.UUID) -> None:
         with self.engine.begin() as connection:
+            connection.execute(text("SELECT pg_advisory_xact_lock_shared(804298270115)"))
             connection.execute(text("""UPDATE publication_intents SET state = 'failed_integrity',
                 error_code = 'artifact_integrity_failed' WHERE id = :id AND state = 'content_verified'"""),
                 {"id": intent_id})
 
     def finish_admission_run(self, run_id: uuid.UUID, invocation_id: uuid.UUID, native_intent: uuid.UUID, input_intent: uuid.UUID) -> None:
         with self.engine.begin() as connection:
+            connection.execute(text("SELECT pg_advisory_xact_lock_shared(804298270115)"))
             intents = connection.execute(text("SELECT id, media_type, sha256, size, final_key FROM publication_intents WHERE id IN (:native, :input) AND run_id = :run AND state = 'object_published' FOR UPDATE"),
                 {"native": native_intent, "input": input_intent, "run": run_id}).all()
             if len(intents) != 2:
@@ -933,6 +966,7 @@ class PostgresStore:
         if not code.isidentifier():
             code = "admission_failed"
         with self.engine.begin() as connection:
+            connection.execute(text("SELECT pg_advisory_xact_lock_shared(804298270115)"))
             changed = connection.execute(text("""UPDATE analysis_runs SET state = 'failed', error_code = :code,
                 lease_owner = NULL, lease_expires_at = NULL WHERE id = :run AND state IN ('queued', 'running')"""),
                 {"run": run_id, "code": code})
@@ -951,6 +985,7 @@ class PostgresStore:
         if not run_ids:
             raise AdmissionStoreError("admission_incomplete")
         with self.engine.begin() as connection:
+            connection.execute(text("SELECT pg_advisory_xact_lock_shared(804298270115)"))
             draft = connection.execute(text("SELECT snapshot FROM observer_profiles WHERE id = :id AND status = 'draft' FOR UPDATE"), {"id": profile_id}).one_or_none()
             if not draft:
                 raise AdmissionStoreError("admission_draft_missing")
@@ -1034,6 +1069,7 @@ class PostgresStore:
 
     def require_authorized(self, profile_id: uuid.UUID, expected_revision: int | None = None) -> tuple[dict, int]:
         with self.engine.begin() as connection:
+            connection.execute(text("SELECT pg_advisory_xact_lock_shared(804298270115)"))
             return self._require_authorized(connection, profile_id, expected_revision)
 
     def _require_authorized(self, connection, profile_id: uuid.UUID,
@@ -1059,6 +1095,7 @@ class PostgresStore:
         if not reason.isidentifier():
             raise AdmissionStoreError("authorization_reason_invalid")
         with self.engine.begin() as connection:
+            connection.execute(text("SELECT pg_advisory_xact_lock_shared(804298270115)"))
             changed = connection.execute(text("""UPDATE profile_authorizations SET state = 'revoked', revision = revision + 1,
                 reason = :reason WHERE profile_id = :id AND revision = :expected AND state = 'enabled'"""),
                 {"reason": reason, "id": profile_id, "expected": expected_revision})
@@ -1075,12 +1112,17 @@ class PostgresStore:
                 raise AdmissionStoreError('idempotency_key_conflict')
             return row.state, row.run_id, row.intent_id, row.error_code
 
-    def begin_submission(self, key: str, request_hash: str, media_type: str) -> tuple[str, uuid.UUID | None, uuid.UUID | None, str | None]:
+    def begin_submission(self, key: str, request_hash: str, media_type: str, project_id: str | None = None) -> tuple[str, uuid.UUID | None, uuid.UUID | None, str | None]:
         intent_id = uuid.uuid4()
         with self.engine.begin() as connection:
-            created = connection.execute(text("""INSERT INTO submission_requests (idempotency_key, request_hash, state)
-                VALUES (:key, :hash, 'publishing') ON CONFLICT DO NOTHING RETURNING idempotency_key"""),
-                {"key": key, "hash": request_hash}).first()
+            connection.execute(text("SELECT pg_advisory_xact_lock_shared(804298270115)"))
+            if connection.execute(text("SELECT 1 FROM deleted_request_keys WHERE kind='submission' AND request_key=:key"), {'key': key}).first():
+                return 'failed', None, None, 'resource_deleted'
+            if project_id and not connection.execute(text('SELECT id FROM site_projects WHERE id=:id FOR UPDATE'), {'id': project_id}).first():
+                raise AdmissionStoreError('invalid_plan_binding')
+            created = connection.execute(text("""INSERT INTO submission_requests (idempotency_key, request_hash, state, project_id)
+                VALUES (:key, :hash, 'publishing', :project) ON CONFLICT DO NOTHING RETURNING idempotency_key"""),
+                {"key": key, "hash": request_hash, "project": project_id}).first()
             row = connection.execute(text("SELECT * FROM submission_requests WHERE idempotency_key = :key FOR UPDATE"), {"key": key}).one()
             if row.request_hash != request_hash:
                 raise AdmissionStoreError("idempotency_key_conflict")
@@ -1096,6 +1138,7 @@ class PostgresStore:
 
     def fail_submission(self, key: str, code: str) -> None:
         with self.engine.begin() as connection:
+            connection.execute(text("SELECT pg_advisory_xact_lock_shared(804298270115)"))
             connection.execute(text("""UPDATE submission_requests SET state = 'failed', error_code = :code
                 WHERE idempotency_key = :key AND state = 'publishing'"""), {"key": key, "code": code})
 
@@ -1142,6 +1185,7 @@ class PostgresStore:
             raise AdmissionStoreError(str(exc)) from None
         run_id = uuid.uuid4()
         with self.engine.begin() as connection:
+            connection.execute(text("SELECT pg_advisory_xact_lock_shared(804298270115)"))
             self._require_authorized(connection, profile_id, revision)
             request = connection.execute(text("""SELECT * FROM submission_requests
                 WHERE idempotency_key = :key FOR UPDATE"""), {"key": key}).one()
@@ -1227,7 +1271,8 @@ class PostgresStore:
     def claim_ordinary(self, profile_id: uuid.UUID, revision: int, lease_seconds: int) -> dict | None:
         owner = str(uuid.uuid4())
         with self.engine.begin() as connection:
-            row = connection.execute(text("""SELECT r.id, r.profile_snapshot, r.requested_classes, r.authorization_revision,
+            connection.execute(text("SELECT pg_advisory_xact_lock_shared(804298270115)"))
+            row = connection.execute(text("""SELECT r.id, r.current_attempt_id, r.profile_snapshot, r.requested_classes, r.authorization_revision,
                 i.sha256, i.size, a.key, a.id AS artifact_id, i.input_id, i.ordinal
                 FROM analysis_runs r JOIN run_inputs i ON i.run_id = r.id AND i.ordinal = 0
                 JOIN artifact_metadata a ON a.id = i.artifact_id
@@ -1242,7 +1287,10 @@ class PostgresStore:
                 lease_expires_at = clock_timestamp() + (:seconds * interval '1 second') WHERE id = :run"""),
                 {"run": row.id, "owner": owner, "seconds": lease_seconds})
             connection.execute(text("UPDATE analysis_stages SET state = 'succeeded' WHERE run_id = :run AND ordinal = 0"), {"run": row.id})
-            connection.execute(text("UPDATE analysis_stages SET state = 'running' WHERE run_id = :run AND ordinal = 1"), {"run": row.id})
+            connection.execute(text("UPDATE analysis_stages SET state = 'running' WHERE run_id = :run AND ordinal = 1 AND state = 'pending'"), {"run": row.id})
+            connection.execute(text("""UPDATE analysis_stages SET state='running' WHERE run_id=:run
+                AND ordinal=(SELECT min(ordinal) FROM analysis_stages WHERE run_id=:run AND state='pending')
+                AND NOT EXISTS(SELECT 1 FROM analysis_stages WHERE run_id=:run AND state='running')"""), {'run':row.id})
             frames = connection.execute(text("""SELECT i.input_id, i.ordinal, i.sha256, i.size,
                 a.key, a.id AS artifact_id FROM run_inputs i JOIN artifact_metadata a ON a.id = i.artifact_id
                 WHERE i.run_id = :run ORDER BY i.ordinal"""), {"run": row.id}).mappings().all()
@@ -1250,6 +1298,7 @@ class PostgresStore:
 
     def renew_ordinary(self, run_id: uuid.UUID, owner: str, revision: int, lease_seconds: int) -> None:
         with self.engine.begin() as connection:
+            connection.execute(text("SELECT pg_advisory_xact_lock_shared(804298270115)"))
             changed = connection.execute(text("""UPDATE analysis_runs r SET lease_expires_at = clock_timestamp() + (:seconds * interval '1 second')
                 FROM profile_authorizations a WHERE r.id = :run AND r.profile_id = a.profile_id AND r.purpose = 'ordinary'
                 AND r.state = 'running' AND r.lease_owner = :owner AND r.lease_expires_at > clock_timestamp()
@@ -1264,6 +1313,7 @@ class PostgresStore:
         raise AdmissionStoreError("profile_retired")
         invocation = uuid.uuid4()
         with self.engine.begin() as connection:
+            connection.execute(text("SELECT pg_advisory_xact_lock_shared(804298270115)"))
             row = connection.execute(text("""SELECT r.state, r.lease_owner, r.lease_expires_at > clock_timestamp() AS live,
                 r.authorization_revision, r.profile_snapshot, r.purpose,
                 a.state AS auth_state, a.revision AS auth_revision, i.sha256, i.input_id
@@ -1317,6 +1367,7 @@ class PostgresStore:
                         input_id: uuid.UUID | None = None, batch_deadline: float | None = None,
                         campaign: bool = False) -> None:
         with self.engine.begin() as connection:
+            connection.execute(text("SELECT pg_advisory_xact_lock_shared(804298270115)"))
             row = connection.execute(text("""SELECT r.profile_snapshot, r.state, r.lease_owner,
                 r.lease_expires_at > clock_timestamp() AS live, r.authorization_revision, r.purpose,
                 a.state AS auth_state, a.revision AS auth_revision, i.state AS invocation_state
@@ -1524,6 +1575,7 @@ class PostgresStore:
 
     def fail_ordinary(self, run_id: uuid.UUID, owner: str, code: str) -> None:
         with self.engine.begin() as connection:
+            connection.execute(text("SELECT pg_advisory_xact_lock_shared(804298270115)"))
             changed = connection.execute(text("""UPDATE analysis_runs SET state = 'failed', error_code = :code,
                 lease_owner = NULL, lease_expires_at = NULL WHERE id = :run AND state = 'running'
                 AND lease_owner = :owner AND lease_expires_at > clock_timestamp()"""),
@@ -1535,6 +1587,7 @@ class PostgresStore:
 
     def fail_unauthorized_queued(self) -> None:
         with self.engine.begin() as connection:
+            connection.execute(text("SELECT pg_advisory_xact_lock_shared(804298270115)"))
             rows = connection.execute(text("""SELECT r.id,
                 CASE WHEN r.profile_snapshot->>'kind' IS DISTINCT FROM 'deepseek'
                      THEN 'profile_retired' ELSE 'profile_unauthorized' END AS code FROM analysis_runs r
@@ -1592,13 +1645,16 @@ class PostgresStore:
                 WHERE b.run_id=:id ORDER BY e.starts_at,e.id"""), {"id": run_id}).mappings().all()
             confirmation = connection.execute(text("""SELECT stage,comment,created_at FROM stage_confirmations
                 WHERE run_id=:id"""), {"id": run_id}).mappings().one_or_none()
-            ai_calls = connection.execute(text("""SELECT c.id,c.kind,c.input_id,c.context,v.result
-                FROM deepseek_calls c LEFT JOIN deepseek_results v ON v.call_id=c.id
+            ai_calls = connection.execute(text("""SELECT c.id,c.kind,c.input_id,c.context,v.result,c.attempt_id,c.source_call_id,c.validation_revision,
+                EXISTS(SELECT 1 FROM attempt_call_refs f WHERE f.call_id=c.id AND f.attempt_id=r.current_attempt_id) AS effective
+                FROM deepseek_calls c JOIN analysis_runs r ON r.id=c.run_id LEFT JOIN deepseek_results v ON v.call_id=c.id
                 WHERE c.run_id=:id ORDER BY c.created_at,c.id"""), {"id": run_id}).mappings().all()
-            assessment = next((c["result"] for c in ai_calls if c["kind"] == "assessment" and c["result"]), None)
+            assessment = next((c["result"] for c in ai_calls if c["kind"] == "assessment" and c["result"] and c["effective"]), None)
             return {"ai_assessment": assessment["value"] if assessment and row.state == "succeeded" else None,
                     "ai_evidence": [{**dict(c), "id": str(c["id"]),
                                      "input_id": str(c["input_id"]) if c["input_id"] else None,
+                                     "attempt_id": str(c["attempt_id"]),
+                                     "source_call_id": str(c["source_call_id"]) if c["source_call_id"] else None,
                                      "state": ("completed" if c["result"].get("valid", True) else "invalid") if c["result"] else "uncertain"} for c in ai_calls],
                     "cloud_processing_consent": (row.request_context or {}).get("cloud_processing_consent", False),
                     "run_id": str(row.id), "purpose": purpose, "state": row.state, "error_code": row.error_code,
@@ -1782,6 +1838,7 @@ class PostgresStore:
             except ArtifactGateError:
                 raise AdmissionStoreError("retry_source_unavailable") from None
         with self.engine.begin() as connection:
+            connection.execute(text("SELECT pg_advisory_xact_lock_shared(804298270115)"))
             source = connection.execute(text("""SELECT * FROM analysis_runs
                 WHERE id = :id AND purpose = 'ordinary' FOR UPDATE"""), {"id": source_id}).mappings().one_or_none()
             if source is None:

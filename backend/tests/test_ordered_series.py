@@ -424,7 +424,8 @@ def test_pre_provider_retry_is_linear_and_keeps_source(isolated_admission_databa
             assert predecessor["retry_of_run_id"] is None
             assert descendant["successor_run_id"] is None
             assert predecessor["inputs"] == original["inputs"]
-            assert predecessor["stages"] == original["stages"]
+            assert [{key: value for key, value in stage.items() if key not in ('retryable', 'retry_cost')}
+                    for stage in predecessor["stages"]] == original["stages"]
             assert predecessor["error_code"] == original["error_code"]
             assert descendant["context"] == predecessor["context"]
             assert descendant["context"]["stage_id"] == "excavation"
@@ -453,7 +454,9 @@ def test_pre_provider_retry_is_linear_and_keeps_source(isolated_admission_databa
                     JOIN run_inputs i ON i.artifact_id = a.id WHERE i.run_id = :id"""), {"id": successor}).all()
             assert len(inherited) == (2 if series else 1) and all(item.source_artifact_id for item in inherited)
             assert (await client.get(f"/runs/{successor}/artifacts/{inherited[0].id}")).status_code == 200
-            assert (await client.get(f"/runs/{source}")).json()["stages"] == original["stages"]
+            unchanged = (await client.get(f"/runs/{source}")).json()["stages"]
+            assert [{key: value for key, value in stage.items() if key not in ('retryable', 'retry_cost')}
+                    for stage in unchanged] == original["stages"]
             for state in ("queued", "running", "succeeded"):
                 with store.engine.begin() as connection:
                     connection.execute(text("UPDATE analysis_runs SET state = :state WHERE id = :id"),

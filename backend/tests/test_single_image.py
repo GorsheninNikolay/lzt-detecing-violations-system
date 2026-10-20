@@ -20,7 +20,7 @@ from app.config import Config
 from app.profiles.deepseek import snapshot as cloud_snapshot
 from app.main import MAX_HTTP_BODY_BYTES, create_app
 from test_admission import isolated_admission_database
-from test_startup import database, integration
+from test_startup import database, integration, delete_test_runs
 
 
 def jpeg(color) -> bytes:
@@ -101,7 +101,7 @@ def test_ordinary_history_orders_and_guards_outcome(database):
     finally:
         with store.engine.begin() as connection:
             connection.execute(text("DELETE FROM result_projections WHERE run_id = ANY(:ids)"), {"ids": [first, second, running, failed, unprojected, admission]})
-            connection.execute(text("DELETE FROM analysis_runs WHERE id = ANY(:ids)"), {"ids": [second, first, running, failed, unprojected, admission, defaulted]})
+            delete_test_runs(connection, text("DELETE FROM analysis_runs WHERE id = ANY(:ids)"), {"ids": [second, first, running, failed, unprojected, admission, defaulted]})
 
 
 def test_history_route_reads_store_without_starting_observer():

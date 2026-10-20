@@ -36,12 +36,12 @@ function useArtifact(runId: string, artifactId: string | null, thumbnail = false
     retry: () => { setLoaded(null); setFailure(null); retry(value => value + 1) } }
 }
 
-export function SourceImage({ runId, artifactId, label, description, objects = [], showBoxes = false, selectedObject, onSelectObject, thumbnail = false }: { runId: string; artifactId: string | null; label: string; description: string; objects?: DetectedObject[]; showBoxes?: boolean; selectedObject?: number | null; onSelectObject?: (index: number) => void; thumbnail?: boolean }) {
+export function SourceImage({ runId, artifactId, label, description, objects = [], showBoxes = false, selectedObject, onSelectObject, thumbnail = false, selection }: { selection?: { selected: boolean; onSelect: () => void }; runId: string; artifactId: string | null; label: string; description: string; objects?: DetectedObject[]; showBoxes?: boolean; selectedObject?: number | null; onSelectObject?: (index: number) => void; thumbnail?: boolean }) {
   const artifact = useArtifact(runId, artifactId, thumbnail)
   const [decodedResource, setDecodedResource] = useState<string | null>(null)
   const imageIdentity = `${artifact.resourceKey}:${artifact.url ?? ''}`
   const loading = Boolean(artifactId && !artifact.error && (!artifact.url || decodedResource !== imageIdentity))
-  return <div className={`source-image${thumbnail ? ' source-image-thumbnail' : ''}${loading ? ' is-loading' : ''}`} aria-busy={loading}>
+  const content = <>
     {loading && <div className="image-skeleton" role="status" aria-label="Загрузка изображения" />}
     {!artifactId ? <p className="error">Исходное изображение недоступно для этого кадра.</p> : artifact.url ? <div className="annotated-image"><img key={imageIdentity} src={artifact.url} onLoad={() => setDecodedResource(imageIdentity)} onError={artifact.imageFailed} alt={`Исходное изображение: ${label}. ${description}`} />{!loading && showBoxes && objects.map((object, index) => {
     if (!object.box) return null
@@ -50,8 +50,12 @@ export function SourceImage({ runId, artifactId, label, description, objects = [
     const Overlay = onSelectObject ? 'button' : 'div'
     return <Overlay key={`${object.invocation_id}-${index}`} aria-hidden={!onSelectObject} className={`object-box ${selectedObject === index ? 'selected' : ''}`} aria-label={`Объект ${index + 1}: ${equipmentLabel(object.class_name, object.details?.type_ru, object.details?.type_en)}`} aria-pressed={selectedObject === index} onClick={() => onSelectObject?.(index)} style={{ pointerEvents: onSelectObject ? 'auto' : 'none', left: `${100 * x1}%`, top: `${100 * y1}%`, width: `${100 * (x2 - x1)}%`, height: `${100 * (y2 - y1)}%` }}><span>{index + 1}</span></Overlay>
   })}</div> :
-    artifact.error ? <p className="error">{artifact.error === 'decode' ? 'Не удалось прочитать изображение' : 'Обратитесь к администратору'} <button type="button" className="secondary" onClick={artifact.retry}>Повторить</button></p> :
-      null}</div>
+    artifact.error ? <p className="error">{artifact.error === 'decode' ? 'Не удалось прочитать изображение' : 'Обратитесь к администратору'} </p> :
+      null}
+  </>
+  return <div className={`source-image${thumbnail ? ' source-image-thumbnail' : ''}${loading ? ' is-loading' : ''}`} aria-busy={loading}>
+    {selection ? <button type="button" className="frame-select" aria-label={label} aria-pressed={selection.selected} onClick={selection.onSelect}>{content}</button> : content}
+    {artifact.error && <button type="button" className="secondary" onClick={artifact.retry}>Повторить</button>}</div>
 }
 
 export function frameDescription(observations: Observation[]): string {

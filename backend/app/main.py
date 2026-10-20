@@ -7,7 +7,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 import uvicorn
-from fastapi import Depends, FastAPI, Request
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse, Response
 
 from app.adapters.artifacts import ArtifactGateError, ArtifactStore
@@ -25,6 +25,7 @@ from app.application.engagement import router as engagement_router
 from app.application.accounts import authorize_request, router as accounts_router, current_user, auth_required, require_project, require_entity
 from app.application.assistant import router as assistant_router
 from app.application.trial import router as trial_router
+from app.application.deletions import cleanup_deletions, router as deletions_router
 
 
 MAX_HTTP_BODY_BYTES = 25_100_000
@@ -56,10 +57,11 @@ async def lifespan(app: FastAPI):
     async def cover_cleanup_loop() -> None:
         while state.ready.is_set():
             try:
+                await asyncio.to_thread(cleanup_deletions, store.engine, artifacts)
                 await asyncio.to_thread(cleanup_project_covers, store.engine, artifacts)
             except Exception:
                 logging.getLogger(__name__).exception("Project cover cleanup will retry")
-            await asyncio.sleep(300)
+            await asyncio.sleep(5)
 
     async def startup() -> None:
         migrations = str(Path(__file__).resolve().parents[1] / "migrations")
@@ -67,6 +69,7 @@ async def lifespan(app: FastAPI):
             ("database_gate_failed", lambda: store.check_head_and_smoke(migrations)),
             ("artifact_gate_failed", artifacts.probe),
             ("reconciliation_gate_failed", lambda: store.reconcile(artifacts)),
+            ("recovery_gate_failed", store.recover_interrupted_video_admissions),
             ("recovery_gate_failed", store.recover),
             ("reconciliation_gate_failed", lambda: store.reconcile(artifacts)),
         ):
@@ -140,6 +143,7 @@ def create_app() -> FastAPI:
     from app.application.video import router as video_router
     app.include_router(video_router)
     app.include_router(accounts_router)
+    app.include_router(deletions_router)
     app.include_router(assistant_router)
     app.include_router(trial_router)
     app.include_router(site_router)
@@ -331,6 +335,20 @@ def create_app() -> FastAPI:
                     run["retry_authorization_revision"] = binding[1]
                 except Exception:
                     pass
+        if run and run.get('purpose', 'ordinary') == 'ordinary':
+            from app.application.stage_recovery import retry_hints
+            try:
+                run = await asyncio.to_thread(retry_hints, app.state.store, run)
+            except Exception:
+                for stage in run.get('stages', []):
+                    stage['retryable'] = False
+                    stage['retry_cost'] = False
+            if (not run.get('retry_eligible') or not binding
+                    or str(binding[0]) != run.get('profile_id')
+                    or binding[1] != run.get('authorization_revision')):
+                for stage in run.get('stages', []):
+                    stage['retryable'] = False
+                    stage['retry_cost'] = False
         if run and request.headers.get("X-Response-Detail") == "summary":
             run = summary_snapshot(run)
         return JSONResponse(run if run else {"code": "run_not_found"}, status_code=200 if run else 404,
@@ -361,6 +379,31 @@ def create_app() -> FastAPI:
             if str(error) == "project_not_found":
                 return JSONResponse({"code": "project_not_found"}, status_code=404)
             raise
+
+    @app.post("/runs/{run_id}/stages/{stage}/retry")
+    async def retry_run_stage(run_id: str, stage: str, request: Request) -> JSONResponse:
+        try:
+            identifier = uuid.UUID(run_id)
+            key = uuid.UUID(request.headers.get('Idempotency-Key', ''))
+        except ValueError:
+            return JSONResponse({'code':'invalid_request'}, status_code=400)
+        source = await asyncio.to_thread(app.state.store.read_ordinary, identifier)
+        if source is None:
+            return JSONResponse({'code':'run_not_found'}, status_code=404)
+        try:
+            from app.application.stage_recovery import retry_stage
+            attempt = await asyncio.to_thread(retry_stage, app.state.store, identifier, stage, key,
+                app.state.artifacts, None, current_user(request)['id'] if auth_required() else None,
+                ready=app.state.readiness.ready.is_set() and app.state.claim_loop.runtime_binding is not None, binding=app.state.claim_loop.runtime_binding)
+            return JSONResponse({'run_id':str(identifier), 'attempt_id':str(attempt)}, status_code=202)
+        except AdmissionStoreError as exc:
+            return JSONResponse({'code':str(exc)}, status_code=404 if str(exc)=='run_not_found' else 503 if str(exc)=='service_not_ready' else 409)
+        except ValueError as exc:
+            return JSONResponse({'code':str(exc)}, status_code=409)
+        except HTTPException:
+            raise
+        except Exception:
+            return JSONResponse({'code':'retry_unavailable'}, status_code=503)
 
     @app.post("/runs/{run_id}/retry")
     async def retry_run(run_id: str, request: Request) -> JSONResponse:

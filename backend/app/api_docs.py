@@ -40,6 +40,7 @@ ENTRY = obj({'catalog_work_id': UUID, 'start_at': TIME, 'end_at': TIME,
              **{name: field('array', desc, items={'type':'string'}) for name,desc in (
                  ('expected_equipment','Ожидаемая техника.'),('allowed_equipment','Допустимая техника.'),('excluded_equipment','Явно исключённая техника.'))}}, ('catalog_work_id','start_at','end_at'))
 BODIES = {
+    'update_member': obj({'role':field('string','Новые права участника. Права владельца неизменяемы.',enum=['editor','viewer'])},('role',)) | {'additionalProperties':False},
     'retry_run': obj({'repeat_processing':field('boolean','Явное намерение заново обработать сохранённые фото после облачных вызовов; возможен повторный расход средств. По умолчанию false.',default=False)}) | {'additionalProperties': False},
     'create_project': obj({'name': field('string','Непустое название проекта.',minLength=1,maxLength=200),'timezone':field('string','Часовой пояс IANA.',example='Europe/Moscow')}, ('name','timezone')),
     'replace_project_cover': obj({'data':field('string','JPEG, PNG или WEBP в base64; до 5 МБ после декодирования и до 25 Мп.',contentEncoding='base64')},('data',)),
@@ -56,12 +57,18 @@ BODIES = {
     'export': obj({'version_ids':field('array','Одобренные версии с проверенным кадром. Зарезервированные источники для оценки качества исключены.',items=UUID,minItems=1,maxItems=32)},('version_ids',)),
 }
 SUMMARIES = {
+    'delete_project':'Безвозвратно удалить проект и его анализы: только владелец',
+    'delete_run':'Безвозвратно удалить фото- или видеоанализ: владелец или редактор',
+    'read_deletion':'Проверить завершение очистки: только инициатор удаления',
+    'update_member':'Изменить права участника: только владелец',
+    'remove_member':'Удалить доступ участника: только владелец',
     'live':'Проверить работоспособность процесса', 'ready':'Проверить готовность БД, S3 и исполнителя',
     'analysis_choices':'Доступные сценарии анализа', 'submit_single_image':'Загрузить кадры и создать анализ',
     'stage_summary':'Сводка этапов', 'read_readiness':'Исторический отчёт готовности',
     'read_hybrid_readiness':'Качество текущего гибридного профиля: несовпавший или отсутствующий отчёт блокирует готовность',
     'read_provider_comparison':'Историческое сравнение выведенных из исполнения моделей',
     'read_run':'Прочитать анализ, исходные данные и неизменяемую аналитику', 'list_runs':'История анализов',
+    'retry_run_stage':'Восстановить упавший этап того же анализа без повторения успешных облачных вызовов',
     'retry_run':'Явный повтор анализа сохранённых фотографий после сбоя', 'read_run_artifact':'Прочитать проверенный по SHA-256 артефакт',
     'list_catalog':'Каталог строительных работ', 'create_project':'Создать проект', 'list_projects':'Список проектов',
     'replace_project_cover':'Добавить или заменить обложку проекта', 'read_project_cover':'Получить обложку проекта',
@@ -112,10 +119,13 @@ DETECTION = obj({'id':UUID,'input_id':UUID,'invocation_id':UUID,'class_name':fie
                  'image_size':array(COUNT,'Ширина и высота ориентированного изображения.'),
                  'details':{'anyOf':[obj({'type_ru':field('string','Свободное название по-русски.'),'type_en':TEXT,'catalog_class':field(['string','null'],'Явное соответствие фиксированному каталогу.'),'status':TEXT,'evidence':field('string','Видимое основание.'),'missing_localization_reason':field(['string','null'],'Почему рамка отсутствует.')}),{'type':'null'}]}})
 EVIDENCE = obj({'id':UUID,'kind':field('string','Тип вызова.',enum=['frame','assessment']),'input_id':NULL_UUID,
-                'state':field('string','completed, invalid или uncertain. Любая резервация запрещает replay.',enum=['completed','invalid','uncertain']),
+                'attempt_id':UUID,'source_call_id':NULL_UUID,'validation_revision':field(['string','null'],'Ревизия локальной полной проверки; null у платного вызова.'),'effective':field('boolean','Используется текущей попыткой.'),
+                'state':field('string','completed, invalid или uncertain. Исходная квитанция неизменяема.',enum=['completed','invalid','uncertain']),
                 'context':field('object','Неизменяемый контекст вызова: кадры, их порядок/время, план и история.'),
                 'result':{'anyOf':[obj({'model':field(['string','null'],'Идентичность провайдера; null если отсутствует или имеет неверный тип.'),'value':field(['object','null'],'Проверенный ответ; null для invalid.'),'valid':field('boolean','Прошёл ли ответ строгую проверку.'),'raw':field('object','Точный исходный ответ, в том числе невалидный.'),'usage':{'anyOf':[obj({'input_tokens':COUNT,'output_tokens':COUNT,'total_tokens':COUNT}),{'type':'null'}],'description':'Проверенный usage, null для invalid. Исходное значение остаётся в raw.'},'instruction_version':TEXT,'schema_version':TEXT}),{'type':'null'}]}})
-RUN = obj({'run_id':UUID,'state':field('string','Состояние запуска.',enum=['queued','running','succeeded','failed']),
+RUN = obj({'current_attempt_id':UUID, 'attempts':array(obj({'id':UUID,'parent_attempt_id':NULL_UUID,'failed_stage':field(['string','null'],'Этап, восстановленный попыткой.'),'status':TEXT,'created_at':TIME}),'История попыток одного анализа.'),
+           'stages':array(obj({'name':TEXT,'state':TEXT,'reason':field(['string','null'],'Причина состояния.'),'retryable':field('boolean','Возможен явный повтор именно этого упавшего этапа.'),'retry_cost':field('boolean','Попытка может потребовать новый облачный вызов.')}),'Этапы текущей попытки.'),
+           'run_id':UUID,'state':field('string','Состояние запуска.',enum=['queued','running','succeeded','failed']),
            'purpose':TEXT,'error_code':field(['string','null'],'Безопасный код ошибки.'),'created_at':{**TIME,'type':['string','null']},
            'cloud_processing_consent':field('boolean','Согласие, сохранённое в неизменяемой записи анализа.'),'profile_id':NULL_UUID,
            'context':field(['object','null'],'Исходный пользовательский контекст.'),
@@ -127,12 +137,16 @@ RUN = obj({'run_id':UUID,'state':field('string','Состояние запуск
 ANNOTATION = obj({'id':UUID,'run_id':UUID,'input_id':UUID,'input_sha256':TEXT,'artifact_id':UUID,'version_id':UUID,
                   'revision':COUNT,'status':TEXT,'objects':OBJECTS,'original_objects':array(DETECTION,'Неизменяемая исходная гипотеза, включая unknown/null box.'),'whole_frame_verified':field('boolean','Проверен весь кадр.'),'reason':TEXT})
 FEEDBACK = obj({'id':UUID,'category':TEXT,'message':TEXT,'context':field('object','Связанный экран/проект/анализ.'),'created_at':TIME,'read_at':{**TIME,'type':['string','null']},'attachments':array(obj({'id':UUID,'media_type':TEXT,'size':COUNT}),'Вложения обращения.')})
+DELETION = obj({'deletion_id':UUID,'status':field('string','completed означает завершённую очистку; cleaning допускает повтор проверки.',enum=['cleaning','completed'])},('deletion_id','status'))
 RESPONSES = {
+    'delete_project':DELETION, 'delete_run':DELETION, 'read_deletion':DELETION,
+    'update_member':obj({'accepted':field('boolean','Права сохранены.'),'role':field('string','Новые права.',enum=['editor','viewer'])},('accepted','role')),
     'live':obj({'live':field('boolean','Процесс отвечает.')},('live',)),
     'ready':obj({'ready':field('boolean','Стартовые проверки завершены.'),'code':TEXT},('ready','code')),
     'analysis_choices':obj({'cloud_provider':field(['string','null'],'Провайдер текущего профиля; null без активного профиля.',enum=['yandex_ai_studio','deepseek',None]),
                             'cloud_provider_label':field(['string','null'],'Название провайдера текущего профиля.'),
                             'cloud_profile_id':NULL_UUID, 'stages':array(obj({'id':TEXT,'label':TEXT,'rule':field(['object','null'],'Историческое правило; для новых запусков null.')}),'Доступные сценарии.')}),
+    'retry_run_stage':obj({'run_id':UUID,'attempt_id':UUID},('run_id','attempt_id')),
     'submit_single_image':obj({'run_id':UUID,'state':TEXT,'code':TEXT}), 'retry_run':obj({'run_id':UUID},('run_id',)),
     'read_run':RUN,'list_runs':obj({'runs':array(RUN,'Страница истории.'),'total':COUNT,'next_offset':field(['integer','null'],'Следующее смещение или null.')}),
     'stage_summary':obj({'stages':array(obj({'stage_id':TEXT,'name':TEXT,'supported':field('boolean','Поддержка исторического сценария.'),'latest_result':field(['object','null'],'Последняя сохранённая проекция.'),'latest_lifecycle':field(['object','null'],'Более новый незавершённый запуск.')}),'Сводка этапов.')}),
@@ -250,6 +264,9 @@ def install(app):
                     body['properties'][key] = field('array','От 2 до 8 кадров в фиксированном порядке.',items=image,minItems=2,maxItems=8) if key=='images_base64' else image
                     body['required'].append(key)
                     operation['description'] += ' Требуется cloud_processing_consent=true. Лимит HTTP: 25 100 000 байт для одного кадра, 200 000 000 для серии. Выведенные из исполнения профили и зарезервированные контрольные примеры запрещены.'
+                if name == 'retry_run_stage':
+                    operation['parameters'] = [*operation.get('parameters', []), {'name':'Idempotency-Key','in':'header','required':True,'schema':UUID,'description':'UUID одной явной попытки. После потери ответа повторить тот же ключ; новая загрузка страницы POST не отправляет.'}]
+                    operation['description'] += ' Доступ owner/editor; только упавший этап. Восстановление сохраняет run_id/URL, исходный профиль, согласие, источники и контекст уже зарезервированной оценки. Успешные вызовы не повторяются. Сначала выполняется полная локальная проверка сохранённого raw; производная квитанция содержит source_call_id и validation_revision, usage=null. Невалидный/неизвестный результат не считается успешным. При необходимости допускается один новый вызов для неуспешного элемента в явной попытке. Клиент ожидает fetch и JSON до180 секунд.'
                 if body:
                     operation['requestBody'] = {'required':name != 'retry_run','content':{'application/json':{'schema':body,'example':example(body)}}}
                 errors = {'400':('Некорректные данные.','invalid_request'),'401':('Требуется сессия.','authentication_required'),
@@ -257,11 +274,11 @@ def install(app):
                           '409':('Конфликт неизменяемого состояния.','idempotency_key_conflict'),'413':('Слишком большое тело.','request_too_large'),
                           '429':('Превышен лимит частоты.','too_many_requests'),'503':('Сервис недоступен.','service_not_ready')}
                 for code, (description, error) in errors.items():
-                    key = 'detail' if route.path.startswith('/admin') or name in ('propose','frame_annotations','submit_feedback','analytics_event') else 'code'
+                    key = 'detail' if route.path.startswith('/admin') or name in ('propose','frame_annotations','submit_feedback','analytics_event','delete_project','delete_run','read_deletion','update_member','remove_member') else 'code'
                     operation['responses'][code] = {'description':description,'content':{'application/json':{'schema':obj({key:TEXT},(key,)), 'example':{key:error}}}}
                 if name in ('login','change_password','submit_feedback','replace_project_cover','analytics_event','propose','export'):
                     operation['responses']['429']['headers'] = {'Retry-After':{'description':'Число секунд до следующей попытки.','schema':{'type':'integer','minimum':0}}}
-                success = '202' if name in ('submit_single_image','retry_run') else '201' if name in ('create_project','create_zone') else '200'
+                success = '202' if name in ('submit_single_image','retry_run','retry_run_stage','delete_project','delete_run') else '201' if name in ('create_project','create_zone') else '200'
                 operation['responses'].pop('200', None)
                 operation['responses'][success] = {'description':'Операция принята в очередь.' if success=='202' else summary + '.', 'content':{'application/json':{'schema':RESPONSES.get(name, {'type':'object'})}}}
                 if name in ('read_run_artifact','thumbnail','feedback_attachment','read_project_cover','export'):

@@ -265,3 +265,9 @@ html[data-analysis-motion=off] .image-skeleton::after { display: none; }
   .image-skeleton, .image-skeleton::after { animation: none; }
   .image-skeleton::after { display: none; }
 }
+.analysis-thumbnail{grid-template-rows:auto;gap:0}
+.analysis-thumbnail > .source-image:has(.frame-select){height:auto;min-height:72px;overflow:visible}
+.analysis-thumbnail .frame-select{height:72px;padding:0;border-width:2px}
+.result-visual .source-thumbnail .source-image:has(.frame-select){height:auto;min-height:94px;overflow:visible}
+.result-visual .source-thumbnail .frame-select{min-height:94px;padding:0;border-width:2px}
+.source-thumbnail .source-image > .secondary,.analysis-thumbnail .source-image > .secondary{min-height:44px}

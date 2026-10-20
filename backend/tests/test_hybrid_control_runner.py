@@ -1,6 +1,7 @@
 """The paid runner must fail before transport and retain rejected paid outputs."""
 import importlib.util
 import json
+import os
 from pathlib import Path
 
 import pytest
@@ -11,6 +12,7 @@ from test_hybrid_readiness import qualified
 
 
 def runner(monkeypatch, tmp_path):
+    monkeypatch.setenv('HYBRID_BUDGET_LEDGER', os.environ.get('HYBRID_BUDGET_LEDGER', ''))
     path = Path(__file__).resolve().parents[2] / 'evaluation/hybrid/run_control.py'
     spec = importlib.util.spec_from_file_location('hybrid_control_runner', path)
     module = importlib.util.module_from_spec(spec); spec.loader.exec_module(module)

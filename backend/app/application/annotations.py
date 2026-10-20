@@ -102,6 +102,7 @@ async def propose(run_id: UUID, input_id: UUID, request: Request):
 def save_proposal(request, run_id, input_id, key, value, body_hash):
     corrected = objects(value.get('objects'))
     with engine(request).begin() as connection:
+        connection.execute(text("SELECT pg_advisory_xact_lock_shared(804298270115)"))
         connection.execute(text('SELECT pg_advisory_xact_lock(:lock)'), {'lock': key.int % 2**63})
         existing = connection.execute(text('SELECT * FROM annotation_proposals WHERE request_key=:key'), {'key': key}).mappings().first()
         if existing:
@@ -172,6 +173,7 @@ def save_review(request, proposal_id, key, value, body_hash):
             or status == 'approved' and not verified or status == 'rejected' and not reason.strip()):
         raise HTTPException(400, 'invalid_review')
     with engine(request).begin() as connection:
+        connection.execute(text("SELECT pg_advisory_xact_lock_shared(804298270115)"))
         connection.execute(text('SELECT pg_advisory_xact_lock(:lock)'), {'lock': key.int % 2**63})
         proposal = connection.execute(text('SELECT id FROM annotation_proposals WHERE id=:id FOR UPDATE'), {'id': proposal_id}).first()
         if proposal is None:

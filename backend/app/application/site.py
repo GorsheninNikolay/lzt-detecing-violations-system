@@ -120,6 +120,7 @@ def ensure_catalog(engine) -> str:
     source_hash, sources = _cells(WORKBOOK)
     source = sources[0]
     with engine.begin() as connection:
+        connection.execute(text("SELECT pg_advisory_xact_lock_shared(804298270115)"))
         connection.execute(text("SELECT pg_advisory_xact_lock(804298270114)"))
         if not connection.execute(text("SELECT 1 FROM catalog_sources WHERE sha256=:hash"), {"hash": source_hash}).first():
             connection.execute(text("""INSERT INTO catalog_sources (sha256,filename,sheet_name,row_count)
@@ -195,7 +196,10 @@ def create_project(request: Request, body: dict):
         project_id = uuid4()
         zone_id = uuid4()
         with engine.begin() as connection:
+            connection.execute(text("SELECT pg_advisory_xact_lock_shared(804298270115)"))
             if request_key:
+                if connection.execute(text("SELECT 1 FROM deleted_request_keys WHERE kind='project' AND request_key=:key"), {'key': str(request_key)}).first():
+                    raise SiteError('resource_deleted', 410)
                 connection.execute(text("SELECT pg_advisory_xact_lock(:lock)"), {"lock": request_key.int % (2**63)})
                 previous = connection.execute(text("SELECT body_sha256,response FROM project_requests WHERE request_key=:key"), {"key": request_key}).first()
                 if previous:
@@ -291,6 +295,7 @@ def _queue_cover_cleanup(connection, project_id: UUID, cover_hash: str) -> None:
 def _queue_unreferenced_cover(request: Request, project_id: UUID, cover_hash: str) -> None:
     try:
         with request.app.state.store.engine.begin() as connection:
+            connection.execute(text("SELECT pg_advisory_xact_lock_shared(804298270115)"))
             current = connection.execute(text("SELECT cover_sha256 FROM site_projects WHERE id=:id FOR UPDATE"),
                                          {"id": project_id}).first()
             if current is not None and current.cover_sha256 != cover_hash:
@@ -306,6 +311,7 @@ def cleanup_project_covers(engine, artifacts, batch_size: int = 10) -> None:
             {"limit": batch_size}).all()
     for project_id, cover_hash in due:
         with engine.begin() as connection:
+            connection.execute(text("SELECT pg_advisory_xact_lock_shared(804298270115)"))
             current = connection.execute(text("SELECT cover_sha256 FROM site_projects WHERE id=:id FOR UPDATE"),
                                          {"id": project_id}).first()
             queued = connection.execute(text("""SELECT 1 FROM project_cover_gc
@@ -348,6 +354,7 @@ def _replace_project_cover(project_id: UUID, request: Request, key: UUID, body_h
     attempted_store = False
     try:
         with _engine(request).begin() as connection:
+            connection.execute(text("SELECT pg_advisory_xact_lock_shared(804298270115)"))
             connection.execute(text("SELECT pg_advisory_xact_lock(:lock)"), {"lock": key.int % (2**63)})
             previous = connection.execute(text("""SELECT project_id,body_sha256,response
                 FROM project_cover_requests WHERE request_key=:key"""), {"key": key}).first()
@@ -429,6 +436,7 @@ def create_zone(project_id: UUID, request: Request, body: dict):
             raise SiteError("invalid_zone")
         zone_id = uuid4()
         with engine.begin() as connection:
+            connection.execute(text("SELECT pg_advisory_xact_lock_shared(804298270115)"))
             if not connection.execute(text("SELECT 1 FROM site_projects WHERE id=:id"), {"id": project_id}).first():
                 raise SiteError("project_not_found", 404)
             try:
@@ -494,6 +502,7 @@ def replace_zone_plan(zone_id: UUID, request: Request, body: dict):
             raise SiteError("invalid_plan")
         entries = [_entry(item) for item in values]
         with engine.begin() as connection:
+            connection.execute(text("SELECT pg_advisory_xact_lock_shared(804298270115)"))
             if not connection.execute(text("SELECT 1 FROM site_zones WHERE id=:id FOR UPDATE"),
                                       {"id": zone_id}).first():
                 raise SiteError("zone_not_found", 404)

@@ -108,6 +108,7 @@ def password(value):
 def throttle(request, operation, address=''):
     key = digest(f'{operation}:{request.client.host if request.client else "unknown"}:{address}')
     with engine(request).begin() as conn:
+        conn.execute(text("SELECT pg_advisory_xact_lock_shared(804298270115)"))
         attempts = conn.execute(text('''INSERT INTO account_throttles(key,attempts) VALUES (:key,1)
             ON CONFLICT(key) DO UPDATE SET attempts=CASE WHEN account_throttles.started_at < clock_timestamp()-interval '15 minutes'
             THEN 1 ELSE account_throttles.attempts+1 END,
@@ -137,6 +138,7 @@ def register(request: Request, body: dict):
     encoded = password(body.get('password'))
     try:
         with engine(request).begin() as conn:
+            conn.execute(text("SELECT pg_advisory_xact_lock_shared(804298270115)"))
             identifier = uuid.uuid4()
             conn.execute(text('INSERT INTO account_users(id,email,name,password_hash,recovery_hash,verified) VALUES (:id,:e,:n,:p,:recovery,true)'),
                          {'id': identifier, 'e': address, 'n': name.strip(), 'p': encoded, 'recovery': digest(secrets.token_urlsafe(32))})
@@ -150,6 +152,7 @@ def login(request: Request, response: Response, body: dict):
     address = email(body.get('email'))
     throttle(request, 'login', address)
     with engine(request).begin() as conn:
+        conn.execute(text("SELECT pg_advisory_xact_lock_shared(804298270115)"))
         row = conn.execute(text('SELECT * FROM account_users WHERE email=:e FOR UPDATE'), {'e': address}).mappings().first()
         if not row or not verify_password(body.get('password'), row['password_hash']):
             raise HTTPException(401, 'invalid_credentials')
@@ -163,6 +166,7 @@ def login(request: Request, response: Response, body: dict):
 @router.post('/account/logout')
 def logout(request: Request, response: Response):
     with engine(request).begin() as conn:
+        conn.execute(text("SELECT pg_advisory_xact_lock_shared(804298270115)"))
         conn.execute(text('DELETE FROM account_sessions WHERE token_hash=:t'), {'t': digest(request.cookies.get(COOKIE, ''))})
     response.delete_cookie(COOKIE, path='/')
     return {'accepted': True}
@@ -180,6 +184,7 @@ def update_profile(request, body):
     user = current_user(request)
     throttle(request, 'profile', user['id'])
     with engine(request).begin() as conn:
+        conn.execute(text("SELECT pg_advisory_xact_lock_shared(804298270115)"))
         row = conn.execute(text('SELECT * FROM account_users WHERE id=:u FOR UPDATE'), {'u': user['id']}).mappings().one()
         if 'email' in body or 'password' in body:
             if not verify_password(body.get('current_password'), row['password_hash']):
@@ -214,12 +219,57 @@ def members(project_id: uuid.UUID, request: Request):
         return {'members': [{**row, 'user_id': str(row['user_id'])} for row in rows]}
 
 
+def locked_project_owner(connection, request, project_id):
+    if not connection.execute(text('SELECT id FROM site_projects WHERE id=:p FOR UPDATE'),
+                              {'p': project_id}).first():
+        raise HTTPException(404, 'project_not_found')
+    if not auth_required():
+        return None
+    actor = current_user(request)['id']
+    role = connection.execute(text('SELECT role FROM project_members WHERE project_id=:p AND user_id=:u'),
+                              {'p': project_id, 'u': actor}).scalar()
+    if not role:
+        raise HTTPException(404, 'project_not_found')
+    if role != 'owner':
+        raise HTTPException(403, 'insufficient_project_role')
+    return actor
+
+
+def change_member(project_id, user_id, request, next_role):
+    with engine(request).begin() as conn:
+        conn.execute(text("SELECT pg_advisory_xact_lock_shared(804298270115)"))
+        actor = locked_project_owner(conn, request, project_id)
+        previous = conn.execute(text('SELECT role FROM project_members WHERE project_id=:p AND user_id=:u FOR UPDATE'),
+                                {'p': project_id, 'u': user_id}).scalar()
+        if previous is None:
+            raise HTTPException(404, 'member_not_found')
+        if previous == 'owner':
+            raise HTTPException(409, 'owner_immutable')
+        if previous != next_role:
+            values = {'p': project_id, 'u': user_id, 'role': next_role}
+            if next_role is None:
+                conn.execute(text('DELETE FROM project_members WHERE project_id=:p AND user_id=:u'), values)
+            else:
+                conn.execute(text('UPDATE project_members SET role=:role WHERE project_id=:p AND user_id=:u'), values)
+            conn.execute(text('''INSERT INTO project_membership_audit
+                (id,project_id,actor_id,user_id,previous_role,next_role)
+                VALUES (:id,:p,:actor,:u,:previous,:role)'''),
+                {**values, 'id': uuid.uuid4(), 'actor': actor, 'previous': previous})
+    return {'accepted': True, 'role': next_role}
+
+
+@router.patch('/projects/{project_id}/members/{user_id}')
+def update_member(project_id: uuid.UUID, user_id: uuid.UUID, request: Request, body: dict):
+    require_project(request, project_id, owner=True)
+    if set(body) != {'role'} or body['role'] not in ('editor', 'viewer'):
+        raise HTTPException(400, 'invalid_role')
+    return change_member(project_id, user_id, request, body['role'])
+
+
 @router.delete('/projects/{project_id}/members/{user_id}')
 def remove_member(project_id: uuid.UUID, user_id: uuid.UUID, request: Request):
     require_project(request, project_id, owner=True)
-    with engine(request).begin() as conn:
-        conn.execute(text("DELETE FROM project_members WHERE project_id=:p AND user_id=:u AND role<>'owner'"), {'p': project_id, 'u': user_id})
-    return {'accepted': True}
+    return change_member(project_id, user_id, request, None)
 
 
 @router.get('/projects/{project_id}/invitations')
@@ -240,6 +290,8 @@ def invite(project_id: uuid.UUID, request: Request, body: dict):
     token, identifier = secrets.token_urlsafe(32), uuid.uuid4()
     expires = datetime.now(timezone.utc) + timedelta(days=7)
     with engine(request).begin() as conn:
+        conn.execute(text("SELECT pg_advisory_xact_lock_shared(804298270115)"))
+        locked_project_owner(conn, request, project_id)
         recipient = conn.execute(text('SELECT id FROM account_users WHERE email=:e'), {'e': address}).first() if address else None
         if address and not recipient:
             raise HTTPException(400, 'recipient_not_registered')
@@ -254,15 +306,17 @@ def invite(project_id: uuid.UUID, request: Request, body: dict):
 def revoke(project_id: uuid.UUID, invitation_id: uuid.UUID, request: Request):
     require_project(request, project_id, owner=True)
     with engine(request).begin() as conn:
+        conn.execute(text("SELECT pg_advisory_xact_lock_shared(804298270115)"))
+        locked_project_owner(conn, request, project_id)
         conn.execute(text('UPDATE project_invitations SET revoked=true WHERE id=:i AND project_id=:p'), {'i': invitation_id, 'p': project_id})
     return {'accepted': True}
 
 
-def invitation(conn, user, token=None, identifier=None):
+def invitation(conn, user, token=None, identifier=None, lock=False):
     row = conn.execute(text('''SELECT i.*,p.name AS project_name FROM project_invitations i
         JOIN site_projects p ON p.id=i.project_id WHERE
         (i.token_hash=:t OR (i.id=CAST(:id AS uuid) AND i.recipient_id=:u))
-        AND NOT i.revoked AND i.expires_at>clock_timestamp() FOR UPDATE OF i'''),
+        AND NOT i.revoked AND i.expires_at>clock_timestamp()''' + (' FOR UPDATE OF i' if lock else '')),
         {'t': digest(str(token or '')), 'id': identifier, 'u': user['id']}).mappings().first()
     if not row or row['recipient_id'] and str(row['recipient_id']) != user['id']:
         raise HTTPException(404, 'invitation_not_found')
@@ -273,6 +327,7 @@ def invitation(conn, user, token=None, identifier=None):
 def preview(token: str, request: Request):
     user = current_user(request)
     with engine(request).begin() as conn:
+        conn.execute(text("SELECT pg_advisory_xact_lock_shared(804298270115)"))
         row = invitation(conn, user, token=token)
         return {'project_name': row['project_name'], 'role': row['role'], 'expires_at': row['expires_at'].isoformat()}
 
@@ -285,7 +340,11 @@ def accept(request: Request, body: dict):
     except (ValueError, TypeError):
         raise HTTPException(400, 'invalid_invitation') from None
     with engine(request).begin() as conn:
+        conn.execute(text("SELECT pg_advisory_xact_lock_shared(804298270115)"))
         row = invitation(conn, user, token=body.get('token'), identifier=identifier)
+        if not conn.execute(text('SELECT id FROM site_projects WHERE id=:p FOR UPDATE'), {'p': row['project_id']}).first():
+            raise HTTPException(404, 'invitation_not_found')
+        row = invitation(conn, user, token=body.get('token'), identifier=identifier, lock=True)
         conn.execute(text('''INSERT INTO project_members VALUES (:p,:u,:r)
             ON CONFLICT(project_id,user_id) DO NOTHING'''), {'p': row['project_id'], 'u': user['id'], 'r': row['role']})
         role = conn.execute(text('SELECT role FROM project_members WHERE project_id=:p AND user_id=:u'), {'p': row['project_id'], 'u': user['id']}).scalar_one()
@@ -308,6 +367,7 @@ def notifications(request: Request):
 def read_notification(notification_id: uuid.UUID, request: Request):
     user = current_user(request)
     with engine(request).begin() as conn:
+        conn.execute(text("SELECT pg_advisory_xact_lock_shared(804298270115)"))
         conn.execute(text('UPDATE account_notifications SET read=true WHERE id=:id AND user_id=:u'), {'id': notification_id, 'u': user['id']})
     return {'accepted': True}
 
@@ -341,6 +401,9 @@ async def authorize_request(request: Request):
         return
     parts = path.strip('/').split('/')
     write = unsafe
+    if request.method == 'DELETE' and len(parts) == 2 and parts[0] in ('runs', 'projects'):
+        current_user(request)
+        return
     if len(parts) > 1 and parts[0] == 'runs' and parts[1] not in ('single-image', 'series', 'video'):
         try:
             identifier = uuid.UUID(parts[1])

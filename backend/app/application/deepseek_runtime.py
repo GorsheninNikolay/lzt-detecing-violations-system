@@ -20,6 +20,7 @@ def provision(store, folder_id=None, hybrid=False, provider="yandex_ai_studio"):
     profile_id = uuid.uuid5(uuid.NAMESPACE_URL, 'deepseek/' + identity)
     audit = digest(canonical_bytes({'configuration': identity, 'verification': 'no_paid_probe'}))
     with store.engine.begin() as db:
+        db.execute(text("SELECT pg_advisory_xact_lock_shared(804298270115)"))
         db.execute(text('''INSERT INTO observer_profiles(id,status,profile_hash,snapshot)
             VALUES (:id,'draft',:hash,CAST(:snapshot AS jsonb)) ON CONFLICT DO NOTHING'''),
             {'id': parent_id, 'hash': digest(('draft/' + identity).encode()), 'snapshot': json.dumps(profile)})
@@ -37,9 +38,9 @@ def lease(db, work):
     row = db.execute(text('''SELECT r.request_context,r.profile_snapshot,r.stage_key FROM analysis_runs r
         JOIN profile_authorizations a ON a.profile_id=r.profile_id
         WHERE r.id=:id AND r.state='running' AND r.lease_owner=:owner
-          AND r.purpose='ordinary' AND r.lease_expires_at>clock_timestamp() AND a.state='enabled'
+          AND r.current_attempt_id=:attempt AND r.purpose='ordinary' AND r.lease_expires_at>clock_timestamp() AND a.state='enabled'
           AND a.revision=r.authorization_revision FOR UPDATE OF r,a'''),
-        {'id': work['id'], 'owner': work['owner']}).one_or_none()
+        {'id': work['id'], 'owner': work['owner'], 'attempt': work.get('current_attempt_id', work['id'])}).one_or_none()
     if not row:
         raise ValueError('ordinary_lease_rejected')
     if row.profile_snapshot.get('kind') != 'deepseek':
@@ -48,13 +49,15 @@ def lease(db, work):
     return row
 
 
-def reserve(store, work, kind, context, frame=None):
+def reserve(store, work, kind, context, frame=None, source_call_id=None):
     call_id = uuid.uuid4()
     with store.engine.begin() as db:
+        db.execute(text("SELECT pg_advisory_xact_lock_shared(804298270115)"))
         lease(db, work)
-        db.execute(text('''INSERT INTO deepseek_calls(id,run_id,call_key,kind,input_id,context)
-            VALUES (:id,:run,:key,:kind,:input,CAST(:context AS jsonb))'''),
-            {'id': call_id, 'run': work['id'], 'key': str(frame['input_id']) if frame else 'assessment',
+        db.execute(text('''INSERT INTO deepseek_calls(id,run_id,attempt_id,call_key,kind,input_id,context,source_call_id,validation_revision)
+            VALUES (:id,:run,:attempt,:key,:kind,:input,CAST(:context AS jsonb),:source,:validation)'''),
+            {'id': call_id, 'run': work['id'], 'attempt': work.get('current_attempt_id', work['id']),
+             'source': source_call_id, 'validation': VALIDATION_REVISION if source_call_id else None, 'key': str(frame['input_id']) if frame else 'assessment',
              'kind': kind, 'input': frame['input_id'] if frame else None, 'context': json.dumps(context)})
         if kind == 'frame':
             db.execute(text("UPDATE analysis_stages SET state='succeeded' WHERE run_id=:run AND ordinal=1 AND state='running'"), {'run':work['id']})
@@ -64,17 +67,87 @@ def reserve(store, work, kind, context, frame=None):
 
 def save_result(store, work, call_id, result):
     with store.engine.begin() as db:
+        db.execute(text("SELECT pg_advisory_xact_lock_shared(804298270115)"))
         lease(db, work)
-        db.execute(text('INSERT INTO deepseek_results(call_id,result) VALUES (:id,CAST(:result AS jsonb))'),
-                   {'id': call_id, 'result': json.dumps(result)})
-        frames_complete = db.execute(text('''SELECT
-            (SELECT count(*) FROM run_inputs WHERE run_id=:run) =
-            (SELECT count(*) FROM deepseek_calls c JOIN deepseek_results r ON r.call_id=c.id
-             WHERE c.run_id=:run AND c.kind='frame' AND COALESCE((r.result->>'valid')::boolean,true))'''),
-            {'run':work['id']}).scalar_one()
-        if frames_complete:
-            db.execute(text("UPDATE analysis_stages SET state='succeeded' WHERE run_id=:run AND ordinal=2 AND state='running'"), {'run':work['id']})
-            db.execute(text("UPDATE analysis_stages SET state='running' WHERE run_id=:run AND ordinal=3 AND state='pending'"), {'run':work['id']})
+        saved = db.execute(text('''INSERT INTO deepseek_results(call_id,result)
+            SELECT id,CAST(:result AS jsonb) FROM deepseek_calls
+            WHERE id=:id AND run_id=:run AND attempt_id=:attempt'''),
+            {'id':call_id,'run':work['id'],'attempt':work.get('current_attempt_id',work['id']),'result':json.dumps(result)})
+        if saved.rowcount != 1:
+            raise ValueError('ordinary_lease_rejected')
+        if result.get('valid') is True:
+            db.execute(text("""INSERT INTO attempt_call_refs(attempt_id,call_key,call_id)
+                SELECT :attempt,call_key,id FROM deepseek_calls WHERE id=:id"""),
+                {'attempt': work.get('current_attempt_id', work['id']), 'id': call_id})
+        advance_frames(db, work)
+
+
+def advance_frames(db, work):
+    frames_complete = db.execute(text("""SELECT
+        (SELECT count(*) FROM run_inputs WHERE run_id=:run) =
+        (SELECT count(*) FROM attempt_call_refs f JOIN deepseek_calls c ON c.id=f.call_id
+         WHERE f.attempt_id=:attempt AND c.kind='frame')"""),
+        {'run': work['id'], 'attempt': work.get('current_attempt_id', work['id'])}).scalar_one()
+    if frames_complete:
+        db.execute(text("UPDATE analysis_stages SET state='succeeded',reason=NULL WHERE run_id=:run AND ordinal IN (1,2) AND state IN ('pending','running')"), {'run':work['id']})
+        db.execute(text("UPDATE analysis_stages SET state='running' WHERE run_id=:run AND ordinal=3 AND state='pending'"), {'run':work['id']})
+
+
+VALIDATION_REVISION = 'stage-recovery-validation-v1'
+
+
+def effective_calls(store, work):
+    with store.engine.connect() as db:
+        return {r['call_key']: dict(r) for r in db.execute(text("""SELECT c.*,v.result
+            FROM attempt_call_refs f JOIN deepseek_calls c ON c.id=f.call_id
+            JOIN deepseek_results v ON v.call_id=c.id WHERE f.attempt_id=:attempt"""),
+            {'attempt': work.get('current_attempt_id', work['id'])}).mappings()}
+
+
+def prior_call(store, work, key):
+    with store.engine.connect() as db:
+        row = db.execute(text("""SELECT c.*,v.result FROM deepseek_calls c
+            LEFT JOIN deepseek_results v ON v.call_id=c.id WHERE c.run_id=:run AND c.call_key=:key
+            AND c.attempt_id<>:attempt ORDER BY c.created_at DESC,c.id DESC LIMIT 1"""),
+            {'run': work['id'], 'key': key, 'attempt': work.get('current_attempt_id', work['id'])}).mappings().first()
+        return dict(row) if row else None
+
+
+def detector_output(store, work, frame, image):
+    with store.engine.connect() as db:
+        saved = db.execute(text('SELECT * FROM detector_stage_outputs WHERE run_id=:run AND input_id=:input'),
+                           {'run':work['id'], 'input':frame['input_id']}).mappings().first()
+    if saved:
+        if saved['input_sha256'] != frame['sha256'] or saved['manifest'] != detector_manifest(work):
+            raise ValueError('artifact_integrity_failed')
+        return saved['output']
+    old = prior_call(store, work, str(frame['input_id']))
+    if old and old['context'].get('detectors'):
+        output = old['context']['detectors']
+    else:
+        from app.profiles.yolo import detectors
+        output = detectors().detect(image, str(frame['input_id']))
+    with store.engine.begin() as db:
+        db.execute(text('SELECT pg_advisory_xact_lock_shared(804298270115)'))
+        lease(db, work)
+        db.execute(text("""INSERT INTO detector_stage_outputs(run_id,input_id,input_sha256,manifest,output)
+            VALUES (:run,:input,:sha,CAST(:manifest AS jsonb),CAST(:output AS jsonb))"""),
+            {'run':work['id'], 'input':frame['input_id'], 'sha':frame['sha256'],
+             'manifest':json.dumps(detector_manifest(work)), 'output':json.dumps(output)})
+    return output
+
+
+def detector_manifest(work):
+    return {'sha256': work['profile_snapshot'].get('detector_manifest_sha256')}
+
+
+def revalidate(observer, old, context):
+    if not old or not old['result'] or not old['result'].get('raw'):
+        return None
+    try:
+        return observer.revalidate(old['kind'], context, old['result'])
+    except (ValueError, TypeError, KeyError, AttributeError):
+        return None
 
 
 def class_state(value, name, detector_evidence=None):
@@ -109,6 +182,7 @@ def observation_context(frame, result):
 
 def freeze_context(store, work, frames):
     with store.engine.begin() as db:
+        db.execute(text("SELECT pg_advisory_xact_lock_shared(804298270115)"))
         row = lease(db, work)
     with store.engine.connect() as db:
         context = dict(row.request_context)
@@ -139,7 +213,8 @@ def freeze_context(store, work, frames):
         history = []
         if reliable:
             candidates = db.execute(text('''SELECT r.id,v.result,t.last_capture FROM analysis_runs r
-                JOIN deepseek_calls c ON c.run_id=r.id AND c.kind='assessment'
+                JOIN attempt_call_refs af ON af.attempt_id=r.current_attempt_id AND af.call_key='assessment'
+                JOIN deepseek_calls c ON c.id=af.call_id AND c.kind='assessment'
                 JOIN deepseek_results v ON v.call_id=c.id
                 CROSS JOIN LATERAL (
                     SELECT max((f->>'captured_at')::timestamptz) AS last_capture,
@@ -169,18 +244,36 @@ def freeze_context(store, work, frames):
                 'instruction_version': row.profile_snapshot['instruction_version'], 'schema_version': row.profile_snapshot['schema_version']}
 
 
-def complete(store, work, frame_results, assessment, frozen):
+def mark_downstream(store, work, rule_complete=False, plan=None):
+    with store.engine.begin() as db:
+        db.execute(text('SELECT pg_advisory_xact_lock_shared(804298270115)'))
+        lease(db, work)
+        db.execute(text("UPDATE analysis_stages SET state='succeeded',reason=NULL WHERE run_id=:run AND ordinal=3 AND state IN ('running','pending')"), {'run':work['id']})
+        if rule_complete:
+            db.execute(text("UPDATE analysis_stages SET state=:state,reason=:reason WHERE run_id=:run AND ordinal=4 AND state IN ('running','pending')"),
+                       {'run':work['id'],'state':'succeeded' if plan else 'skipped','reason':None if plan else 'not_applicable'})
+            db.execute(text("UPDATE analysis_stages SET state='running',reason=NULL WHERE run_id=:run AND ordinal=5 AND state='pending'"), {'run':work['id']})
+        else:
+            db.execute(text("UPDATE analysis_stages SET state='running',reason=NULL WHERE run_id=:run AND ordinal=4 AND state='pending'"), {'run':work['id']})
+
+
+def validate_downstream(work, frame_results, assessment, frozen):
     if work['profile_snapshot'].get('observation_contract') == 'hybrid-photo-signals-v1':
         from app.profiles.hybrid import validate_assessment, validate_frame
         validate_assessment(assessment['value'], frozen)
         for frame, _, result in frame_results:
             validate_frame(result['value'], {'detectors': result['detectors']})
+
+
+def complete(store, work, frame_results, assessment, frozen):
     with store.engine.begin() as db:
+        db.execute(text("SELECT pg_advisory_xact_lock_shared(804298270115)"))
         lease(db, work)
-        expected = db.execute(text('SELECT count(*) FROM deepseek_calls WHERE run_id=:run'), {'run': work['id']}).scalar_one()
-        completed = db.execute(text('''SELECT count(*) FROM deepseek_calls c JOIN deepseek_results r ON r.call_id=c.id
-            WHERE c.run_id=:run'''), {'run': work['id']}).scalar_one()
-        if expected != len(work['frames']) + 1 or expected != completed:
+        effective = db.execute(text('SELECT call_key,call_id FROM attempt_call_refs WHERE attempt_id=:attempt'),
+                               {'attempt':work.get('current_attempt_id', work['id'])}).all()
+        expected_ids = {str(frame['input_id']): call_id for frame, call_id, _ in frame_results}
+        if len(effective) != len(work['frames']) + 1 or any(
+                key != 'assessment' and expected_ids.get(key) != call_id for key, call_id in effective):
             raise ValueError('observation_incomplete')
         observations = []
         hybrid = work['profile_snapshot'].get('observation_contract') == 'hybrid-photo-signals-v1'
@@ -290,51 +383,81 @@ async def execute(runner, work, revision):
                 raise ValueError('ordinary_lease_rejected')
         def validate_work_lease():
             with runner.store.engine.begin() as db:
+                db.execute(text("SELECT pg_advisory_xact_lock_shared(804298270115)"))
                 lease(db, work)
         await asyncio.to_thread(validate_work_lease)
         observer = DeepSeek(work['profile_snapshot'], Config.from_env().api_key_for(work['profile_snapshot']))
         deadline = monotonic() + work['profile_snapshot']['runtime']['batch_timeout_seconds']
         results, frames, images = [], [], []
         hybrid = work['profile_snapshot'].get('observation_contract') == 'hybrid-photo-signals-v1'
+        effective = await asyncio.to_thread(effective_calls, runner.store, work)
         prepared = []
         for frame in work['frames']:
             check_renewal()
             image = await asyncio.to_thread(runner.artifacts.read_verified, frame['key'], frame['sha256'], frame['size'])
             await asyncio.to_thread(oriented_image, image)
-            context = {'input_id': str(frame['input_id']), 'sha256': frame['sha256'], 'ordinal': frame['ordinal'],
+            key = str(frame['input_id'])
+            context = {'input_id': key, 'sha256': frame['sha256'], 'ordinal': frame['ordinal'],
                        'instruction_version': work['profile_snapshot']['instruction_version'],
                        'schema_version': work['profile_snapshot']['schema_version']}
             if hybrid:
-                from app.profiles.yolo import detectors
-                context['detectors'] = await asyncio.to_thread(detectors().detect, image, str(frame['input_id']))
+                context['detectors'] = await asyncio.to_thread(detector_output, runner.store, work, frame, image)
             prepared.append((frame, image, context))
         for frame, image, context in prepared:
-            timeout = min(120, deadline - monotonic())
-            if timeout <= 0:
-                raise ValueError('observer_timeout')
-            check_renewal()
-            call_id = await asyncio.to_thread(reserve, runner.store, work, 'frame', context, frame)
-            result = await asyncio.to_thread(observer.call, 'frame', context, image, timeout)
-            if hybrid:
-                result['detectors'] = context['detectors']
-            check_renewal()
-            await asyncio.to_thread(save_result, runner.store, work, call_id, result)
-            if result.get('valid') is not True:
-                raise ValueError('deepseek_response_invalid')
+            key = str(frame['input_id'])
+            saved = effective.get(key)
+            if saved:
+                call_id, result = saved['id'], saved['result']
+            else:
+                old = await asyncio.to_thread(prior_call, runner.store, work, key)
+                original_context = old['context'] if old else context
+                result = await asyncio.to_thread(revalidate, observer, old, original_context)
+                check_renewal()
+                call_id = await asyncio.to_thread(reserve, runner.store, work, 'frame', original_context, frame,
+                                                  old['id'] if result else None)
+                if result is None:
+                    timeout = min(120, deadline - monotonic())
+                    if timeout <= 0:
+                        raise ValueError('observer_timeout')
+                    result = await asyncio.to_thread(observer.call, 'frame', original_context, image, timeout)
+                if hybrid:
+                    result['detectors'] = original_context['detectors']
+                check_renewal()
+                await asyncio.to_thread(save_result, runner.store, work, call_id, result)
+                if result.get('valid') is not True:
+                    raise ValueError('deepseek_response_invalid')
             results.append((frame, call_id, result))
             frames.append(observation_context(frame, result))
-            images.append((str(frame['input_id']), image))
-        frozen = await asyncio.to_thread(freeze_context, runner.store, work, frames)
-        timeout = min(120, deadline - monotonic())
-        if timeout <= 0:
-            raise ValueError('observer_timeout')
-        check_renewal()
-        call_id = await asyncio.to_thread(reserve, runner.store, work, 'assessment', frozen)
-        assessment = await asyncio.to_thread(observer.call, 'assessment', frozen, None, timeout, **({'images': images} if hybrid else {}))
-        check_renewal()
-        await asyncio.to_thread(save_result, runner.store, work, call_id, assessment)
-        if assessment.get('valid') is not True:
-            raise ValueError('deepseek_response_invalid')
+            images.append((key, image))
+        def finish_frames():
+            with runner.store.engine.begin() as db:
+                db.execute(text('SELECT pg_advisory_xact_lock_shared(804298270115)'))
+                lease(db, work)
+                advance_frames(db, work)
+        await asyncio.to_thread(finish_frames)
+        old = await asyncio.to_thread(prior_call, runner.store, work, 'assessment')
+        frozen = old['context'] if old else await asyncio.to_thread(freeze_context, runner.store, work, frames)
+        saved = effective.get('assessment')
+        if saved:
+            assessment = saved['result']
+        else:
+            assessment = await asyncio.to_thread(revalidate, observer, old, frozen)
+            check_renewal()
+            call_id = await asyncio.to_thread(reserve, runner.store, work, 'assessment', frozen,
+                                              source_call_id=old['id'] if assessment else None)
+            if assessment is None:
+                timeout = min(120, deadline - monotonic())
+                if timeout <= 0:
+                    raise ValueError('observer_timeout')
+                assessment = await asyncio.to_thread(observer.call, 'assessment', frozen, None, timeout,
+                                                    **({'images': images} if hybrid else {}))
+            check_renewal()
+            await asyncio.to_thread(save_result, runner.store, work, call_id, assessment)
+            if assessment.get('valid') is not True:
+                raise ValueError('deepseek_response_invalid')
+        await asyncio.to_thread(mark_downstream, runner.store, work)
+        await asyncio.to_thread(validate_downstream, work, results, assessment, frozen)
+        await asyncio.to_thread(mark_downstream, runner.store, work, True, frozen['plan'])
         await asyncio.to_thread(complete, runner.store, work, results, assessment, frozen)
     except Exception as exc:
         code = str(exc)
