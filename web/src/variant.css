@@ -56,3 +56,5 @@
 .project-list .project-card .project-delete-icon:hover{background:var(--danger-surface)}
 .project-list .project-card .project-delete-icon:focus-visible{outline:3px solid var(--focus);outline-offset:3px}
 @media(max-width:480px){.project-list .project-card{padding:12px;border-radius:16px}.project-list .project-card .project-delete-icon{top:24px;right:24px}.project-list .project-card .project-card-heading{flex-wrap:wrap}.project-list .project-card .project-card-copy{padding-top:16px}}
+
+.project-list .project-card .project-open{border-radius:12px}
