@@ -56,7 +56,7 @@ def probe(path):
         width, height = int(stream['width']), int(stream['height'])
     except (KeyError, ValueError, ZeroDivisionError):
         raise ValueError('video_metadata_invalid') from None
-    if (not math.isfinite(duration) or not 0 < duration <= 120 or not 0 < fps <= 60 
+    if (not math.isfinite(duration) or not 0 < duration <= 120 or not 0 < fps <= 60
             or min(width, height) < 2 or max(width, height) > 4096 or min(width, height) > 2160):
         raise ValueError('video_limits_exceeded')
     if stream.get('codec_name') not in ('h264', 'hevc') or not {'mov', 'mp4'} & set(data['format'].get('format_name', '').split(',')):
